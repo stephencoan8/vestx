@@ -65,7 +65,16 @@ class Grant(db.Model):
     
     @property
     def total_value_at_grant(self) -> float:
-        """Calculate total value at grant (historical)."""
+        """
+        Calculate total value at grant (historical).
+        For ISOs: returns 0 (options have no intrinsic value at grant)
+        For RSUs/RSAs: returns shares × price at grant
+        """
+        # ISOs are options with no intrinsic value at grant
+        if self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            return 0.0
+        
+        # For RSUs/RSAs/ESPP, calculate actual share value
         return self.share_quantity * self.share_price_at_grant
     
     @property
