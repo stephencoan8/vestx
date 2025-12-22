@@ -133,6 +133,9 @@ def edit_grant(grant_id):
     
     if request.method == 'POST':
         try:
+            print(f"DEBUG: Editing grant {grant_id}")
+            print(f"DEBUG: Form data: {request.form}")
+            
             # Parse form data
             grant_date = datetime.strptime(request.form.get('grant_date'), '%Y-%m-%d').date()
             grant_type = request.form.get('grant_type')
@@ -141,6 +144,8 @@ def edit_grant(grant_id):
             bonus_type = request.form.get('bonus_type')
             vest_years = request.form.get('vest_years')
             notes = request.form.get('notes', '')
+            
+            print(f"DEBUG: Parsed data - Date: {grant_date}, Type: {grant_type}, Shares: {share_quantity}")
             
             # Get stock price at grant date
             share_price = get_stock_price_at_date(grant_date)
@@ -163,11 +168,16 @@ def edit_grant(grant_id):
             grant.bonus_type = bonus_type
             grant.notes = notes
             
+            print(f"DEBUG: Updated grant object")
+            
             # Delete old vest events
-            VestEvent.query.filter_by(grant_id=grant.id).delete()
+            deleted_count = VestEvent.query.filter_by(grant_id=grant.id).delete()
+            print(f"DEBUG: Deleted {deleted_count} old vest events")
             
             # Recalculate and create new vest events
             vest_schedule = calculate_vest_schedule(grant)
+            print(f"DEBUG: Calculated {len(vest_schedule)} new vest events")
+            
             for vest in vest_schedule:
                 vest_event = VestEvent(
                     grant_id=grant.id,
@@ -177,11 +187,16 @@ def edit_grant(grant_id):
                 db.session.add(vest_event)
             
             db.session.commit()
+            print(f"DEBUG: Committed changes to database")
+            
             flash('Grant updated successfully!', 'success')
             return redirect(url_for('grants.view_grant', grant_id=grant.id))
             
         except Exception as e:
             db.session.rollback()
+            print(f"DEBUG ERROR: {str(e)}")
+            import traceback
+            traceback.print_exc()
             flash(f'Error updating grant: {str(e)}', 'error')
     
     return render_template('grants/edit.html',
