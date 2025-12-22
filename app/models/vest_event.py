@@ -58,8 +58,22 @@ class VestEvent(db.Model):
     
     @property
     def value_at_vest(self) -> float:
-        """Calculate value at vest based on current stock price data."""
-        return self.shares_vested * self.share_price_at_vest
+        """
+        Calculate value at vest based on current stock price data.
+        For ISOs (stock options): value = shares × (price_at_vest - strike_price)
+        For RSUs/RSAs: value = shares × price_at_vest
+        """
+        from app.models.grant import ShareType
+        
+        price_at_vest = self.share_price_at_vest
+        
+        # For ISOs, calculate the spread (price at vest - strike price)
+        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            spread = price_at_vest - self.grant.share_price_at_grant
+            return self.shares_vested * spread
+        
+        # For RSUs/RSAs/ESPP, use full price at vest
+        return self.shares_vested * price_at_vest
     
     @property
     def shares_withheld_for_taxes(self) -> float:
@@ -79,8 +93,21 @@ class VestEvent(db.Model):
     
     @property
     def net_value(self) -> float:
-        """Calculate net value of shares received."""
-        share_price = self.share_price_at_vest
-        if share_price:
-            return self.shares_received * share_price
-        return 0.0
+        """
+        Calculate net value of shares received.
+        For ISOs: net_value = shares_received × (price_at_vest - strike_price)
+        For RSUs/RSAs: net_value = shares_received × price_at_vest
+        """
+        from app.models.grant import ShareType
+        
+        price_at_vest = self.share_price_at_vest
+        if not price_at_vest:
+            return 0.0
+        
+        # For ISOs, calculate based on spread
+        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            spread = price_at_vest - self.grant.share_price_at_grant
+            return self.shares_received * spread
+        
+        # For RSUs/RSAs/ESPP, use full price
+        return self.shares_received * price_at_vest

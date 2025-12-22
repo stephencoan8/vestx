@@ -76,5 +76,17 @@ class Grant(db.Model):
     
     @property
     def current_value(self) -> float:
-        """Calculate current total value based on latest stock price."""
-        return self.share_quantity * self.current_share_price
+        """
+        Calculate current total value based on latest stock price.
+        For ISOs (stock options): value = shares × (current_price - strike_price)
+        For RSUs/RSAs: value = shares × current_price
+        """
+        current_price = self.current_share_price
+        
+        # For ISOs, calculate the spread (current price - strike price)
+        if self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            spread = current_price - self.share_price_at_grant
+            return self.share_quantity * spread
+        
+        # For RSUs/RSAs/ESPP, use full current price
+        return self.share_quantity * current_price

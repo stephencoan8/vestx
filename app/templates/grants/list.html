@@ -21,7 +21,7 @@
                     <th>Price at Grant</th>
                     <th>Value at Grant</th>
                     <th>Current Price</th>
-                    <th>Current Value</th>
+                    <th>Current Value*</th>
                     <th>Vest Period</th>
                     <th>Actions</th>
                 </tr>
@@ -33,7 +33,7 @@
                     <td><span class="badge badge-{{ grant.grant_type }}">{{ grant.grant_type.replace('_', ' ').title() }}</span></td>
                     <td><span class="badge badge-share">{{ grant.share_type.upper() }}</span></td>
                     <td>{{ "{:,.2f}".format(grant.share_quantity) }}</td>
-                    <td>${{ "{:,.2f}".format(grant.share_price_at_grant) }}</td>
+                    <td>${{ "{:,.2f}".format(grant.share_price_at_grant) }}{% if grant.share_type.startswith('iso_') %} <small>(strike)</small>{% endif %}</td>
                     <td>${{ "{:,.2f}".format(grant.total_value_at_grant) }}</td>
                     <td class="highlight">${{ "{:,.2f}".format(grant.current_share_price) }}</td>
                     <td class="highlight">${{ "{:,.2f}".format(grant.current_value) }}</td>
@@ -49,6 +49,9 @@
                 {% endfor %}
             </tbody>
         </table>
+        <p style="margin-top: 1rem; font-size: 0.9em; color: #666;">
+            <strong>*Current Value:</strong> For ISOs (stock options), this is the spread value: shares × (current price - strike price). For RSUs/RSAs, this is the full value: shares × current price.
+        </p>
     </div>
     {% else %}
     <div class="empty-state-large">
