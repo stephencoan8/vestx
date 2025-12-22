@@ -17,7 +17,7 @@ class VestEvent(db.Model):
     # Vest details
     vest_date = db.Column(db.Date, nullable=False)
     shares_vested = db.Column(db.Float, nullable=False)
-    share_price_at_vest = db.Column(db.Float, nullable=True)
+    # Note: share_price_at_vest is now a @property that calculates dynamically
     
     # Tax handling
     payment_method = db.Column(db.String(20), default='sell_to_cover')  # 'sell_to_cover' or 'cash_to_cover'
@@ -47,18 +47,27 @@ class VestEvent(db.Model):
         return self.cash_to_cover == 0 and self.shares_sold_to_cover == 0
     
     @property
+    def share_price_at_vest(self) -> float:
+        """Get the stock price at vest date dynamically from stock_prices table."""
+        from app.models.stock_price import StockPrice
+        from app.utils.init_db import get_stock_price_at_date
+        
+        # Get the most recent stock price on or before the vest date
+        price = get_stock_price_at_date(self.vest_date)
+        return price if price else 0.0
+    
+    @property
     def value_at_vest(self) -> float:
-        """Calculate value at vest."""
-        if self.share_price_at_vest:
-            return self.shares_vested * self.share_price_at_vest
-        return 0.0
+        """Calculate value at vest based on current stock price data."""
+        return self.shares_vested * self.share_price_at_vest
     
     @property
     def shares_withheld_for_taxes(self) -> float:
         """Calculate total shares withheld/sold for taxes."""
-        if self.payment_method == 'cash_to_cover' and self.cash_to_cover > 0 and self.share_price_at_vest:
+        share_price = self.share_price_at_vest
+        if self.payment_method == 'cash_to_cover' and self.cash_to_cover > 0 and share_price:
             # Convert cash paid to equivalent shares
-            return self.cash_to_cover / self.share_price_at_vest
+            return self.cash_to_cover / share_price
         elif self.payment_method == 'sell_to_cover':
             return self.shares_sold_to_cover
         return 0.0
@@ -71,6 +80,7 @@ class VestEvent(db.Model):
     @property
     def net_value(self) -> float:
         """Calculate net value of shares received."""
-        if self.share_price_at_vest:
-            return self.shares_received * self.share_price_at_vest
+        share_price = self.share_price_at_vest
+        if share_price:
+            return self.shares_received * share_price
         return 0.0
