@@ -70,3 +70,5 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+# Database files
+instance/*.db
