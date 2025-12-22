@@ -47,12 +47,6 @@ def add_grant():
             else:
                 vest_years, cliff_years = get_grant_configuration(grant_type, share_type, bonus_type)
             
-            # Adjust share quantity for ISOs
-            if share_type == ShareType.ISO_5Y.value:
-                share_quantity *= 2  # 2x shares
-            elif share_type == ShareType.ISO_6Y.value:
-                share_quantity *= 3  # 3x shares
-            
             # Create grant
             grant = Grant(
                 user_id=current_user.id,
@@ -158,12 +152,6 @@ def edit_grant(grant_id):
                 cliff_years = 1.0  # Default
             else:
                 vest_years, cliff_years = get_grant_configuration(grant_type, share_type, bonus_type)
-            
-            # Adjust share quantity for ISOs
-            if share_type == ShareType.ISO_5Y.value:
-                share_quantity *= 2  # 2x shares
-            elif share_type == ShareType.ISO_6Y.value:
-                share_quantity *= 3  # 3x shares
             
             # Update grant
             grant.grant_date = grant_date

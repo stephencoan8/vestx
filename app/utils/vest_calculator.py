@@ -81,6 +81,10 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
     first_vest_date = get_next_vest_date(grant.grant_date)
     cliff_months = int(grant.cliff_years * 12)
     
+    # For ISOs, cliff_years is 1.5 or 2.5, so we need to handle the fractional part
+    # ISO 5Y: 1.5 years = 18 months cliff
+    # ISO 6Y: 2.5 years = 30 months cliff
+    
     # Add cliff months to first vest date
     cliff_date = first_vest_date
     months_to_add = cliff_months
@@ -151,8 +155,10 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
         total_vests = total_months
         shares_per_month = grant.share_quantity / total_months
         
-        # Calculate cliff shares
-        cliff_shares = shares_per_month * cliff_months
+        # For ISOs, the first vest includes 6 months worth of shares (0.5 years)
+        # ISO 5Y: cliff at 18 months, first vest = 6 months worth
+        # ISO 6Y: cliff at 30 months, first vest = 6 months worth
+        cliff_shares = shares_per_month * 6  # Always 0.5 years worth
         
         # Add cliff event
         vest_events.append({
@@ -162,8 +168,9 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
         })
         
         # Add monthly vests (but align to vest dates)
+        # Start counting from 6 months (since cliff already vested 6 months worth)
         current_date = cliff_date
-        months_vested = cliff_months
+        months_vested = 6  # We've vested 6 months worth at cliff
         
         while months_vested < total_months:
             # Move to next vest date (6/15 or 11/15)
