@@ -78,38 +78,89 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
         return vest_events
     
     # Calculate cliff date
-    first_vest_date = get_next_vest_date(grant.grant_date)
-    cliff_months = int(grant.cliff_years * 12)
-    
-    # For ISOs, cliff_years is 1.5 or 2.5, so we need to handle the fractional part
-    # ISO 5Y: 1.5 years = 18 months cliff
-    # ISO 6Y: 2.5 years = 30 months cliff
-    
-    # Add cliff months to first vest date
-    cliff_date = first_vest_date
-    months_to_add = cliff_months
-    while months_to_add >= 6:
-        if cliff_date.month == 6:
-            cliff_date = date(cliff_date.year, 11, 15)
-        else:
-            cliff_date = date(cliff_date.year + 1, 6, 15)
-        months_to_add -= 6
+    # For ISOs: cliff is when the FIRST vest happens (after vesting starts + 6 months)
+    # For RSUs: Use standard SpaceX vest dates (6/15 or 11/15)
+    if grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+        # ISO cliff calculation:
+        # - Determine when vesting period starts
+        # - Cliff is 6 months after vesting start
+        if grant.share_type == ShareType.ISO_5Y.value:
+            # Vesting starts 1 year after grant, cliff at 1.5 years (1 year + 6 months)
+            vesting_start = grant.grant_date + relativedelta(years=1)
+        else:  # ISO_6Y
+            # Vesting starts 2 years after grant, cliff at 2.5 years (2 years + 6 months)
+            vesting_start = grant.grant_date + relativedelta(years=2)
+        
+        # Set to 1st of the month
+        vesting_start = date(vesting_start.year, vesting_start.month, 1)
+        
+        # Cliff is 6 months after vesting starts
+        cliff_date = vesting_start + relativedelta(months=6)
+    else:
+        # RSU/RSA: Use standard SpaceX vest dates (6/15 or 11/15)
+        first_vest_date = get_next_vest_date(grant.grant_date)
+        cliff_months = int(grant.cliff_years * 12)
+        
+        # Add cliff months to first vest date
+        cliff_date = first_vest_date
+        months_to_add = cliff_months
+        while months_to_add >= 6:
+            if cliff_date.month == 6:
+                cliff_date = date(cliff_date.year, 11, 15)
+            else:
+                cliff_date = date(cliff_date.year + 1, 6, 15)
+            months_to_add -= 6
     
     # Determine vesting frequency
-    if grant.share_type == ShareType.RSU.value:
-        # Semi-annual vesting
-        vest_frequency_months = 6
-    elif grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-        # Monthly vesting
+    if grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+        # Monthly vesting for ISOs
         vest_frequency_months = 1
     else:
-        # Default to semi-annual
+        # Semi-annual vesting for RSUs/RSAs
         vest_frequency_months = 6
     
     # Calculate total vesting periods
     total_months = int(grant.vest_years * 12)
     
-    if vest_frequency_months == 6:
+    if vest_frequency_months == 1:
+        # Monthly vesting (for ISOs) - TRUE monthly vesting, 12 events per year
+        # ISO vesting rules:
+        # - Both ISO 5Y and 6Y vest over 5 years (60 months) from vesting start
+        # - ISO 5Y: Vesting starts 1 year after grant (1/1/24 for grant 1/1/23)
+        # - ISO 6Y: Vesting starts 2 years after grant (1/1/25 for grant 1/1/23)
+        # - Cliff at 6 months into vesting period
+        # - First vest at cliff includes 6 months worth (6/60 of total)
+        # - Then monthly vesting on the 1st of each month for remaining 54 months (1/60 each)
+        # Example: Grant 1/1/23, ISO 6Y, vesting 1/1/25-12/1/29 = 60 months
+        
+        VESTING_MONTHS = 60  # Both ISO 5Y and 6Y vest over 5 years
+        shares_per_month = grant.share_quantity / VESTING_MONTHS
+        
+        # First vest at cliff includes 6 months worth (6/60 of total)
+        cliff_shares = shares_per_month * 6
+        
+        # Add cliff event
+        vest_events.append({
+            'vest_date': cliff_date,
+            'shares': cliff_shares,
+            'is_cliff': True
+        })
+        
+        # Add monthly vests - 54 more months (months 7-60)
+        # Cliff vested months 1-6, we need to vest months 7-60 = 54 more vests
+        current_date = cliff_date
+        
+        for _ in range(54):  # 54 more vests after cliff (months 7-60)
+            # Move to next month
+            current_date = current_date + relativedelta(months=1)
+            
+            vest_events.append({
+                'vest_date': current_date,
+                'shares': shares_per_month,
+                'is_cliff': False
+            })
+    
+    elif vest_frequency_months == 6:
         # Semi-annual vesting
         total_vests = total_months // 6
         shares_per_vest = grant.share_quantity / total_vests
@@ -149,40 +200,6 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
                     'shares': shares_per_remaining_vest,
                     'is_cliff': False
                 })
-    
-    else:
-        # Monthly vesting (for ISOs) - TRUE monthly vesting, 12 events per year
-        total_vests = total_months
-        shares_per_month = grant.share_quantity / total_months
-        
-        # For ISOs, the first vest includes 6 months worth of shares (0.5 years)
-        # ISO 5Y: cliff at 18 months, first vest = 6 months worth
-        # ISO 6Y: cliff at 30 months, first vest = 6 months worth
-        cliff_shares = shares_per_month * 6  # Always 0.5 years worth
-        
-        # Add cliff event
-        vest_events.append({
-            'vest_date': cliff_date,
-            'shares': cliff_shares,
-            'is_cliff': True
-        })
-        
-        # Add monthly vests - one event per month, 12 per year
-        # Start counting from 6 months (since cliff already vested 6 months worth)
-        current_date = cliff_date
-        months_vested = 6  # We've vested 6 months worth at cliff
-        
-        while months_vested < total_months:
-            # Move to next month (add 1 month using relativedelta)
-            current_date = current_date + relativedelta(months=1)
-            months_vested += 1
-            
-            # Each monthly vest is 1 month worth of shares
-            vest_events.append({
-                'vest_date': current_date,
-                'shares': shares_per_month,
-                'is_cliff': False
-            })
     
     return vest_events
 
