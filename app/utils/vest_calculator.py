@@ -151,7 +151,7 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
                 })
     
     else:
-        # Monthly vesting (for ISOs)
+        # Monthly vesting (for ISOs) - TRUE monthly vesting, 12 events per year
         total_vests = total_months
         shares_per_month = grant.share_quantity / total_months
         
@@ -167,32 +167,22 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
             'is_cliff': True
         })
         
-        # Add monthly vests (but align to vest dates)
+        # Add monthly vests - one event per month, 12 per year
         # Start counting from 6 months (since cliff already vested 6 months worth)
         current_date = cliff_date
         months_vested = 6  # We've vested 6 months worth at cliff
         
         while months_vested < total_months:
-            # Move to next vest date (6/15 or 11/15)
-            if current_date.month == 6:
-                current_date = date(current_date.year, 11, 15)
-                months_elapsed = 5
-            else:
-                current_date = date(current_date.year + 1, 6, 15)
-                months_elapsed = 7
+            # Move to next month (add 1 month using relativedelta)
+            current_date = current_date + relativedelta(months=1)
+            months_vested += 1
             
-            # Calculate shares for this period
-            months_to_vest = min(months_elapsed, total_months - months_vested)
-            shares_this_period = shares_per_month * months_to_vest
-            
-            if shares_this_period > 0:
-                vest_events.append({
-                    'vest_date': current_date,
-                    'shares': shares_this_period,
-                    'is_cliff': False
-                })
-            
-            months_vested += months_to_vest
+            # Each monthly vest is 1 month worth of shares
+            vest_events.append({
+                'vest_date': current_date,
+                'shares': shares_per_month,
+                'is_cliff': False
+            })
     
     return vest_events
 

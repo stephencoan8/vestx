@@ -21,14 +21,16 @@
 **ISO 5Y (2x multiplier) Vesting:**
 - **Cliff:** 1.5 years after grant date
 - **First Vest:** 0.5 years (6 months) worth of shares at the 1.5 year mark
-- **Remaining:** Monthly vesting for the rest of the 5-year period
+- **Remaining:** TRUE monthly vesting (12 events per year) for the rest of the 5-year period
 - **Total Period:** 5 years
+- **Total Events:** 1 cliff + 54 monthly = 55 vest events
 
 **ISO 6Y (3x multiplier) Vesting:**
 - **Cliff:** 2.5 years after grant date  
 - **First Vest:** 0.5 years (6 months) worth of shares at the 2.5 year mark
-- **Remaining:** Monthly vesting for the rest of the 6-year period
+- **Remaining:** TRUE monthly vesting (12 events per year) for the rest of the 6-year period
 - **Total Period:** 6 years
+- **Total Events:** 1 cliff + 66 monthly = 67 vest events
 
 **Example: 1000 ISO 5Y shares**
 ```
@@ -40,10 +42,14 @@ Shares per month: 1,000 / 60 = 16.67
 Cliff (Nov 15, 2025 - 1.5 years later):
   - Vests: 6 months worth = 16.67 × 6 = 100 shares
 
-Then every vest date (6/15 and 11/15):
-  - Jun 15, 2026: 7 months worth = 116.67 shares
-  - Nov 15, 2026: 5 months worth = 83.33 shares
-  - ... continues until all 1,000 shares vest
+Then EVERY month (12 times per year):
+  - Dec 15, 2025: 16.67 shares
+  - Jan 15, 2026: 16.67 shares
+  - Feb 15, 2026: 16.67 shares
+  - ... continues monthly until May 15, 2030
+  - Total: 54 monthly vests after cliff
+
+Total Events: 1 cliff + 54 monthly = 55 vest events
 ```
 
 **Example: 1000 ISO 6Y shares**
@@ -56,10 +62,14 @@ Shares per month: 1,000 / 72 = 13.89
 Cliff (Nov 15, 2026 - 2.5 years later):
   - Vests: 6 months worth = 13.89 × 6 = 83.33 shares
 
-Then every vest date (6/15 and 11/15):
-  - Jun 15, 2027: 7 months worth = 97.22 shares
-  - Nov 15, 2027: 5 months worth = 69.44 shares
-  - ... continues until all 1,000 shares vest
+Then EVERY month (12 times per year):
+  - Dec 15, 2026: 13.89 shares
+  - Jan 15, 2027: 13.89 shares
+  - Feb 15, 2027: 13.89 shares
+  - ... continues monthly until May 15, 2032
+  - Total: 66 monthly vests after cliff
+
+Total Events: 1 cliff + 66 monthly = 67 vest events
 ```
 
 **Files Changed:**
@@ -130,10 +140,10 @@ To verify your grants are correct after the fix:
 ## Technical Details
 
 ### Vest Date Alignment
-- ISOs vest monthly but payments align to 6/15 and 11/15
-- The system groups monthly vesting into these semi-annual payment dates
-- 6/15 to 11/15 = 5 months worth of vesting
-- 11/15 to 6/15 = 7 months worth of vesting
+- ISOs vest **truly monthly** - 12 vest events per year
+- Each monthly vest is on the 15th of the month
+- The cliff vest is aligned to either 6/15 or 11/15 (whichever comes after the cliff period)
+- After cliff, vesting continues on the 15th of every subsequent month
 
 ### Cliff Calculation
 - ISO 5Y: 1.5 years = 18 months cliff
@@ -148,9 +158,10 @@ To verify your grants are correct after the fix:
    - Removed ISO share multiplication in `edit_grant()` (lines 164-166)
 
 2. **app/utils/vest_calculator.py**
-   - Updated monthly vesting logic to always vest 6 months at cliff
+   - Updated monthly vesting logic to create true monthly vest events (12 per year)
+   - Changed from grouping into biannual dates to individual monthly vests
+   - Cliff vests 6 months worth, then each month vests 1 month worth
    - Fixed tracking to count from 6 months (not from cliff_months)
-   - Added comments explaining ISO vesting logic
 
 3. **test_iso_vesting.py** (new file)
    - Test suite to verify ISO vesting calculations

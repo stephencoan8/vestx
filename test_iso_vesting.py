@@ -35,12 +35,13 @@ def print_vest_schedule(grant_info, vest_events):
 
 
 def test_iso_5y_vesting():
-    """Test ISO 5Y vesting: 1.5 year cliff, then monthly for remaining 3.5 years."""
+    """Test ISO 5Y vesting: 1.5 year cliff, then TRUE monthly for remaining 3.5 years."""
     print("\n" + "="*80)
     print("TEST 1: ISO 5Y (2x multiplier)")
     print("="*80)
     print("Expected: 1.5 year cliff with 0.5 years (6 months) worth of shares,")
-    print("          then monthly vesting for remaining time")
+    print("          then TRUE MONTHLY vesting (12 events/year) for remaining time")
+    print("          Total: 1 cliff + 54 monthly = 55 vest events")
     
     # Example: 1000 ISOs granted on Jan 1, 2024
     grant = Grant(
@@ -73,15 +74,22 @@ def test_iso_5y_vesting():
     print(f"  Expected: {expected_first_shares:.2f} shares (6 months / 60 months)")
     print(f"  Actual: {first_vest['shares']:.2f} shares")
     print(f"  {'✅ PASS' if abs(first_vest['shares'] - expected_first_shares) < 0.01 else '❌ FAIL'}")
+    
+    # Verify total number of events
+    print(f"\nTotal events verification:")
+    print(f"  Expected: 55 events (1 cliff + 54 monthly)")
+    print(f"  Actual: {len(vest_schedule)} events")
+    print(f"  {'✅ PASS' if len(vest_schedule) == 55 else '❌ FAIL'}")
 
 
 def test_iso_6y_vesting():
-    """Test ISO 6Y vesting: 2.5 year cliff, then monthly for remaining 3.5 years."""
+    """Test ISO 6Y vesting: 2.5 year cliff, then TRUE monthly for remaining 3.5 years."""
     print("\n" + "="*80)
     print("TEST 2: ISO 6Y (3x multiplier)")
     print("="*80)
     print("Expected: 2.5 year cliff with 0.5 years (6 months) worth of shares,")
-    print("          then monthly vesting for remaining time")
+    print("          then TRUE MONTHLY vesting (12 events/year) for remaining time")
+    print("          Total: 1 cliff + 66 monthly = 67 vest events")
     
     # Example: 1000 ISOs granted on Jan 1, 2024
     grant = Grant(
@@ -114,6 +122,12 @@ def test_iso_6y_vesting():
     print(f"  Expected: {expected_first_shares:.2f} shares (6 months / 72 months)")
     print(f"  Actual: {first_vest['shares']:.2f} shares")
     print(f"  {'✅ PASS' if abs(first_vest['shares'] - expected_first_shares) < 0.01 else '❌ FAIL'}")
+    
+    # Verify total number of events
+    print(f"\nTotal events verification:")
+    print(f"  Expected: 67 events (1 cliff + 66 monthly)")
+    print(f"  Actual: {len(vest_schedule)} events")
+    print(f"  {'✅ PASS' if len(vest_schedule) == 67 else '❌ FAIL'}")
 
 
 def test_rsu_vesting():
@@ -149,7 +163,7 @@ def test_rsu_vesting():
 
 if __name__ == '__main__':
     print("\n🧪 ISO Vesting Schedule Test Suite")
-    print("Testing new vesting logic without auto-multiplication")
+    print("Testing TRUE monthly vesting (12 events per year)")
     
     test_iso_5y_vesting()
     test_iso_6y_vesting()
