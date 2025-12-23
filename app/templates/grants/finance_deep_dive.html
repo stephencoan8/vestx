@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+
+{% block title %}Finance Deep Dive - SpaceX Stonks{% endblock %}
+
+{% block content %}
+<div class="finance-deep-dive">
+    <header class="page-header">
+        <h1>💰 Finance Deep Dive</h1>
+        <p class="subtitle">Comprehensive tax and capital gains analysis</p>
+    </header>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <div class="stat-label">Total Shares Vested</div>
+                <div class="stat-value">{{ "{:,.0f}".format(analysis_data|sum(attribute='total_shares_vested')) }}</div>
+            </div>
+        </div>
+
+        <div class="stat-card success">
+            <div class="stat-icon">💵</div>
+            <div class="stat-content">
+                <div class="stat-label">Current Value</div>
+                <div class="stat-value">${{ "{:,.2f}".format((analysis_data|sum(attribute='total_shares_vested')) * latest_stock_price) }}</div>
+                <small style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                    @ ${{ "{:,.2f}".format(latest_stock_price) }}/share
+                </small>
+            </div>
+        </div>
+
+        <div class="stat-card accent">
+            <div class="stat-icon">📈</div>
+            <div class="stat-content">
+                <div class="stat-label">Total Gain/Loss</div>
+                <div class="stat-value">${{ "{:,.2f}".format(total_gain_loss) }}</div>
+            </div>
+        </div>
+
+        <div class="stat-card warning">
+            <div class="stat-icon">🧾</div>
+            <div class="stat-content">
+                <div class="stat-label">Taxes Withheld</div>
+                <div class="stat-value">${{ "{:,.2f}".format(total_tax) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tax Information -->
+    <div class="info-section">
+        <h2>📚 Tax Basics</h2>
+        <div class="tax-info-grid">
+            <div class="tax-info-card">
+                <h3>Ordinary Income (Vest Date)</h3>
+                <p><strong>When:</strong> At vest date</p>
+                <p><strong>Taxed as:</strong> Ordinary income (W-2)</p>
+                <p><strong>Rate:</strong> Your marginal tax rate (22%-37%+)</p>
+                <p><strong>How:</strong> Shares withheld or cash-to-cover</p>
+            </div>
+
+            <div class="tax-info-card">
+                <h3>Short-Term Capital Gains</h3>
+                <p><strong>When:</strong> Sold within 1 year of vesting</p>
+                <p><strong>Taxed as:</strong> Ordinary income</p>
+                <p><strong>Rate:</strong> Your marginal tax rate (22%-37%+)</p>
+                <p><strong>Basis:</strong> Value at vest date</p>
+            </div>
+
+            <div class="tax-info-card">
+                <h3>Long-Term Capital Gains</h3>
+                <p><strong>When:</strong> Sold after 1+ year of vesting</p>
+                <p><strong>Taxed as:</strong> Long-term capital gains</p>
+                <p><strong>Rate:</strong> Preferential (0%, 15%, or 20%)</p>
+                <p><strong>Basis:</strong> Value at vest date</p>
+            </div>
+
+            <div class="tax-info-card">
+                <h3>ISO Special Rules</h3>
+                <p><strong>AMT:</strong> Alternative Minimum Tax may apply</p>
+                <p><strong>Qualifying:</strong> Hold 2 years from grant + 1 year from exercise</p>
+                <p><strong>Spread:</strong> Exercise price vs FMV triggers AMT</p>
+                <p><strong>Benefit:</strong> Potential long-term capital gains on entire gain</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Analysis by Grant -->
+    <div class="analysis-section">
+        <h2>📊 Detailed Analysis by Grant</h2>
+        
+        {% for item in analysis_data %}
+        <div class="grant-analysis-card">
+            <div class="grant-analysis-header">
+                <h3>
+                    {{ item.grant.grant_type|replace('_', ' ')|title }}
+                    <span class="badge">{{ item.grant.share_type|upper }}</span>
+                </h3>
+                <div class="grant-meta">
+                    Granted: {{ item.grant.grant_date.strftime('%b %d, %Y') }} | 
+                    {{ "{:,.0f}".format(item.grant.share_quantity) }} shares @ 
+                    ${{ "{:,.2f}".format(item.grant.share_price_at_grant) }}
+                </div>
+            </div>
+
+            <div class="grant-summary-stats">
+                <div class="summary-stat">
+                    <div class="summary-label">Shares Vested</div>
+                    <div class="summary-value">{{ "{:,.0f}".format(item.total_shares_vested) }}</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-label">Current Value</div>
+                    <div class="summary-value">${{ "{:,.2f}".format(item.total_shares_vested * latest_stock_price) }}</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-label">Gain/Loss</div>
+                    <div class="summary-value {{ 'positive' if item.grant_gain_loss > 0 else 'negative' }}">
+                        ${{ "{:,.2f}".format(item.grant_gain_loss) }}
+                    </div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-label">Tax Withheld</div>
+                    <div class="summary-value">${{ "{:,.2f}".format(item.grant_tax) }}</div>
+                </div>
+            </div>
+
+            <!-- Vest Events Table -->
+            <table class="vest-events-table">
+                <thead>
+                    <tr>
+                        <th>Vest Date</th>
+                        <th>Shares</th>
+                        <th>Price at Vest</th>
+                        <th>Value at Vest</th>
+                        <th>Tax Holding Period</th>
+                        <th>Cap Gains Status</th>
+                        <th>Current Value</th>
+                        <th>Unrealized Gain</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vest in item.vest_events %}
+                    {% if vest.has_vested %}
+                    {% set days_held = (current_date - vest.vest_date).days %}
+                    {% set is_long_term = days_held >= 365 %}
+                    <tr>
+                        <td>{{ vest.vest_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ "{:,.0f}".format(vest.shares_received) }}</td>
+                        <td>${{ "{:,.2f}".format(vest.price_at_vest or 0) }}</td>
+                        <td>${{ "{:,.2f}".format(vest.value_at_vest or 0) }}</td>
+                        <td>
+                            {{ days_held }} days
+                            <span class="badge {{ 'success' if is_long_term else 'warning' }}">
+                                {{ 'Long' if is_long_term else 'Short' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if is_long_term %}
+                            <span class="cap-gains long-term">Long-term (0-20%)</span>
+                            {% else %}
+                            <span class="cap-gains short-term">Short-term (Ordinary)</span>
+                            {% endif %}
+                        </td>
+                        <td>${{ "{:,.2f}".format(vest.shares_received * latest_stock_price) }}</td>
+                        <td class="{{ 'positive' if (vest.shares_received * latest_stock_price - vest.value_at_vest) > 0 else 'negative' }}">
+                            ${{ "{:,.2f}".format(vest.shares_received * latest_stock_price - (vest.value_at_vest or 0)) }}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Tax Planning Section -->
+    <div class="tax-planning-section">
+        <h2>💡 Tax Planning Insights</h2>
+        <div class="insights-grid">
+            <div class="insight-card">
+                <h3>🎯 Optimize Holdings</h3>
+                <p>Consider holding shares for 1+ year after vesting to qualify for long-term capital gains rates (0-20%) instead of ordinary income rates (22-37%).</p>
+            </div>
+
+            <div class="insight-card">
+                <h3>📅 Tax-Loss Harvesting</h3>
+                <p>If you have shares with unrealized losses, consider selling them to offset capital gains elsewhere in your portfolio.</p>
+            </div>
+
+            <div class="insight-card">
+                <h3>🔄 Diversification</h3>
+                <p>While SpaceX stock may appreciate, consider diversifying to manage concentration risk. Selling some shares (even at higher tax rates) may be prudent.</p>
+            </div>
+
+            <div class="insight-card">
+                <h3>⚖️ ISO AMT Planning</h3>
+                <p>For ISOs, the spread at exercise may trigger Alternative Minimum Tax (AMT). Plan exercises strategically to minimize AMT impact.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+        <p><strong>⚠️ Disclaimer:</strong> This information is for educational purposes only and should not be considered tax or financial advice. Tax laws are complex and change frequently. Consult with a qualified tax professional or financial advisor for personalized guidance based on your specific situation.</p>
+    </div>
+</div>
+
+<style>
+.finance-deep-dive {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-top: 0.5rem;
+}
+
+.info-section {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+}
+
+.tax-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.tax-info-card {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.tax-info-card h3 {
+    color: var(--accent);
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.tax-info-card p {
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.tax-info-card strong {
+    color: var(--text);
+}
+
+.analysis-section {
+    margin: 2rem 0;
+}
+
+.grant-analysis-card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border: 1px solid var(--border);
+}
+
+.grant-analysis-header h3 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.grant-meta {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.grant-summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: var(--background);
+    border-radius: 8px;
+}
+
+.summary-stat {
+    text-align: center;
+}
+
+.summary-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.summary-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.summary-value.positive {
+    color: var(--success);
+}
+
+.summary-value.negative {
+    color: var(--error);
+}
+
+.vest-events-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.vest-events-table th,
+.vest-events-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.vest-events-table th {
+    background: var(--background);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.vest-events-table td.positive {
+    color: var(--success);
+}
+
+.vest-events-table td.negative {
+    color: var(--error);
+}
+
+.cap-gains {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.cap-gains.long-term {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.cap-gains.short-term {
+    background: rgba(251, 191, 36, 0.1);
+    color: #f59e0b;
+}
+
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--accent);
+    color: var(--background);
+}
+
+.badge.success {
+    background: var(--success);
+}
+
+.badge.warning {
+    background: #f59e0b;
+}
+
+.tax-planning-section {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+}
+
+.insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.insight-card {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.insight-card h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.insight-card p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.disclaimer {
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 2rem 0;
+}
+
+.disclaimer p {
+    margin: 0;
+    color: var(--text);
+    line-height: 1.6;
+}
+</style>
+{% endblock %}

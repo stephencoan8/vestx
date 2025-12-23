@@ -18,6 +18,7 @@
                 <a href="{{ url_for('main.dashboard') }}" class="nav-link">Dashboard</a>
                 <a href="{{ url_for('grants.list_grants') }}" class="nav-link">My Grants</a>
                 <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link">Vest Schedule</a>
+                <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link">💰 Finance</a>
                 {% if current_user.is_admin %}
                 <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link">Admin</a>
                 {% endif %}

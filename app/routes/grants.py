@@ -8,7 +8,7 @@ from app import db
 from app.models.grant import Grant, GrantType, ShareType
 from app.models.vest_event import VestEvent
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
-from app.utils.init_db import get_stock_price_at_date
+from app.utils.init_db import get_stock_price_at_date, get_latest_stock_price
 from datetime import datetime, date
 
 grants_bp = Blueprint('grants', __name__, url_prefix='/grants')
@@ -244,3 +244,38 @@ def vest_schedule():
     ).order_by(VestEvent.vest_date).all()
     
     return render_template('grants/schedule.html', vest_events=vest_events)
+
+
+@grants_bp.route('/finance-deep-dive')
+@login_required
+def finance_deep_dive():
+    """Comprehensive tax and capital gains analysis."""
+    # Get all grants and vest events for the user
+    grants = Grant.query.filter_by(user_id=current_user.id).all()
+    all_vest_events = VestEvent.query.join(Grant).filter(
+        Grant.user_id == current_user.id
+    ).order_by(VestEvent.vest_date).all()
+    
+    # Prepare data for analysis
+    analysis_data = []
+    
+    for grant in grants:
+        vest_events = [ve for ve in all_vest_events if ve.grant_id == grant.id]
+        total_shares_vested = sum(ve.shares_vested for ve in vest_events if ve.has_vested)
+        
+        analysis_data.append({
+            'grant': grant,
+            'vest_events': vest_events,
+            'total_shares_vested': total_shares_vested,
+            'grant_gain_loss': 0,
+            'grant_tax': 0
+        })
+    
+    latest_stock_price = get_latest_stock_price() or 0.0
+    
+    return render_template('grants/finance_deep_dive.html',
+                         analysis_data=analysis_data,
+                         total_gain_loss=0,
+                         total_tax=0,
+                         latest_stock_price=latest_stock_price,
+                         current_date=date.today())
