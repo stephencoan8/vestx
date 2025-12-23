@@ -316,3 +316,16 @@ def finance_deep_dive():
                          total_unrealized_gain=total_unrealized_gain,
                          latest_stock_price=latest_stock_price,
                          current_date=date.today())
+
+
+@grants_bp.route('/test-sliders')
+def test_sliders():
+    """Test route to verify template is working"""
+    return """
+    <h1>Slider Test</h1>
+    <input type="range" id="test" min="0" max="100" value="50">
+    <p>If you see a slider above, HTML ranges work in your browser.</p>
+    <hr>
+    <p>Template location: app/templates/grants/finance_deep_dive.html</p>
+    <p>Flask is serving the updated code.</p>
+    """

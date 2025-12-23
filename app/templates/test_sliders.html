@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Sliders</title>
+</head>
+<body>
+    <h1>Test Page - Tax Sliders</h1>
+    <p>If you see this page at http://127.0.0.1:5001/test-sliders, then Flask is working</p>
+    
+    <div style="padding: 20px; border: 2px solid blue;">
+        <h2>Tax Rate Configuration</h2>
+        
+        <div style="margin: 20px 0;">
+            <label for="federalTaxRate">
+                Federal Tax Rate: <strong><span id="federalTaxValue">24</span>%</strong>
+            </label>
+            <input type="range" id="federalTaxRate" min="0" max="37" step="1" value="24" style="width: 100%;">
+        </div>
+        
+        <div style="margin: 20px 0;">
+            <label for="stateTaxRate">
+                State Tax Rate: <strong><span id="stateTaxValue">9.3</span>%</strong>
+            </label>
+            <input type="range" id="stateTaxRate" min="0" max="13.3" step="0.1" value="9.3" style="width: 100%;">
+        </div>
+        
+        <div style="margin: 20px 0;">
+            <label for="capitalGainsTaxRate">
+                Long-Term Capital Gains: <strong><span id="capitalGainsValue">15</span>%</strong>
+            </label>
+            <input type="range" id="capitalGainsTaxRate" min="0" max="20" step="1" value="15" style="width: 100%;">
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('federalTaxRate').addEventListener('input', (e) => {
+            document.getElementById('federalTaxValue').textContent = e.target.value;
+        });
+        document.getElementById('stateTaxRate').addEventListener('input', (e) => {
+            document.getElementById('stateTaxValue').textContent = e.target.value;
+        });
+        document.getElementById('capitalGainsTaxRate').addEventListener('input', (e) => {
+            document.getElementById('capitalGainsValue').textContent = e.target.value;
+        });
+    </script>
+</body>
+</html>

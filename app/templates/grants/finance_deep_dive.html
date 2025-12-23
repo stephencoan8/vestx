@@ -11,7 +11,18 @@
 
     <!-- Tax Rate Configuration -->
     <div class="tax-config-section">
-        <h2>⚙️ Tax Rate Configuration</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="margin: 0;">⚙️ Tax Rate Configuration</h2>
+            <div class="toggle-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="showAllToggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <label for="showAllToggle" style="margin-left: 0.5rem; cursor: pointer;">
+                    Show <strong><span id="toggleLabel">Vested Only</span></strong>
+                </label>
+            </div>
+        </div>
         <p class="text-muted">Adjust these sliders to calculate estimated tax impact if you sold all shares today</p>
         
         <div class="tax-sliders">
@@ -47,7 +58,8 @@
             <div class="stat-icon">📊</div>
             <div class="stat-content">
                 <div class="stat-label">Total Shares Held</div>
-                <div class="stat-value">{{ "{:,.0f}".format(total_shares_held) }}</div>
+                <div class="stat-value data-vested">{{ "{:,.0f}".format(total_shares_held_vested) }}</div>
+                <div class="stat-value data-all" style="display: none;">{{ "{:,.0f}".format(total_shares_held_all) }}</div>
                 <small>@ ${{ "{:,.2f}".format(latest_stock_price) }}/share</small>
             </div>
         </div>
@@ -56,8 +68,10 @@
             <div class="stat-icon">💵</div>
             <div class="stat-content">
                 <div class="stat-label">Current Value</div>
-                <div class="stat-value">${{ "{:,.2f}".format(total_current_value) }}</div>
-                <small>Cost basis: ${{ "{:,.2f}".format(total_cost_basis) }}</small>
+                <div class="stat-value data-vested">${{ "{:,.2f}".format(total_current_value_vested) }}</div>
+                <div class="stat-value data-all" style="display: none;">${{ "{:,.2f}".format(total_current_value_all) }}</div>
+                <small class="data-vested">Cost basis: ${{ "{:,.2f}".format(total_cost_basis_vested) }}</small>
+                <small class="data-all" style="display: none;">Cost basis: ${{ "{:,.2f}".format(total_cost_basis_all) }}</small>
             </div>
         </div>
 
@@ -65,10 +79,14 @@
             <div class="stat-icon">📈</div>
             <div class="stat-content">
                 <div class="stat-label">Unrealized Gain</div>
-                <div class="stat-value {% if total_unrealized_gain >= 0 %}positive{% else %}negative{% endif %}">
-                    ${{ "{:,.2f}".format(total_unrealized_gain) }}
+                <div class="stat-value data-vested {% if total_unrealized_gain_vested >= 0 %}positive{% else %}negative{% endif %}">
+                    ${{ "{:,.2f}".format(total_unrealized_gain_vested) }}
                 </div>
-                <small>{{ "{:.1f}".format((total_unrealized_gain / total_cost_basis * 100) if total_cost_basis > 0 else 0) }}% return</small>
+                <div class="stat-value data-all {% if total_unrealized_gain_all >= 0 %}positive{% else %}negative{% endif %}" style="display: none;">
+                    ${{ "{:,.2f}".format(total_unrealized_gain_all) }}
+                </div>
+                <small class="data-vested">{{ "{:.1f}".format((total_unrealized_gain_vested / total_cost_basis_vested * 100) if total_cost_basis_vested > 0 else 0) }}% return</small>
+                <small class="data-all" style="display: none;">{{ "{:.1f}".format((total_unrealized_gain_all / total_cost_basis_all * 100) if total_cost_basis_all > 0 else 0) }}% return</small>
             </div>
         </div>
 
@@ -88,10 +106,14 @@
         
         {% for item in analysis_data %}
         <div class="grant-analysis-card" 
-             data-shares-held="{{ item.shares_held }}"
-             data-cost-basis="{{ item.cost_basis }}"
-             data-current-value="{{ item.current_value }}"
-             data-unrealized-gain="{{ item.unrealized_gain }}"
+             data-shares-held-vested="{{ item.shares_held_vested }}"
+             data-shares-held-all="{{ item.shares_held_all }}"
+             data-cost-basis-vested="{{ item.cost_basis_vested }}"
+             data-cost-basis-all="{{ item.cost_basis_all }}"
+             data-current-value-vested="{{ item.current_value_vested }}"
+             data-current-value-all="{{ item.current_value_all }}"
+             data-unrealized-gain-vested="{{ item.unrealized_gain_vested }}"
+             data-unrealized-gain-all="{{ item.unrealized_gain_all }}"
              data-grant-type="{{ item.grant.grant_type }}">
             
             <div class="grant-analysis-header">
@@ -109,20 +131,26 @@
             <div class="grant-summary-stats">
                 <div class="summary-stat">
                     <div class="summary-label">Shares Held</div>
-                    <div class="summary-value">{{ "{:,.0f}".format(item.shares_held) }}</div>
+                    <div class="summary-value data-vested">{{ "{:,.0f}".format(item.shares_held_vested) }}</div>
+                    <div class="summary-value data-all" style="display: none;">{{ "{:,.0f}".format(item.shares_held_all) }}</div>
                 </div>
                 <div class="summary-stat">
                     <div class="summary-label">Cost Basis</div>
-                    <div class="summary-value">${{ "{:,.2f}".format(item.cost_basis) }}</div>
+                    <div class="summary-value data-vested">${{ "{:,.2f}".format(item.cost_basis_vested) }}</div>
+                    <div class="summary-value data-all" style="display: none;">${{ "{:,.2f}".format(item.cost_basis_all) }}</div>
                 </div>
                 <div class="summary-stat">
                     <div class="summary-label">Current Value</div>
-                    <div class="summary-value">${{ "{:,.2f}".format(item.current_value) }}</div>
+                    <div class="summary-value data-vested">${{ "{:,.2f}".format(item.current_value_vested) }}</div>
+                    <div class="summary-value data-all" style="display: none;">${{ "{:,.2f}".format(item.current_value_all) }}</div>
                 </div>
                 <div class="summary-stat">
                     <div class="summary-label">Unrealized Gain</div>
-                    <div class="summary-value {{ 'positive' if item.unrealized_gain > 0 else 'negative' }}">
-                        ${{ "{:,.2f}".format(item.unrealized_gain) }}
+                    <div class="summary-value data-vested {{ 'positive' if item.unrealized_gain_vested > 0 else 'negative' }}">
+                        ${{ "{:,.2f}".format(item.unrealized_gain_vested) }}
+                    </div>
+                    <div class="summary-value data-all {{ 'positive' if item.unrealized_gain_all > 0 else 'negative' }}" style="display: none;">
+                        ${{ "{:,.2f}".format(item.unrealized_gain_all) }}
                     </div>
                 </div>
                 <div class="summary-stat">
@@ -142,44 +170,54 @@
                     <thead>
                         <tr>
                             <th>Vest Date</th>
-                            <th>Shares Vested</th>
-                            <th>Shares Sold</th>
+                            <th>Status</th>
                             <th>Shares Held</th>
-                            <th>Price at Vest</th>
+                            <th>Cost Basis/Share</th>
                             <th>Current Price</th>
                             <th>Holding Period</th>
                             <th>Unrealized Gain</th>
+                            <th>Est. Tax</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for vest in item.vest_events %}
-                        {% if vest.vest_date <= current_date %}
-                        {% set days_held = (current_date - vest.vest_date).days %}
-                        {% set is_long_term = days_held >= 365 %}
-                        {% set shares_held_vest = vest.shares_vested - (vest.shares_sold or 0) %}
-                        {% set unrealized = shares_held_vest * latest_stock_price - shares_held_vest * (vest.price_at_vest or 0) %}
-                        <tr>
-                            <td>{{ vest.vest_date.strftime('%b %d, %Y') }}</td>
-                            <td>{{ "{:,.0f}".format(vest.shares_vested) }}</td>
-                            <td>{{ "{:,.0f}".format(vest.shares_sold or 0) }}</td>
-                            <td><strong>{{ "{:,.0f}".format(shares_held_vest) }}</strong></td>
-                            <td>${{ "{:,.2f}".format(vest.price_at_vest or 0) }}</td>
+                        {% for ve_data in item.vest_events %}
+                        {% set ve = ve_data.vest_event %}
+                        <tr class="vest-event-row {% if not ve_data.has_vested %}data-unvested{% endif %}"
+                            data-shares-held="{{ ve_data.shares_held }}"
+                            data-unrealized-gain="{{ ve_data.unrealized_gain }}"
+                            data-is-long-term="{{ 'true' if ve_data.is_long_term else 'false' }}"
+                            data-has-vested="{{ 'true' if ve_data.has_vested else 'false' }}">
+                            <td>{{ ve.vest_date.strftime('%b %d, %Y') }}</td>
+                            <td>
+                                {% if ve_data.has_vested %}
+                                    <span class="badge success">Vested</span>
+                                {% else %}
+                                    <span class="badge warning">Future</span>
+                                {% endif %}
+                            </td>
+                            <td><strong>{{ "{:,.0f}".format(ve_data.shares_held) }}</strong></td>
+                            <td>${{ "{:,.2f}".format(ve_data.cost_basis_per_share) }}</td>
                             <td>${{ "{:,.2f}".format(latest_stock_price) }}</td>
                             <td>
-                                {{ days_held }} days
-                                <span class="badge {{ 'success' if is_long_term else 'warning' }}">
-                                    {{ 'Long' if is_long_term else 'Short' }}
+                                {{ ve_data.days_held }} days
+                                {% if ve_data.has_vested %}
+                                <span class="badge {{ 'success' if ve_data.is_long_term else 'warning' }}">
+                                    {{ 'LT' if ve_data.is_long_term else 'ST' }}
                                 </span>
+                                {% endif %}
                             </td>
-                            <td class="{{ 'positive' if unrealized > 0 else 'negative' }}">
-                                ${{ "{:,.2f}".format(unrealized) }}
+                            <td class="{{ 'positive' if ve_data.unrealized_gain > 0 else 'negative' }}">
+                                ${{ "{:,.2f}".format(ve_data.unrealized_gain) }}
                             </td>
+                            <td class="event-tax-estimate">$0.00</td>
                         </tr>
-                        {% endif %}
                         {% endfor %}
                     </tbody>
                 </table>
             </details>
+        </div>
+        {% endfor %}
+    </div>
         </div>
         {% endfor %}
     </div>
@@ -592,6 +630,70 @@
     color: var(--text);
     line-height: 1.6;
 }
+
+/* Toggle Switch */
+.toggle-container {
+    display: flex;
+    align-items: center;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border);
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+/* Unvested rows styling */
+.data-unvested {
+    opacity: 0.6;
+    background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(0,0,0,0.03) 10px,
+        rgba(0,0,0,0.03) 20px
+    );
+}
+
 </style>
 
 <script>
@@ -599,10 +701,34 @@
 const federalSlider = document.getElementById('federalTaxRate');
 const stateSlider = document.getElementById('stateTaxRate');
 const capitalGainsSlider = document.getElementById('capitalGainsTaxRate');
+const showAllToggle = document.getElementById('showAllToggle');
+const toggleLabel = document.getElementById('toggleLabel');
 
 const federalValue = document.getElementById('federalTaxValue');
 const stateValue = document.getElementById('stateTaxValue');
 const capitalGainsValue = document.getElementById('capitalGainsValue');
+
+// Toggle between vested and all shares
+showAllToggle.addEventListener('change', (e) => {
+    const showAll = e.target.checked;
+    toggleLabel.textContent = showAll ? 'All Shares (Including Future)' : 'Vested Only';
+    
+    // Toggle visibility of vested vs all data
+    document.querySelectorAll('.data-vested').forEach(el => {
+        el.style.display = showAll ? 'none' : '';
+    });
+    document.querySelectorAll('.data-all').forEach(el => {
+        el.style.display = showAll ? '' : 'none';
+    });
+    
+    // Toggle visibility of unvested rows
+    document.querySelectorAll('.data-unvested').forEach(el => {
+        el.style.display = showAll ? '' : 'none';
+    });
+    
+    // Recalculate taxes
+    calculateTaxes();
+});
 
 // Update slider display values
 federalSlider.addEventListener('input', (e) => {
@@ -624,18 +750,56 @@ function calculateTaxes() {
     const federalRate = parseFloat(federalSlider.value) / 100;
     const stateRate = parseFloat(stateSlider.value) / 100;
     const capitalGainsRate = parseFloat(capitalGainsSlider.value) / 100;
+    const showAll = showAllToggle.checked;
     
-    // Calculate total tax across all grants
+    // Calculate total tax across all grants and vest events
     let totalTax = 0;
-    let totalNet = 0;
+    let totalCurrentValue = 0;
     
     document.querySelectorAll('.grant-analysis-card').forEach(card => {
-        const unrealizedGain = parseFloat(card.dataset.unrealizedGain);
-        const currentValue = parseFloat(card.dataset.currentValue);
-        const grantType = card.dataset.grantType;
+        // Get the correct values based on toggle
+        const unrealizedGain = parseFloat(showAll ? 
+            card.dataset.unrealizedGainAll : 
+            card.dataset.unrealizedGainVested);
+        const currentValue = parseFloat(showAll ? 
+            card.dataset.currentValueAll : 
+            card.dataset.currentValueVested);
         
-        // For simplification, assume long-term cap gains for all
-        // In reality, this would need to check each vest event's holding period
+        // Calculate grant-level tax
+        let grantTax = 0;
+        let grantCurrentValue = 0;
+        
+        // Calculate per-event taxes
+        card.querySelectorAll('.vest-event-row').forEach(row => {
+            const hasVested = row.dataset.hasVested === 'true';
+            
+            // Skip unvested events if showing vested only
+            if (!showAll && !hasVested) return;
+            
+            const eventUnrealizedGain = parseFloat(row.dataset.unrealizedGain);
+            const sharesHeld = parseFloat(row.dataset.sharesHeld);
+            const isLongTerm = row.dataset.isLongTerm === 'true';
+            
+            // Calculate tax based on holding period
+            // Short-term: taxed as ordinary income (federal + state)
+            // Long-term: taxed at capital gains rate + state
+            let eventTax;
+            if (isLongTerm) {
+                eventTax = eventUnrealizedGain * (capitalGainsRate + stateRate);
+            } else {
+                eventTax = eventUnrealizedGain * (federalRate + stateRate);
+            }
+            
+            // Update the event tax display
+            const eventTaxCell = row.querySelector('.event-tax-estimate');
+            if (eventTaxCell) {
+                eventTaxCell.textContent = '$' + eventTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
+            
+            grantTax += eventTax;
+        });
+        
+        // Use unrealized gain for grant-level calculation (weighted average)
         const estimatedTax = unrealizedGain * (capitalGainsRate + stateRate);
         const netValue = currentValue - estimatedTax;
         
@@ -644,8 +808,8 @@ function calculateTaxes() {
         const netValueEl = card.querySelector('.grant-net-value');
         
         if (taxEstimate && netValueEl) {
-            taxEstimate.textContent = '$' + estimatedTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            netValueEl.textContent = '$' + netValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            taxEstimate.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            netValueEl.textContent = '$' + (currentValue - grantTax).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
             
             if (netValue > 0) {
                 netValueEl.classList.add('positive');
@@ -653,18 +817,26 @@ function calculateTaxes() {
             }
         }
         
-        totalTax += estimatedTax;
-        totalNet += netValue;
+        totalTax += grantTax;
+        totalCurrentValue += currentValue;
     });
+    
+    const netAfterTax = totalCurrentValue - totalTax;
     
     // Update summary cards
     document.getElementById('totalTaxLiability').textContent = 
         '$' + totalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     document.getElementById('netAfterTax').textContent = 
-        'Net: $' + totalNet.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        'Net: $' + netAfterTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 // Calculate on page load
 calculateTaxes();
+
+// Hide unvested rows initially
+document.querySelectorAll('.data-unvested').forEach(el => {
+    el.style.display = 'none';
+});
 </script>
+federalSlider.addEventListener('input', (e) => {
 {% endblock %}
