@@ -2,10 +2,11 @@
 Main application routes - dashboard, home page.
 """
 
-from flask import Blueprint, render_template, redirect, url_for
+from flask import Blueprint, render_template, redirect, url_for, jsonify
 from flask_login import login_required, current_user
 from app.models.grant import Grant
 from app.models.vest_event import VestEvent
+from app.models.stock_price import StockPrice
 from app.utils.init_db import get_latest_stock_price
 from datetime import date
 from sqlalchemy import func
@@ -94,3 +95,17 @@ def dashboard():
                          upcoming_vests=upcoming_vests,
                          current_price=current_price,
                          vesting_timeline=vesting_timeline)
+
+
+@main_bp.route('/stock-price-chart-data')
+@login_required
+def stock_price_chart_data():
+    """Get stock price data for dashboard chart."""
+    prices = StockPrice.query.order_by(StockPrice.valuation_date).all()
+    
+    data = {
+        'dates': [p.valuation_date.strftime('%Y-%m-%d') for p in prices],
+        'prices': [p.price_per_share for p in prices]
+    }
+    
+    return jsonify(data)

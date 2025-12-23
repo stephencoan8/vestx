@@ -106,6 +106,9 @@
                 <div class="current-price">${{ "{:,.2f}".format(current_price) }}</div>
                 <div class="price-label">per share</div>
             </div>
+            <div class="mini-chart-container" style="margin-top: 1.5rem; height: 150px;">
+                <canvas id="stockPriceChart"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -298,6 +301,77 @@ try {
 } catch (error) {
     console.error('Error initializing chart:', error);
 }
+
+// Stock Price Mini Chart
+fetch('{{ url_for("main.stock_price_chart_data") }}')
+    .then(response => response.json())
+    .then(data => {
+        const ctx = document.getElementById('stockPriceChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.dates,
+                datasets: [{
+                    label: 'Stock Price',
+                    data: data.prices,
+                    borderColor: '#00d4ff',
+                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: '#00d4ff',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 8,
+                        titleColor: '#00d4ff',
+                        bodyColor: '#fff',
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return '$' + context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        grid: {
+                            color: 'rgba(45, 55, 72, 0.5)',
+                            drawBorder: false
+                        },
+                        ticks: { 
+                            color: '#9ca3af',
+                            callback: function(value) {
+                                return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                            },
+                            maxTicksLimit: 4
+                        }
+                    },
+                    x: {
+                        display: false
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    })
+    .catch(error => console.error('Error loading stock price chart:', error));
 </script>
 
 <style>
