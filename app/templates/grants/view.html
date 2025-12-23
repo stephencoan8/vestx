@@ -30,7 +30,7 @@
                 </div>
                 <div class="detail-item">
                     <span class="detail-label">Total Shares</span>
-                    <span class="detail-value highlight">{{ "{:,.2f}".format(grant.share_quantity) }}</span>
+                    <span class="detail-value highlight">{{ "{:,.0f}".format(grant.share_quantity) }}</span>
                 </div>
                 <div class="detail-item">
                     <span class="detail-label">Price at Grant</span>
@@ -58,12 +58,13 @@
 
         <div class="detail-card">
             <h2>Vesting Schedule</h2>
+            <p class="help-text">For vested events, enter how you covered taxes. Save each row after entering info.</p>
             <div class="table-container">
                 <table class="data-table vest-schedule-table">
                     <thead>
                         <tr>
                             <th>Vest Date</th>
-                            <th>Shares Vesting</th>
+                            <th>Shares</th>
                             <th>Value at Vest</th>
                             <th>Cash Paid</th>
                             <th>Fully Covered?</th>
@@ -78,51 +79,40 @@
                         {% for vest in vest_events %}
                         <tr data-vest-id="{{ vest.id }}" class="vest-row">
                             <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
-                            <td class="shares-vesting">{{ "{:,.2f}".format(vest.shares_vested) }}</td>
+                            <td class="shares-vesting">{{ "{:,.0f}".format(vest.shares_vested) }}</td>
                             <td class="vest-value">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
                             <td>
-                                <input type="number" 
-                                       class="cash-paid-input" 
-                                       data-vest-id="{{ vest.id }}"
+                                <input type="number" class="cash-paid-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
-                                       step="0.01" min="0" placeholder="$0.00" style="width: 80px;">
+                                       step="0.01" min="0" placeholder="$0.00">
                             </td>
                             <td>
-                                <select class="cash-covered-select" data-vest-id="{{ vest.id }}" style="width: 65px;">
+                                <select class="cash-covered-select" data-vest-id="{{ vest.id }}">
                                     <option value="yes" {% if vest.cash_covered_all %}selected{% endif %}>Yes</option>
                                     <option value="no" {% if not vest.cash_covered_all %}selected{% endif %}>No</option>
                                 </select>
                             </td>
                             <td>
-                                <input type="number" 
-                                       class="shares-sold-input" 
-                                       data-vest-id="{{ vest.id }}"
+                                <input type="number" class="shares-sold-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.0f}'.format(vest.shares_sold) if vest.shares_sold else '' }}" 
-                                       step="1" min="0" max="{{ vest.shares_vested }}"
-                                       placeholder="0" style="width: 60px;"
+                                       step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
                                        {% if vest.cash_covered_all %}disabled{% endif %}>
                             </td>
-                            <td class="shares-received highlight">
-                                {{ "{:,.2f}".format(vest.shares_received) }}
-                            </td>
-                            <td class="net-value">
-                                ${{ "{:,.2f}".format(vest.net_value) }}
-                            </td>
-                            <td>
+                            <td class="shares-received highlight">{{ "{:,.0f}".format(vest.shares_received) }}</td>
+                            <td class="net-value">${{ "{:,.2f}".format(vest.net_value) }}</td>
+                            <td class="status-cell">
                                 {% if vest.has_vested %}
                                     {% if vest.needs_tax_info %}
-                                        <span class="badge badge-warning">⚠️ Needs Tax Info</span>
+                                        <span class="badge badge-warning">⚠️ Needs Info</span>
                                     {% else %}
                                         <span class="badge badge-success">✓ Vested</span>
                                     {% endif %}
                                 {% else %}
-                                    <span class="badge badge-pending">⏳ Pending ({{ vest.vest_date.strftime('%m/%d/%y') }})</span>
+                                    <span class="badge badge-pending">⏳ Pending</span>
                                 {% endif %}
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-primary save-vest-btn" data-vest-id="{{ vest.id }}">
-                                    Save
-                                </button>
+                                <button class="btn btn-sm btn-primary save-vest-btn" data-vest-id="{{ vest.id }}">Save</button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -134,7 +124,6 @@
 </div>
 
 <script>
-// Handle payment method changes
 // Handle "Fully Covered?" dropdown changes  
 document.querySelectorAll('.cash-covered-select').forEach(select => {
     select.addEventListener('change', function() {
@@ -148,25 +137,9 @@ document.querySelectorAll('.cash-covered-select').forEach(select => {
         } else {
             sharesSoldInput.disabled = true;
             sharesSoldInput.value = '';
-            updateSharesReceived(vestId);
         }
     });
 });
-
-// Update shares received when shares sold changes
-document.querySelectorAll('.shares-sold-input').forEach(input => {
-    input.addEventListener('input', function() {
-        updateSharesReceived(this.dataset.vestId);
-    });
-});
-
-function updateSharesReceived(vestId) {
-    const row = document.querySelector(`tr[data-vest-id="${vestId}"]`);
-    const sharesVesting = parseFloat(row.querySelector('.shares-vesting').textContent.replace(/,/g, '')) || 0;
-    const sharesSold = parseFloat(row.querySelector('.shares-sold-input').value) || 0;
-    const sharesReceived = sharesVesting - sharesSold;
-    row.querySelector('.shares-received').textContent = sharesReceived.toLocaleString('en-US', {maximumFractionDigits: 0});
-}
 
 // Handle save button clicks
 document.querySelectorAll('.save-vest-btn').forEach(btn => {
@@ -178,16 +151,18 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
         const sharesSoldInput = row.querySelector('.shares-sold-input');
         const sharesReceivedCell = row.querySelector('.shares-received');
         const netValueCell = row.querySelector('.net-value');
+        const statusCell = row.querySelector('.status-cell');
         
-        console.log('Saving vest event:', vestId);
-        console.log('Payment method:', paymentMethod);
-        console.log('Cash to cover:', cashInput.value);
-        console.log('Shares sold:', sharesInput.value);
+        const cashPaid = cashPaidInput.value || 0;
+        const cashCoveredAll = cashCoveredSelect.value === 'yes';
+        const sharesSold = sharesSoldInput.value || 0;
+        
+        console.log('Saving vest event:', vestId, 'Cash:', cashPaid, 'Covered:', cashCoveredAll, 'Sold:', sharesSold);
         
         const formData = new FormData();
-        formData.append('cash_paid', cashPaidInput.value || 0);
-        formData.append('cash_covered_all', cashCoveredSelect.value === 'yes' ? 'true' : 'false');
-        formData.append('shares_sold', sharesSoldInput.value || 0);
+        formData.append('cash_paid', cashPaid);
+        formData.append('cash_covered_all', cashCoveredAll ? 'true' : 'false');
+        formData.append('shares_sold', sharesSold);
         
         try {
             btn.textContent = 'Saving...';
@@ -206,48 +181,38 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
             console.log('Server response:', data);
             
             if (data.success) {
-                console.log('Save successful, updating UI with server data');
-                
-                // Update input values with what was actually saved from server
-                if (data.payment_method === 'cash_to_cover') {
-                    const savedCash = parseFloat(data.cash_to_cover || 0);
-                    if (savedCash > 0) {
-                        cashInput.value = savedCash.toFixed(2);
-                    }
-                    sharesInput.value = '';
-                    sharesInput.disabled = true;
-                    cashInput.disabled = false;
-                } else {
-                    const savedShares = parseFloat(data.shares_sold_to_cover || 0);
-                    if (savedShares > 0) {
-                        sharesInput.value = savedShares.toFixed(2);
-                    }
-                    cashInput.value = '';
-                    cashInput.disabled = true;
-                    sharesInput.disabled = false;
+                // Update inputs with saved values
+                if (data.cash_paid !== undefined) {
+                    cashPaidInput.value = parseFloat(data.cash_paid) > 0 ? parseFloat(data.cash_paid).toFixed(2) : '';
                 }
                 
-                // Ensure payment method dropdown matches saved value
-                paymentMethodSelect.value = data.payment_method;
+                cashCoveredSelect.value = data.cash_covered_all ? 'yes' : 'no';
                 
-                // Update the calculated fields with returned values
+                if (data.cash_covered_all) {
+                    sharesSoldInput.disabled = true;
+                    sharesSoldInput.value = '';
+                } else {
+                    sharesSoldInput.disabled = false;
+                    if (data.shares_sold !== undefined && parseFloat(data.shares_sold) > 0) {
+                        sharesSoldInput.value = parseFloat(data.shares_sold).toFixed(0);
+                    }
+                }
+                
+                // Update calculated fields
                 if (data.shares_received !== undefined) {
-                    sharesReceivedCell.textContent = parseFloat(data.shares_received).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                    });
+                    sharesReceivedCell.textContent = parseFloat(data.shares_received).toLocaleString('en-US', {maximumFractionDigits: 0});
                 }
                 
                 if (data.net_value !== undefined) {
-                    netValueCell.textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                    });
+                    netValueCell.textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 }
                 
-                console.log('Successfully saved and updated UI');
+                // Update status to "Vested" if tax info was provided
+                if (parseFloat(cashPaid) > 0 || parseFloat(sharesSold) > 0) {
+                    statusCell.innerHTML = '<span class="badge badge-success">✓ Vested</span>';
+                }
                 
-                // Show success feedback
+                // Show success
                 btn.textContent = '✓ Saved';
                 btn.classList.add('btn-success');
                 row.classList.add('vest-row-saved');
@@ -274,45 +239,35 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 </script>
 
 <style>
-.vest-schedule-table input[type="number"],
-.vest-schedule-table select {
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+.help-text {
+    color: var(--text-secondary);
     font-size: 0.9rem;
-    width: 120px;
+    margin-bottom: 1rem;
 }
 
+.vest-schedule-table input[type="number"],
+.vest-schedule-table select {
+    padding: 0.4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.vest-schedule-table .cash-paid-input { width: 80px; }
+.vest-schedule-table .cash-covered-select { width: 60px; }
+.vest-schedule-table .shares-sold-input { width: 60px; }
+
 .vest-schedule-table input[type="number"]:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
-.vest-schedule-table select {
-    width: 140px;
-}
+.save-vest-btn.btn-success { background: #22c55e !important; }
 
-.vest-schedule-table input[type="number"]:focus,
-.vest-schedule-table select:focus {
-    outline: none;
-    border-color: var(--accent-color);
-}
-
-.save-vest-btn.btn-success {
-    background: #22c55e !important;
-}
-
-.detail-card {
-    margin-bottom: 2rem;
-}
-
-.detail-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
+.detail-card { margin-bottom: 2rem; }
+.detail-item { display: flex; flex-direction: column; gap: 0.5rem; }
 
 .vest-row-saved {
     background-color: rgba(16, 185, 129, 0.1) !important;
@@ -324,29 +279,13 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
     50% { opacity: 0.7; }
 }
 
-.shares-received {
-    font-weight: bold;
-    color: var(--success) !important;
-}
-
-.vest-schedule-table th {
-    font-size: 0.85rem;
-    white-space: nowrap;
-}
-
-.vest-schedule-table td {
-    font-size: 0.9rem;
-}
+.shares-received { font-weight: bold; color: var(--success) !important; }
+.vest-schedule-table th { font-size: 0.8rem; white-space: nowrap; }
+.vest-schedule-table td { font-size: 0.85rem; }
 
 .badge-warning {
     background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     color: white;
-    animation: pulse-warning 2s ease-in-out infinite;
-}
-
-@keyframes pulse-warning {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.85; }
 }
 
 .badge-pending {
