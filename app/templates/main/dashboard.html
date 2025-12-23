@@ -67,9 +67,19 @@
             </div>
         </div>
         
-        <!-- Debug info -->
-        <div style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 1rem;">
-            Data points: {{ vesting_timeline | length }} | Current price: ${{ "{:,.2f}".format(current_price) }}
+        <!-- Chart Controls -->
+        <div class="chart-controls">
+            <div class="control-group">
+                <label for="xZoom">📅 Time Range</label>
+                <input type="range" id="xZoom" min="0.1" max="1" step="0.05" value="1">
+                <span id="xZoomLabel">100%</span>
+            </div>
+            <div class="control-group">
+                <label for="yZoom">💰 Value Range</label>
+                <input type="range" id="yZoom" min="0.1" max="1" step="0.05" value="1">
+                <span id="yZoomLabel">100%</span>
+            </div>
+            <button class="btn btn-sm btn-secondary" id="resetZoom">Reset View</button>
         </div>
         
         <div class="chart-container">
@@ -290,6 +300,55 @@ document.querySelectorAll('.toggle-btn').forEach(btn => {
     });
 });
 
+// Zoom controls
+let xZoomValue = 1;
+let yZoomValue = 1;
+
+document.getElementById('xZoom').addEventListener('input', function(e) {
+    xZoomValue = parseFloat(e.target.value);
+    document.getElementById('xZoomLabel').textContent = Math.round(xZoomValue * 100) + '%';
+    updateChartZoom();
+});
+
+document.getElementById('yZoom').addEventListener('input', function(e) {
+    yZoomValue = parseFloat(e.target.value);
+    document.getElementById('yZoomLabel').textContent = Math.round(yZoomValue * 100) + '%';
+    updateChartZoom();
+});
+
+document.getElementById('resetZoom').addEventListener('click', function() {
+    xZoomValue = 1;
+    yZoomValue = 1;
+    document.getElementById('xZoom').value = 1;
+    document.getElementById('yZoom').value = 1;
+    document.getElementById('xZoomLabel').textContent = '100%';
+    document.getElementById('yZoomLabel').textContent = '100%';
+    updateChartZoom();
+});
+
+function updateChartZoom() {
+    if (!chartInstance || !vestingData || vestingData.length === 0) return;
+    
+    const dates = vestingData.map(d => new Date(d.date));
+    const values = vestingData.map(d => currentView === 'value' ? d.total_value : d.total_shares);
+    
+    // Calculate date range
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+    const dateRange = maxDate - minDate;
+    const zoomedDateRange = dateRange * xZoomValue;
+    const newMaxDate = new Date(minDate.getTime() + zoomedDateRange);
+    
+    // Calculate value range
+    const maxValue = Math.max(...values);
+    const zoomedMaxValue = maxValue * yZoomValue;
+    
+    // Update chart scales
+    chartInstance.options.scales.x.max = newMaxDate;
+    chartInstance.options.scales.y.max = zoomedMaxValue;
+    chartInstance.update();
+}
+
 // Create initial chart when page loads
 try {
     if (typeof Chart !== 'undefined') {
@@ -389,6 +448,54 @@ fetch('{{ url_for("main.stock_price_chart_data") }}')
     align-items: center;
     margin-bottom: 1.5rem;
 }
+
+.chart-controls {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.control-group label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+.control-group input[type="range"] {
+    width: 150px;
+    cursor: pointer;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb {
+    background: var(--accent-color);
+}
+
+.control-group input[type="range"]::-moz-range-thumb {
+    background: var(--accent-color);
+}
+
+.control-group span {
+    color: var(--text-primary);
+    font-weight: 600;
+    min-width: 50px;
+    font-size: 0.9rem;
+}
+
+#resetZoom {
+    margin-left: auto;
+}
+
 
 .chart-header h2 {
     margin: 0;
