@@ -42,7 +42,7 @@ def round_vest_schedule(vest_events, total_shares):
 
 def get_next_vest_date(grant_date: date) -> date:
     """
-    Calculate the next vest date (either 6/15 or 11/15).
+    Calculate the next vest date (either 5/15 or 11/15).
     
     Args:
         grant_date: The date the grant was issued
@@ -53,43 +53,43 @@ def get_next_vest_date(grant_date: date) -> date:
     year = grant_date.year
     
     # Check distances to both dates
-    june_15 = date(year, 6, 15)
+    may_15 = date(year, 5, 15)
     nov_15 = date(year, 11, 15)
     
-    if grant_date < june_15:
-        return june_15
+    if grant_date < may_15:
+        return may_15
     elif grant_date < nov_15:
         return nov_15
     else:
-        return date(year + 1, 6, 15)
+        return date(year + 1, 5, 15)
 
 
 def get_closest_vest_date(target_date: date) -> date:
     """
-    Find the SpaceX vest date (6/15 or 11/15) closest to the target date.
+    Find the SpaceX vest date (5/15 or 11/15) closest to the target date.
     
     Args:
         target_date: The date to find the closest vest date to
         
     Returns:
-        The closest vest date (6/15 or 11/15)
+        The closest vest date (5/15 or 11/15)
     """
     year = target_date.year
     
     # Check the two vest dates in the same year
-    june_15 = date(year, 6, 15)
+    may_15 = date(year, 5, 15)
     nov_15 = date(year, 11, 15)
     
     # Also check previous and next year dates
     prev_nov_15 = date(year - 1, 11, 15)
-    next_june_15 = date(year + 1, 6, 15)
+    next_may_15 = date(year + 1, 5, 15)
     
     # Calculate distances
     candidates = [
         (abs((target_date - prev_nov_15).days), prev_nov_15),
-        (abs((target_date - june_15).days), june_15),
+        (abs((target_date - may_15).days), may_15),
         (abs((target_date - nov_15).days), nov_15),
-        (abs((target_date - next_june_15).days), next_june_15),
+        (abs((target_date - next_may_15).days), next_may_15),
     ]
     
     # Return the date with minimum distance
@@ -143,7 +143,7 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
     
     # Calculate cliff date
     # For ISOs: cliff is when the FIRST vest happens (after vesting starts + 6 months)
-    # For RSUs: Use standard SpaceX vest dates (6/15 or 11/15)
+    # For RSUs: Use standard SpaceX vest dates (5/15 or 11/15)
     if grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
         # ISO cliff calculation:
         # - Determine when vesting period starts
@@ -155,13 +155,13 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
             # Vesting starts 2 years after grant, cliff at 2.5 years (2 years + 6 months)
             vesting_start = grant.grant_date + relativedelta(years=2)
         
-        # Set to 15th of the month (SpaceX ISOs vest on the 15th)
-        vesting_start = date(vesting_start.year, vesting_start.month, 15)
+        # Calculate theoretical cliff date (vesting start + 6 months)
+        theoretical_cliff = vesting_start + relativedelta(months=6)
         
-        # Cliff is 6 months after vesting starts
-        cliff_date = vesting_start + relativedelta(months=6)
+        # Snap to closest SpaceX vest date (5/15 or 11/15)
+        cliff_date = get_closest_vest_date(theoretical_cliff)
     else:
-        # RSU/RSA: Use standard SpaceX vest dates (6/15 or 11/15)
+        # RSU/RSA: Use standard SpaceX vest dates (5/15 or 11/15)
         # Calculate the actual cliff date, then find the closest vest date
         cliff_months = int(grant.cliff_years * 12)
         
@@ -253,10 +253,10 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
                 
                 for _ in range(remaining_vests):
                     # Move to next vest date
-                    if current_date.month == 6:
+                    if current_date.month == 5:
                         current_date = date(current_date.year, 11, 15)
                     else:
-                        current_date = date(current_date.year + 1, 6, 15)
+                        current_date = date(current_date.year + 1, 5, 15)
                     
                     vest_events.append({
                         'vest_date': current_date,
@@ -290,10 +290,10 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
                 
                 for _ in range(remaining_vests):
                     # Move to next vest date
-                    if current_date.month == 6:
+                    if current_date.month == 5:
                         current_date = date(current_date.year, 11, 15)
                     else:
-                        current_date = date(current_date.year + 1, 6, 15)
+                        current_date = date(current_date.year + 1, 5, 15)
                     
                     vest_events.append({
                         'vest_date': current_date,
