@@ -155,8 +155,8 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
             # Vesting starts 2 years after grant, cliff at 2.5 years (2 years + 6 months)
             vesting_start = grant.grant_date + relativedelta(years=2)
         
-        # Set to 1st of the month
-        vesting_start = date(vesting_start.year, vesting_start.month, 1)
+        # Set to 15th of the month (SpaceX ISOs vest on the 15th)
+        vesting_start = date(vesting_start.year, vesting_start.month, 15)
         
         # Cliff is 6 months after vesting starts
         cliff_date = vesting_start + relativedelta(months=6)
@@ -186,12 +186,12 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
         # Monthly vesting (for ISOs) - TRUE monthly vesting, 12 events per year
         # ISO vesting rules:
         # - ISO 5Y: Vests over 4 years (48 months) starting 1 year after grant
-        #   - Grant 1/1/23 → Vesting 1/1/24 to 12/1/27 = 48 months
+        #   - Grant 1/1/23 → Vesting 1/15/24 to 12/15/27 = 48 months
         # - ISO 6Y: Vests over 4 years (48 months) starting 2 years after grant  
-        #   - Grant 1/1/23 → Vesting 1/1/25 to 12/1/28 = 48 months
+        #   - Grant 1/1/23 → Vesting 1/15/25 to 12/15/28 = 48 months
         # - Cliff at 6 months into vesting period (6/48 of total shares)
         # - First vest at cliff includes 6 months worth (6/48)
-        # - Then monthly vesting on the 1st of each month for remaining 42 months (1/48 each)
+        # - Then monthly vesting on the 15th of each month for remaining 42 months (1/48 each)
         
         # Both ISO types vest over 4 years (48 months)
         VESTING_MONTHS = 48
