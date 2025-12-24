@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+
+{% block title %}Tax Settings - SpaceX Stonks{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <header class="page-header">
+        <h1>⚙️ Tax Settings</h1>
+        <p class="subtitle">Configure your tax rates for accurate calculations</p>
+    </header>
+
+    <div class="settings-container">
+        <!-- Mode Selection -->
+        <div class="mode-selection">
+            <div class="mode-card {% if not tax_profile.use_manual_rates %}active{% endif %}" onclick="setMode('automatic')">
+                <div class="mode-icon">🤖</div>
+                <h3>Automatic Calculation</h3>
+                <p>Enter your state and income, we'll calculate rates based on 2025 tax brackets</p>
+            </div>
+            
+            <div class="mode-card {% if tax_profile.use_manual_rates %}active{% endif %}" onclick="setMode('manual')">
+                <div class="mode-icon">✍️</div>
+                <h3>Manual Entry</h3>
+                <p>Manually set your tax rates using sliders</p>
+            </div>
+        </div>
+
+        <!-- Automatic Mode Form -->
+        <form method="POST" id="settingsForm">
+            <input type="hidden" name="use_manual_rates" id="useManualInput" value="{{ 'true' if tax_profile.use_manual_rates else 'false' }}">
+            
+            <div class="settings-section" id="automaticSection" {% if tax_profile.use_manual_rates %}style="display: none;"{% endif %}>
+                <h2>📍 Automatic Tax Calculation</h2>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="state">State</label>
+                        <select name="state" id="state" class="form-control" onchange="previewRates()">
+                            <option value="">-- No State Tax --</option>
+                            {% for state in available_states %}
+                            <option value="{{ state }}" {% if tax_profile.state == state %}selected{% endif %}>{{ state }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text">Select your state of residence for state tax calculation</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="filing_status">Filing Status</label>
+                        <select name="filing_status" id="filing_status" class="form-control" onchange="previewRates()">
+                            <option value="single" {% if tax_profile.filing_status == 'single' %}selected{% endif %}>Single</option>
+                            <option value="married_joint" {% if tax_profile.filing_status == 'married_joint' %}selected{% endif %}>Married Filing Jointly</option>
+                        </select>
+                        <small class="form-text">Your IRS filing status</small>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="annual_income">Annual Income</label>
+                        <div class="input-group">
+                            <span class="input-prefix">$</span>
+                            <input 
+                                type="number" 
+                                name="annual_income" 
+                                id="annual_income" 
+                                class="form-control" 
+                                value="{{ tax_profile.annual_income or '' }}" 
+                                placeholder="e.g., 175000"
+                                step="1000"
+                                onchange="previewRates()"
+                            >
+                        </div>
+                        <small class="form-text">Your total annual taxable income (including salary, bonuses, RSU vests, etc.)</small>
+                    </div>
+                </div>
+
+                <!-- Preview of calculated rates -->
+                <div class="rate-preview" id="ratePreview">
+                    <h3>📊 Your Calculated Tax Rates (2025)</h3>
+                    <div class="rate-grid">
+                        <div class="rate-item">
+                            <div class="rate-label">Federal Ordinary Income</div>
+                            <div class="rate-value" id="previewFederal">{{ "%.1f"|format(calculated_rates.federal * 100) }}%</div>
+                            <small>Based on marginal tax bracket</small>
+                        </div>
+                        <div class="rate-item">
+                            <div class="rate-label">State Income Tax</div>
+                            <div class="rate-value" id="previewState">{{ "%.1f"|format(calculated_rates.state * 100) }}%</div>
+                            <small>{{ tax_profile.state or 'No state selected' }}</small>
+                        </div>
+                        <div class="rate-item">
+                            <div class="rate-label">Long-Term Capital Gains</div>
+                            <div class="rate-value" id="previewLTCG">{{ "%.1f"|format(calculated_rates.ltcg * 100) }}%</div>
+                            <small>Federal LTCG rate</small>
+                        </div>
+                    </div>
+                    <div class="tax-note">
+                        <strong>Note:</strong> These rates are based on 2025 IRS tax brackets and are updated annually.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Mode Form -->
+            <div class="settings-section" id="manualSection" {% if not tax_profile.use_manual_rates %}style="display: none;"{% endif %}>
+                <h2>✍️ Manual Tax Rates</h2>
+                
+                <div class="tax-sliders">
+                    <div class="tax-slider-item">
+                        <label for="manual_federal_rate">
+                            Federal Tax Rate: <strong><span id="manualFederalValue">{{ "%.1f"|format((tax_profile.manual_federal_rate or 0.24) * 100) }}</span>%</strong>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="manual_federal_rate" 
+                            name="manual_federal_rate"
+                            min="0" 
+                            max="37" 
+                            step="0.1" 
+                            value="{{ (tax_profile.manual_federal_rate or 0.24) * 100 }}" 
+                            class="tax-slider"
+                            oninput="document.getElementById('manualFederalValue').textContent = this.value"
+                        >
+                        <small class="slider-help">Your marginal federal income tax bracket (0-37%)</small>
+                    </div>
+                    
+                    <div class="tax-slider-item">
+                        <label for="manual_state_rate">
+                            State Tax Rate: <strong><span id="manualStateValue">{{ "%.1f"|format((tax_profile.manual_state_rate or 0.093) * 100) }}</span>%</strong>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="manual_state_rate" 
+                            name="manual_state_rate"
+                            min="0" 
+                            max="13.3" 
+                            step="0.1" 
+                            value="{{ (tax_profile.manual_state_rate or 0.093) * 100 }}" 
+                            class="tax-slider"
+                            oninput="document.getElementById('manualStateValue').textContent = this.value"
+                        >
+                        <small class="slider-help">Your state income tax rate (CA: 0-13.3%)</small>
+                    </div>
+                    
+                    <div class="tax-slider-item">
+                        <label for="manual_ltcg_rate">
+                            Long-Term Capital Gains: <strong><span id="manualLTCGValue">{{ "%.1f"|format((tax_profile.manual_ltcg_rate or 0.15) * 100) }}</span>%</strong>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="manual_ltcg_rate" 
+                            name="manual_ltcg_rate"
+                            min="0" 
+                            max="20" 
+                            step="1" 
+                            value="{{ (tax_profile.manual_ltcg_rate or 0.15) * 100 }}" 
+                            class="tax-slider"
+                            oninput="document.getElementById('manualLTCGValue').textContent = this.value"
+                        >
+                        <small class="slider-help">Federal long-term capital gains rate (0%, 15%, or 20%)</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Tax Settings</button>
+                <a href="{{ url_for('grants.finance_deep_dive') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.settings-page {
+    padding: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.settings-container {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 2rem;
+    border: 1px solid var(--border);
+}
+
+.mode-selection {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.mode-card {
+    background: var(--background);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.mode-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+}
+
+.mode-card.active {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, var(--surface) 0%, rgba(79, 70, 229, 0.1) 100%);
+}
+
+.mode-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}
+
+.mode-card h3 {
+    color: var(--text);
+    margin: 0.5rem 0;
+}
+
+.mode-card p {
+    color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.settings-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+}
+
+.settings-section h2 {
+    color: var(--accent);
+    margin-bottom: 1.5rem;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--background);
+    color: var(--text);
+    font-size: 1rem;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+}
+
+.input-prefix {
+    background: var(--border);
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    color: var(--text-secondary);
+}
+
+.input-group .form-control {
+    border-radius: 0 8px 8px 0;
+}
+
+.form-text {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.rate-preview {
+    background: linear-gradient(135deg, var(--background) 0%, rgba(79, 70, 229, 0.05) 100%);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+}
+
+.rate-preview h3 {
+    color: var(--accent);
+    margin-bottom: 1rem;
+}
+
+.rate-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.rate-item {
+    text-align: center;
+    padding: 1rem;
+    background: var(--surface);
+    border-radius: 8px;
+}
+
+.rate-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.rate-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.rate-item small {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.tax-note {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 1rem;
+    color: #856404;
+}
+
+.tax-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.tax-slider-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.tax-slider-item label {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+}
+
+.tax-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 5px;
+    background: var(--border);
+    outline: none;
+    margin-bottom: 0.5rem;
+}
+
+.tax-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.tax-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+}
+
+.slider-help {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+    .mode-selection, .form-grid, .rate-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script>
+function setMode(mode) {
+    const useManual = mode === 'manual';
+    document.getElementById('useManualInput').value = useManual ? 'true' : 'false';
+    
+    // Update active state
+    document.querySelectorAll('.mode-card').forEach((card, index) => {
+        if ((index === 0 && !useManual) || (index === 1 && useManual)) {
+            card.classList.add('active');
+        } else {
+            card.classList.remove('active');
+        }
+    });
+    
+    // Show/hide sections
+    document.getElementById('automaticSection').style.display = useManual ? 'none' : 'block';
+    document.getElementById('manualSection').style.display = useManual ? 'block' : 'none';
+}
+
+async function previewRates() {
+    const state = document.getElementById('state').value;
+    const filingStatus = document.getElementById('filing_status').value;
+    const annualIncome = document.getElementById('annual_income').value;
+    
+    if (!annualIncome) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('{{ url_for("settings.calculate_rates_preview") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                state: state,
+                filing_status: filingStatus,
+                annual_income: parseFloat(annualIncome)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('Error calculating rates:', data.error);
+            return;
+        }
+        
+        // Update preview
+        document.getElementById('previewFederal').textContent = data.federal.toFixed(1) + '%';
+        document.getElementById('previewState').textContent = data.state.toFixed(1) + '%';
+        document.getElementById('previewLTCG').textContent = data.ltcg.toFixed(1) + '%';
+        
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+</script>
+{% endblock %}

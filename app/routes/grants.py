@@ -7,9 +7,14 @@ from flask_login import login_required, current_user
 from app import db
 from app.models.grant import Grant, GrantType, ShareType
 from app.models.vest_event import VestEvent
+from app.models.stock_price import StockPrice
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
 from app.utils.init_db import get_stock_price_at_date, get_latest_stock_price
-from datetime import datetime, date
+from app.models.tax_rate import UserTaxProfile
+from datetime import datetime, date, timedelta
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 grants_bp = Blueprint('grants', __name__, url_prefix='/grants')
 
@@ -246,17 +251,28 @@ def vest_schedule():
     return render_template('grants/schedule.html', vest_events=vest_events)
 
 
+@grants_bp.route('/rules')
+@login_required
+def rules():
+    """View vesting rules and configurations."""
+    return render_template('grants/rules.html')
+
 
 @grants_bp.route('/finance-deep-dive')
 @login_required
 def finance_deep_dive():
     """Comprehensive tax and capital gains analysis."""
-    from datetime import date as date_class
-    
+    # Get all grants and vest events for the user
     grants = Grant.query.filter_by(user_id=current_user.id).all()
-    latest_stock_price = get_latest_stock_price() or 0.0
-    today = date_class.today()
+    all_vest_events = VestEvent.query.join(Grant).filter(
+        Grant.user_id == current_user.id
+    ).order_by(VestEvent.vest_date).all()
     
+    # Get latest stock price for current value estimation
+    latest_stock_price = get_latest_stock_price() or 0.0
+    today = date.today()
+    
+    # Initialize totals
     total_shares_held_vested = 0.0
     total_shares_held_all = 0.0
     total_cost_basis_vested = 0.0
@@ -266,89 +282,103 @@ def finance_deep_dive():
     total_unrealized_gain_vested = 0.0
     total_unrealized_gain_all = 0.0
     
+    # Prepare data for analysis
     analysis_data = []
     
     for grant in grants:
-        vest_events = VestEvent.query.filter_by(grant_id=grant.id).order_by(VestEvent.vest_date).all()
+        vest_events = [ve for ve in all_vest_events if ve.grant_id == grant.id]
         
-        shares_held_vested = 0.0
-        shares_held_all = 0.0
-        cost_basis_vested = 0.0
-        cost_basis_all = 0.0
-        current_value_vested = 0.0
-        current_value_all = 0.0
-        unrealized_gain_vested = 0.0
-        unrealized_gain_all = 0.0
+        # Initialize grant-level totals
+        grant_shares_held_vested = 0.0
+        grant_shares_held_all = 0.0
+        grant_cost_basis_vested = 0.0
+        grant_cost_basis_all = 0.0
+        grant_current_value_vested = 0.0
+        grant_current_value_all = 0.0
+        grant_unrealized_gain_vested = 0.0
+        grant_unrealized_gain_all = 0.0
         
-        vest_events_data = []
+        # Enrich vest event data
+        enriched_vest_events = []
         for ve in vest_events:
             has_vested = ve.vest_date <= today
-            shares_held = ve.shares_received
-            cost_basis_per_share = ve.share_price_at_vest or grant.share_price_at_grant
+            shares_held = ve.shares_received if has_vested else ve.shares_vested
+            cost_basis_per_share = ve.share_price_at_vest
             cost_basis = shares_held * cost_basis_per_share
             current_value = shares_held * latest_stock_price
             unrealized_gain = current_value - cost_basis
             days_held = (today - ve.vest_date).days if has_vested else 0
             is_long_term = days_held >= 365
             
-            shares_held_all += shares_held
-            cost_basis_all += cost_basis
-            current_value_all += current_value
-            unrealized_gain_all += unrealized_gain
-            
-            if has_vested:
-                shares_held_vested += shares_held
-                cost_basis_vested += cost_basis
-                current_value_vested += current_value
-                unrealized_gain_vested += unrealized_gain
-            
-            vest_events_data.append({
+            ve_data = {
                 'vest_event': ve,
                 'has_vested': has_vested,
                 'shares_held': shares_held,
                 'cost_basis_per_share': cost_basis_per_share,
+                'cost_basis': cost_basis,
+                'current_value': current_value,
                 'unrealized_gain': unrealized_gain,
                 'days_held': days_held,
                 'is_long_term': is_long_term
-            })
+            }
+            enriched_vest_events.append(ve_data)
+            
+            # Add to grant totals
+            grant_shares_held_all += shares_held
+            grant_cost_basis_all += cost_basis
+            grant_current_value_all += current_value
+            grant_unrealized_gain_all += unrealized_gain
+            
+            if has_vested:
+                grant_shares_held_vested += shares_held
+                grant_cost_basis_vested += cost_basis
+                grant_current_value_vested += current_value
+                grant_unrealized_gain_vested += unrealized_gain
         
         analysis_data.append({
             'grant': grant,
-            'vest_events': vest_events_data,
-            'shares_held_vested': shares_held_vested,
-            'shares_held_all': shares_held_all,
-            'cost_basis_vested': cost_basis_vested,
-            'cost_basis_all': cost_basis_all,
-            'current_value_vested': current_value_vested,
-            'current_value_all': current_value_all,
-            'unrealized_gain_vested': unrealized_gain_vested,
-            'unrealized_gain_all': unrealized_gain_all
+            'vest_events': enriched_vest_events,
+            'shares_held_vested': grant_shares_held_vested,
+            'shares_held_all': grant_shares_held_all,
+            'cost_basis_vested': grant_cost_basis_vested,
+            'cost_basis_all': grant_cost_basis_all,
+            'current_value_vested': grant_current_value_vested,
+            'current_value_all': grant_current_value_all,
+            'unrealized_gain_vested': grant_unrealized_gain_vested,
+            'unrealized_gain_all': grant_unrealized_gain_all
         })
         
-        total_shares_held_vested += shares_held_vested
-        total_shares_held_all += shares_held_all
-        total_cost_basis_vested += cost_basis_vested
-        total_cost_basis_all += cost_basis_all
-        total_current_value_vested += current_value_vested
-        total_current_value_all += current_value_all
-        total_unrealized_gain_vested += unrealized_gain_vested
-        total_unrealized_gain_all += unrealized_gain_all
+        # Add to overall totals
+        total_shares_held_vested += grant_shares_held_vested
+        total_shares_held_all += grant_shares_held_all
+        total_cost_basis_vested += grant_cost_basis_vested
+        total_cost_basis_all += grant_cost_basis_all
+        total_current_value_vested += grant_current_value_vested
+        total_current_value_all += grant_current_value_all
+        total_unrealized_gain_vested += grant_unrealized_gain_vested
+        total_unrealized_gain_all += grant_unrealized_gain_all
     
+    # Get user's tax profile and calculate rates
+    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+    if tax_profile:
+        tax_rates = tax_profile.get_tax_rates()
+        use_manual_rates = tax_profile.use_manual_rates
+    else:
+        # Default rates if no profile exists
+        tax_rates = {'federal': 0.24, 'state': 0.093, 'ltcg': 0.15}
+        use_manual_rates = True
+
+    # Pass all required data to the template
     return render_template('grants/finance_deep_dive.html',
-                         analysis_data=analysis_data,
-                         latest_stock_price=latest_stock_price,
-                         total_shares_held_vested=total_shares_held_vested,
-                         total_shares_held_all=total_shares_held_all,
-                         total_cost_basis_vested=total_cost_basis_vested,
-                         total_cost_basis_all=total_cost_basis_all,
-                         total_current_value_vested=total_current_value_vested,
-                         total_current_value_all=total_current_value_all,
-                         total_unrealized_gain_vested=total_unrealized_gain_vested,
-                         total_unrealized_gain_all=total_unrealized_gain_all)
-
-
-@grants_bp.route('/rules')
-@login_required
-def rules():
-    """Display vesting rules and calculation logic."""
-    return render_template('grants/rules.html')
+                           analysis_data=analysis_data,
+                           latest_stock_price=latest_stock_price,
+                           total_shares_held_vested=total_shares_held_vested,
+                           total_shares_held_all=total_shares_held_all,
+                           total_cost_basis_vested=total_cost_basis_vested,
+                           total_cost_basis_all=total_cost_basis_all,
+                           total_current_value_vested=total_current_value_vested,
+                           total_current_value_all=total_current_value_all,
+                           total_unrealized_gain_vested=total_unrealized_gain_vested,
+                           total_unrealized_gain_all=total_unrealized_gain_all,
+                           tax_rates=tax_rates,
+                           use_manual_rates=use_manual_rates)

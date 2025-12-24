@@ -13,40 +13,53 @@
     <div class="tax-config-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h2 style="margin: 0;">⚙️ Tax Rate Configuration</h2>
-            <div class="toggle-container">
-                <label class="toggle-switch">
-                    <input type="checkbox" id="showAllToggle">
-                    <span class="toggle-slider"></span>
-                </label>
-                <label for="showAllToggle" style="margin-left: 0.5rem; cursor: pointer;">
-                    Show <strong><span id="toggleLabel">Vested Only</span></strong>
-                </label>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <a href="{{ url_for('settings.tax_settings') }}" class="btn btn-secondary" style="text-decoration: none;">
+                    Configure Tax Settings
+                </a>
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="showAllToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <label for="showAllToggle" style="margin-left: 0.5rem; cursor: pointer;">
+                        Show <strong><span id="toggleLabel">Vested Only</span></strong>
+                    </label>
+                </div>
             </div>
         </div>
+        {% if use_manual_rates %}
         <p class="text-muted">Adjust these sliders to calculate estimated tax impact if you sold all shares today</p>
+        {% else %}
+        <p class="text-muted">
+            <strong>💡 Tax rates auto-calculated from your profile.</strong> 
+            Adjust sliders below to see different scenarios, or 
+            <a href="{{ url_for('settings.tax_settings') }}">update your tax profile</a>.
+        </p>
+        {% endif %}
         
         <div class="tax-sliders">
             <div class="tax-slider-item">
                 <label for="federalTaxRate">
-                    Federal Tax Rate: <strong><span id="federalTaxValue">24</span>%</strong>
+                    Federal Tax Rate: <strong><span id="federalTaxValue">{{ "%.1f"|format(tax_rates.federal * 100) }}</span>%</strong>
                 </label>
-                <input type="range" id="federalTaxRate" min="0" max="37" step="1" value="24" class="tax-slider">
+                <input type="range" id="federalTaxRate" min="0" max="37" step="1" value="{{ tax_rates.federal * 100 }}" class="tax-slider">
                 <small class="slider-help">Federal income tax bracket (0-37%)</small>
             </div>
             
             <div class="tax-slider-item">
                 <label for="stateTaxRate">
-                    State Tax Rate: <strong><span id="stateTaxValue">9.3</span>%</strong>
+                    State Tax Rate: <strong><span id="stateTaxValue">{{ "%.1f"|format(tax_rates.state * 100) }}</span>%</strong>
                 </label>
-                <input type="range" id="stateTaxRate" min="0" max="13.3" step="0.1" value="9.3" class="tax-slider">
+                <input type="range" id="stateTaxRate" min="0" max="13.3" step="0.1" value="{{ tax_rates.state * 100 }}" class="tax-slider">
                 <small class="slider-help">State income tax (CA: 0-13.3%)</small>
             </div>
             
             <div class="tax-slider-item">
                 <label for="capitalGainsTaxRate">
-                    Long-Term Capital Gains: <strong><span id="capitalGainsValue">15</span>%</strong>
+                    Long-Term Capital Gains: <strong><span id="capitalGainsValue">{{ "%.1f"|format(tax_rates.ltcg * 100) }}</span>%</strong>
                 </label>
-                <input type="range" id="capitalGainsTaxRate" min="0" max="20" step="1" value="15" class="tax-slider">
+                <input type="range" id="capitalGainsTaxRate" min="0" max="20" step="1" value="{{ tax_rates.ltcg * 100 }}" class="tax-slider">
                 <small class="slider-help">Federal long-term cap gains (0, 15, or 20%)</small>
             </div>
         </div>
