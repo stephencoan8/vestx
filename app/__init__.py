@@ -46,11 +46,13 @@ def create_app():
     from app.routes.main import main_bp
     from app.routes.grants import grants_bp
     from app.routes.admin import admin_bp
+    from app.routes.settings import settings_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(grants_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(settings_bp)
     
     # Create database tables
     with app.app_context():
