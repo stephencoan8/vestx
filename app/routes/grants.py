@@ -300,13 +300,26 @@ def finance_deep_dive():
         
         # Enrich vest event data
         enriched_vest_events = []
+        is_cash_grant = grant.share_type == 'cash'
+        
         for ve in vest_events:
             has_vested = ve.vest_date <= today
-            shares_held = ve.shares_received if has_vested else ve.shares_vested
-            cost_basis_per_share = ve.share_price_at_vest
-            cost_basis = shares_held * cost_basis_per_share
-            current_value = shares_held * latest_stock_price
-            unrealized_gain = current_value - cost_basis
+            
+            # For cash grants, shares_vested/shares_received represent USD amounts
+            if is_cash_grant:
+                shares_held = ve.shares_received if has_vested else ve.shares_vested
+                cost_basis_per_share = 1.0  # $1 per $1 for cash
+                cost_basis = shares_held  # USD amount
+                current_value = shares_held  # Cash value doesn't change
+                unrealized_gain = 0.0  # No gain/loss on cash
+            else:
+                # Stock grants
+                shares_held = ve.shares_received if has_vested else ve.shares_vested
+                cost_basis_per_share = ve.share_price_at_vest
+                cost_basis = shares_held * cost_basis_per_share
+                current_value = shares_held * latest_stock_price
+                unrealized_gain = current_value - cost_basis
+            
             days_held = (today - ve.vest_date).days if has_vested else 0
             is_long_term = days_held >= 365
             

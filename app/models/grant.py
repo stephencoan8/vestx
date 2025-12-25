@@ -69,7 +69,12 @@ class Grant(db.Model):
         Calculate total value at grant (historical).
         For ISOs: returns 0 (options have no intrinsic value at grant)
         For RSUs/RSAs: returns shares × price at grant
+        For CASH: returns the cash amount (share_quantity represents USD amount)
         """
+        # Cash bonuses: share_quantity represents USD amount
+        if self.share_type == ShareType.CASH.value:
+            return self.share_quantity
+        
         # ISOs are options with no intrinsic value at grant
         if self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
             return 0.0
@@ -89,7 +94,12 @@ class Grant(db.Model):
         Calculate current total value based on latest stock price.
         For ISOs (stock options): value = shares × (current_price - strike_price)
         For RSUs/RSAs: value = shares × current_price
+        For CASH: value = cash amount (doesn't change with stock price)
         """
+        # Cash bonuses: value is fixed USD amount
+        if self.share_type == ShareType.CASH.value:
+            return self.share_quantity
+        
         current_price = self.current_share_price
         
         # For ISOs, calculate the spread (current price - strike price)
