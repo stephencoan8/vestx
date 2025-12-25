@@ -131,8 +131,11 @@
             
             <div class="grant-analysis-header">
                 <h3>
-                    {{ item.grant.grant_type|replace('_', ' ')|title }}
-                    <span class="badge">{{ item.grant.share_type|upper }}</span>
+                    <a href="{{ url_for('grants.view_grant', grant_id=item.grant.id) }}" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 0.5rem;">
+                        {{ item.grant.grant_type|replace('_', ' ')|title }}
+                        <span class="badge">{{ item.grant.share_type|upper }}</span>
+                        <span style="font-size: 0.8em; opacity: 0.7;">🔗</span>
+                    </a>
                 </h3>
                 <div class="grant-meta">
                     Granted: {{ item.grant.grant_date.strftime('%b %d, %Y') }} | 
@@ -505,6 +508,15 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+}
+
+.grant-analysis-header h3 a {
+    transition: opacity 0.2s;
+}
+
+.grant-analysis-header h3 a:hover {
+    opacity: 0.8;
+    text-decoration: underline !important;
 }
 
 .grant-meta {
