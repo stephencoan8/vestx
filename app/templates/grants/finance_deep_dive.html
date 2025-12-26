@@ -237,6 +237,13 @@
                 </div>
             </div>
 
+            <!-- Collapsible Grant Details -->
+            <details open>
+                <summary style="cursor: pointer; font-weight: 600; margin: 1rem 0; padding: 0.5rem; background: var(--background); border-radius: 6px;">
+                    Grant Details & Vest Events
+                    <span style="float: right; color: var(--text-secondary);">▼</span>
+                </summary>
+
             <div class="grant-summary-stats">
                 <div class="summary-stat">
                     <div class="summary-label">Shares Held</div>
@@ -332,6 +339,9 @@
                     </tbody>
                 </table>
             </details>
+            
+            </details>
+            <!-- End of Grant Details Collapsible -->
         </div>
         {% endfor %}
     </div>
@@ -699,6 +709,26 @@
     color: var(--text-secondary);
     font-size: 0.9rem;
     margin-top: 0.5rem;
+}
+
+/* Grant Details Collapsible */
+.grant-analysis-card details > summary {
+    list-style: none;
+    transition: background 0.2s;
+}
+
+.grant-analysis-card details > summary::-webkit-details-marker {
+    display: none;
+}
+
+.grant-analysis-card details > summary:hover {
+    background: var(--border);
+}
+
+.grant-analysis-card details[open] > summary span {
+    transform: rotate(180deg);
+    display: inline-block;
+    transition: transform 0.2s;
 }
 
 .grant-summary-stats {
