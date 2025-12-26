@@ -113,6 +113,99 @@
         </div>
     </div>
 
+    <!-- Column Customizer -->
+    <div class="column-customizer-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="margin: 0;">🎛️ Customize Table Columns</h2>
+            <button id="toggleCustomizer" class="btn btn-secondary">
+                <span id="customizerToggleIcon">▼</span> Show/Hide
+            </button>
+        </div>
+        
+        <div id="columnCustomizer" style="display: none;">
+            <p class="text-muted" style="margin-bottom: 1rem;">Select and reorder the columns you want to see in the vest events tables below:</p>
+            
+            <div class="column-selector-grid">
+                <div class="column-selector-item" data-column="vest-date" data-required="true">
+                    <input type="checkbox" id="col-vest-date" checked disabled>
+                    <label for="col-vest-date">
+                        <span class="drag-handle">⋮⋮</span>
+                        Vest Date <span class="required-badge">Required</span>
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="status" data-required="true">
+                    <input type="checkbox" id="col-status" checked disabled>
+                    <label for="col-status">
+                        <span class="drag-handle">⋮⋮</span>
+                        Status <span class="required-badge">Required</span>
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="shares-held">
+                    <input type="checkbox" id="col-shares-held" checked>
+                    <label for="col-shares-held">
+                        <span class="drag-handle">⋮⋮</span>
+                        Shares Held
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="cost-at-vest">
+                    <input type="checkbox" id="col-cost-at-vest" checked>
+                    <label for="col-cost-at-vest">
+                        <span class="drag-handle">⋮⋮</span>
+                        Cost at Vest
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="tax-paid">
+                    <input type="checkbox" id="col-tax-paid" checked>
+                    <label for="col-tax-paid">
+                        <span class="drag-handle">⋮⋮</span>
+                        Tax Paid at Vest
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="current-value">
+                    <input type="checkbox" id="col-current-value" checked>
+                    <label for="col-current-value">
+                        <span class="drag-handle">⋮⋮</span>
+                        Current Total Value
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="holding-period">
+                    <input type="checkbox" id="col-holding-period" checked>
+                    <label for="col-holding-period">
+                        <span class="drag-handle">⋮⋮</span>
+                        Holding Period
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="unrealized-gain">
+                    <input type="checkbox" id="col-unrealized-gain" checked>
+                    <label for="col-unrealized-gain">
+                        <span class="drag-handle">⋮⋮</span>
+                        Unrealized Gain
+                    </label>
+                </div>
+                
+                <div class="column-selector-item" data-column="est-tax">
+                    <input type="checkbox" id="col-est-tax" checked>
+                    <label for="col-est-tax">
+                        <span class="drag-handle">⋮⋮</span>
+                        Est. Tax on Sale
+                    </label>
+                </div>
+            </div>
+            
+            <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                <button id="resetColumns" class="btn btn-secondary">Reset to Default</button>
+                <button id="applyColumns" class="btn btn-primary">Apply Changes</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Detailed Analysis by Grant -->
     <div class="analysis-section">
         <h2>📊 Detailed Analysis by Grant</h2>
@@ -184,16 +277,16 @@
                 <summary style="cursor: pointer; font-weight: 600; margin: 1rem 0;">Vest Events ({{ item.vest_events|length }})</summary>
                 <table class="vest-events-table">
                     <thead>
-                        <tr>
-                            <th>Vest Date</th>
-                            <th>Status</th>
-                            <th>Shares Held</th>
-                            <th>Cost at Vest</th>
-                            <th>Tax Paid at Vest</th>
-                            <th>Current Total Value</th>
-                            <th>Holding Period</th>
-                            <th>Unrealized Gain</th>
-                            <th>Est. Tax on Sale</th>
+                        <tr class="table-header-row">
+                            <th data-column="vest-date">Vest Date</th>
+                            <th data-column="status">Status</th>
+                            <th data-column="shares-held">Shares Held</th>
+                            <th data-column="cost-at-vest">Cost at Vest</th>
+                            <th data-column="tax-paid">Tax Paid at Vest</th>
+                            <th data-column="current-value">Current Total Value</th>
+                            <th data-column="holding-period">Holding Period</th>
+                            <th data-column="unrealized-gain">Unrealized Gain</th>
+                            <th data-column="est-tax">Est. Tax on Sale</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -204,25 +297,25 @@
                             data-unrealized-gain="{{ ve_data.unrealized_gain }}"
                             data-is-long-term="{{ 'true' if ve_data.is_long_term else 'false' }}"
                             data-has-vested="{{ 'true' if ve_data.has_vested else 'false' }}">
-                            <td>{{ ve.vest_date.strftime('%b %d, %Y') }}</td>
-                            <td>
+                            <td data-column="vest-date">{{ ve.vest_date.strftime('%b %d, %Y') }}</td>
+                            <td data-column="status">
                                 {% if ve_data.has_vested %}
                                     <span class="badge success">Vested</span>
                                 {% else %}
                                     <span class="badge warning">Future</span>
                                 {% endif %}
                             </td>
-                            <td><strong>{{ "{:,.0f}".format(ve_data.shares_held) }}</strong></td>
-                            <td>${{ "{:,.2f}".format(ve_data.cost_basis) }}</td>
-                            <td>
+                            <td data-column="shares-held"><strong>{{ "{:,.0f}".format(ve_data.shares_held) }}</strong></td>
+                            <td data-column="cost-at-vest">${{ "{:,.2f}".format(ve_data.cost_basis) }}</td>
+                            <td data-column="tax-paid">
                                 {% if ve_data.has_vested %}
                                     ${{ "{:,.2f}".format(ve.tax_withheld) }}
                                 {% else %}
                                     <span style="color: var(--text-secondary);">—</span>
                                 {% endif %}
                             </td>
-                            <td><strong>${{ "{:,.2f}".format(ve_data.current_value) }}</strong></td>
-                            <td>
+                            <td data-column="current-value"><strong>${{ "{:,.2f}".format(ve_data.current_value) }}</strong></td>
+                            <td data-column="holding-period">
                                 {{ ve_data.days_held }} days
                                 {% if ve_data.has_vested %}
                                 <span class="badge {{ 'success' if ve_data.is_long_term else 'warning' }}">
@@ -230,10 +323,10 @@
                                 </span>
                                 {% endif %}
                             </td>
-                            <td class="{{ 'positive' if ve_data.unrealized_gain > 0 else 'negative' }}">
+                            <td data-column="unrealized-gain" class="{{ 'positive' if ve_data.unrealized_gain > 0 else 'negative' }}">
                                 ${{ "{:,.2f}".format(ve_data.unrealized_gain) }}
                             </td>
-                            <td class="event-tax-estimate">$0.00</td>
+                            <td data-column="est-tax" class="event-tax-estimate">$0.00</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -337,6 +430,81 @@
 
 .tax-config-section h2 {
     margin-top: 0;
+}
+
+/* Column Customizer Section */
+.column-customizer-section {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+    border: 2px solid var(--border);
+}
+
+.column-customizer-section h2 {
+    margin-top: 0;
+}
+
+.column-selector-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+
+.column-selector-item {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    cursor: move;
+    transition: all 0.2s;
+}
+
+.column-selector-item:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.column-selector-item[data-required="true"] {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.column-selector-item label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    margin: 0;
+}
+
+.column-selector-item[data-required="true"] label {
+    cursor: not-allowed;
+}
+
+.column-selector-item input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.column-selector-item input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+}
+
+.drag-handle {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: move;
+}
+
+.required-badge {
+    font-size: 0.7rem;
+    background: var(--accent);
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    margin-left: auto;
 }
 
 .text-muted {
@@ -867,5 +1035,194 @@ calculateTaxes();
 document.querySelectorAll('.data-unvested').forEach(el => {
     el.style.display = 'none';
 });
+
+// ==================== Column Customizer ====================
+
+const columnCustomizer = document.getElementById('columnCustomizer');
+const toggleCustomizer = document.getElementById('toggleCustomizer');
+const customizerToggleIcon = document.getElementById('customizerToggleIcon');
+const applyColumnsBtn = document.getElementById('applyColumns');
+const resetColumnsBtn = document.getElementById('resetColumns');
+
+// Toggle customizer visibility
+toggleCustomizer.addEventListener('click', () => {
+    const isHidden = columnCustomizer.style.display === 'none';
+    columnCustomizer.style.display = isHidden ? 'block' : 'none';
+    customizerToggleIcon.textContent = isHidden ? '▲' : '▼';
+});
+
+// Default column order
+const defaultColumns = [
+    'vest-date', 'status', 'shares-held', 'cost-at-vest', 
+    'tax-paid', 'current-value', 'holding-period', 
+    'unrealized-gain', 'est-tax'
+];
+
+// Load saved preferences from localStorage
+function loadColumnPreferences() {
+    const saved = localStorage.getItem('financeTableColumns');
+    if (saved) {
+        return JSON.parse(saved);
+    }
+    return {
+        order: [...defaultColumns],
+        visible: defaultColumns.reduce((acc, col) => ({ ...acc, [col]: true }), {})
+    };
+}
+
+// Save preferences to localStorage
+function saveColumnPreferences(prefs) {
+    localStorage.setItem('financeTableColumns', JSON.stringify(prefs));
+}
+
+// Apply column visibility and order to all tables
+function applyColumnSettings() {
+    const prefs = loadColumnPreferences();
+    
+    // Update checkboxes
+    document.querySelectorAll('.column-selector-item').forEach(item => {
+        const column = item.dataset.column;
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox && !checkbox.disabled) {
+            checkbox.checked = prefs.visible[column] !== false;
+        }
+    });
+    
+    // Apply to all tables
+    document.querySelectorAll('.vest-events-table').forEach(table => {
+        const headerRow = table.querySelector('.table-header-row');
+        const headers = Array.from(headerRow.querySelectorAll('th'));
+        const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+        
+        // Hide/show columns based on preferences
+        prefs.order.forEach((column, index) => {
+            const visible = prefs.visible[column] !== false;
+            
+            // Find header and cells for this column
+            const header = headers.find(h => h.dataset.column === column);
+            
+            if (header) {
+                header.style.display = visible ? '' : 'none';
+                header.style.order = index;
+            }
+            
+            // Update all body cells
+            bodyRows.forEach(row => {
+                const cell = Array.from(row.querySelectorAll('td')).find(c => c.dataset.column === column);
+                if (cell) {
+                    cell.style.display = visible ? '' : 'none';
+                    cell.style.order = index;
+                }
+            });
+        });
+        
+        // Use flexbox for reordering
+        headerRow.style.display = 'flex';
+        bodyRows.forEach(row => {
+            row.style.display = 'flex';
+            row.querySelectorAll('td').forEach(cell => {
+                cell.style.flex = '1';
+                cell.style.minWidth = '100px';
+            });
+        });
+        headerRow.querySelectorAll('th').forEach(th => {
+            th.style.flex = '1';
+            th.style.minWidth = '100px';
+        });
+    });
+}
+
+// Apply button handler
+applyColumnsBtn.addEventListener('click', () => {
+    const prefs = {
+        order: [],
+        visible: {}
+    };
+    
+    // Get current order and visibility from selector items
+    document.querySelectorAll('.column-selector-item').forEach(item => {
+        const column = item.dataset.column;
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        
+        prefs.order.push(column);
+        prefs.visible[column] = checkbox.checked;
+    });
+    
+    saveColumnPreferences(prefs);
+    applyColumnSettings();
+    
+    // Show feedback
+    const originalText = applyColumnsBtn.textContent;
+    applyColumnsBtn.textContent = '✓ Applied!';
+    applyColumnsBtn.style.background = 'var(--success)';
+    setTimeout(() => {
+        applyColumnsBtn.textContent = originalText;
+        applyColumnsBtn.style.background = '';
+    }, 1500);
+});
+
+// Reset button handler
+resetColumnsBtn.addEventListener('click', () => {
+    const prefs = {
+        order: [...defaultColumns],
+        visible: defaultColumns.reduce((acc, col) => ({ ...acc, [col]: true }), {})
+    };
+    
+    saveColumnPreferences(prefs);
+    applyColumnSettings();
+    
+    // Show feedback
+    const originalText = resetColumnsBtn.textContent;
+    resetColumnsBtn.textContent = '✓ Reset!';
+    setTimeout(() => {
+        resetColumnsBtn.textContent = originalText;
+    }, 1500);
+});
+
+// Drag and drop for reordering
+let draggedItem = null;
+
+document.querySelectorAll('.column-selector-item').forEach(item => {
+    item.draggable = true;
+    
+    item.addEventListener('dragstart', (e) => {
+        draggedItem = item;
+        item.style.opacity = '0.5';
+    });
+    
+    item.addEventListener('dragend', (e) => {
+        item.style.opacity = '';
+        draggedItem = null;
+    });
+    
+    item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const afterElement = getDragAfterElement(item.parentElement, e.clientY);
+        if (afterElement == null) {
+            item.parentElement.appendChild(draggedItem);
+        } else {
+            item.parentElement.insertBefore(draggedItem, afterElement);
+        }
+    });
+});
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.column-selector-item:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+// Apply settings on page load
+applyColumnSettings();
+
 </script>
 {% endblock %}
