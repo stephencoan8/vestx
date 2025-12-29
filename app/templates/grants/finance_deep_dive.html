@@ -315,8 +315,12 @@
                             <td data-column="shares-held"><strong>{{ "{:,.0f}".format(ve_data.shares_held) }}</strong></td>
                             <td data-column="cost-at-vest">${{ "{:,.2f}".format(ve_data.cost_basis) }}</td>
                             <td data-column="tax-paid">
-                                {% if ve_data.has_vested %}
-                                    ${{ "{:,.2f}".format(ve.tax_withheld) }}
+                                {% if ve_data.tax_is_estimated %}
+                                    <span style="color: var(--warning-color);" title="Estimated tax based on current stock price">
+                                        ${{ "{:,.2f}".format(ve_data.tax_amount) }}*
+                                    </span>
+                                {% elif ve_data.has_vested %}
+                                    ${{ "{:,.2f}".format(ve_data.tax_amount) }}
                                 {% else %}
                                     <span style="color: var(--text-secondary);">—</span>
                                 {% endif %}

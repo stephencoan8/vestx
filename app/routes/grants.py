@@ -323,6 +323,9 @@ def finance_deep_dive():
         for ve in vest_events:
             has_vested = ve.vest_date <= today
             
+            # Calculate estimated or actual taxes
+            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            
             # For cash grants, shares_vested/shares_received represent USD amounts
             if is_cash_grant:
                 shares_held = ve.shares_received if has_vested else ve.shares_vested
@@ -350,7 +353,10 @@ def finance_deep_dive():
                 'current_value': current_value,
                 'unrealized_gain': unrealized_gain,
                 'days_held': days_held,
-                'is_long_term': is_long_term
+                'is_long_term': is_long_term,
+                'tax_amount': tax_info['tax_amount'],
+                'tax_is_estimated': tax_info['is_estimated'],
+                'tax_rate': tax_info['tax_rate']
             }
             enriched_vest_events.append(ve_data)
             
