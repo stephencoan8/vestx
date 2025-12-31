@@ -49,8 +49,21 @@ def add_grant():
                 # Default 15% for ESPP, 0% for others
                 espp_discount = 0.15 if grant_type == 'espp' else 0.0
             
-            # Get stock price at grant date
-            share_price = 0  # Placeholder, update with per-user price logic if needed
+            # Get stock price at grant date from user's encrypted prices
+            share_price = 0.0
+            try:
+                from app.models.user_price import UserPrice
+                from app.utils.encryption import decrypt_for_user
+                user_key = current_user.get_decrypted_user_key()
+                price_entry = UserPrice.query.filter_by(user_id=current_user.id).filter(
+                    UserPrice.valuation_date <= grant_date
+                ).order_by(UserPrice.valuation_date.desc()).first()
+                if price_entry:
+                    price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+                    share_price = float(price_str)
+            except Exception as price_error:
+                # If no price found or error, default to 0
+                share_price = 0.0
             
             # Get vesting configuration
             if vest_years:
