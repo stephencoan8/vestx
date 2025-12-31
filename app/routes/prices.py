@@ -29,30 +29,44 @@ def list_prices():
     return render_template('prices/list.html', prices=prices)
 
 
-@prices_bp.route('/add', methods=['POST'])
+@prices_bp.route('/add', methods=['GET', 'POST'])
 @login_required
 def add_price():
-    """Add a new user price entry. Accepts JSON {date: ISO, price: number}."""
-    data = request.get_json() or {}
-    date_str = data.get('date')
-    price_val = data.get('price')
+    """Add a new user price entry. Supports HTML form and JSON POST."""
+    from datetime import datetime
+    if request.method == 'GET':
+        return render_template('prices/add.html')
+    # Handle form or JSON POST
+    if request.is_json:
+        data = request.get_json() or {}
+        date_str = data.get('date')
+        price_val = data.get('price')
+    else:
+        date_str = request.form.get('date')
+        price_val = request.form.get('price')
     if not date_str or price_val is None:
-        return jsonify({'error': 'date and price required'}), 400
+        if request.is_json:
+            return jsonify({'error': 'date and price required'}), 400
+        flash('Date and price are required.', 'danger')
+        return redirect(url_for('prices.add_price'))
     try:
-        from datetime import datetime
         valuation_date = datetime.fromisoformat(date_str).date()
         price_float = float(price_val)
     except Exception:
-        return jsonify({'error': 'invalid date or price'}), 400
-
+        if request.is_json:
+            return jsonify({'error': 'invalid date or price'}), 400
+        flash('Invalid date or price.', 'danger')
+        return redirect(url_for('prices.add_price'))
     user_key = current_user.get_decrypted_user_key()
     token = encrypt_for_user(user_key, str(price_float))
-
     up = UserPrice(user_id=current_user.id, valuation_date=valuation_date, encrypted_price=token)
     db.session.add(up)
     db.session.commit()
     AuditLogger.log_security_event('USER_PRICE_ADDED', {'user_id': current_user.id, 'price_id': up.id, 'date': up.valuation_date.isoformat()})
-    return jsonify({'id': up.id, 'date': up.valuation_date.isoformat(), 'price': price_float}), 201
+    if request.is_json:
+        return jsonify({'id': up.id, 'date': up.valuation_date.isoformat(), 'price': price_float}), 201
+    flash('Price added successfully!', 'success')
+    return redirect(url_for('prices.list_prices'))
 
 
 @prices_bp.route('/<int:price_id>/delete', methods=['POST'])
