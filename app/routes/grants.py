@@ -10,6 +10,7 @@ from app.models.vest_event import VestEvent
 from app.models.stock_price import StockPrice
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
 from app.models.tax_rate import UserTaxProfile
+from app.utils.price_utils import get_latest_user_price
 from datetime import datetime, date, timedelta
 import logging
 
@@ -75,33 +76,18 @@ def add_grant():
                 ).order_by(UserPrice.valuation_date.desc()).first()
                 
                 if price_entry:
-                    price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-                    share_price = float(price_str)
-                    logger.debug(f"Found price {share_price} for user {current_user.id} on {price_entry.valuation_date}")
+                    # Use centralized helper to retrieve latest decrypted price
+                    price = get_latest_user_price(current_user.id, as_of_date=grant_date)
+                    if price is not None:
+                        share_price = price
+                        logger.debug(f"Found price {share_price} for user {current_user.id} on or before {grant_date}")
+                    else:
+                        logger.warning(f"No UserPrice entry found or could not decrypt for user {current_user.id} on or before {grant_date}")
                 else:
                     logger.warning(f"No UserPrice entry found for user {current_user.id} on or before {grant_date}")
             except Exception as price_error:
                 logger.error(f"Error retrieving or decrypting price: {price_error}", exc_info=True)
                 share_price = 0.0
-            
-            # Fallback logic for missing or invalid prices
-            if share_price == 0.0:
-                logger.warning(f"Defaulting share_price to a fallback value for user {current_user.id}")
-                share_price = 1.0  # Example fallback value, adjust as needed
-
-            # Ensure UserPrice entry exists for the grant date
-            if not price_entry:
-                logger.info(f"Creating a default UserPrice entry for user {current_user.id} on {grant_date}")
-                from app.models.user_price import UserPrice
-                from app.utils.encryption import encrypt_for_user
-                encrypted_price = encrypt_for_user(user_key, str(share_price))
-                new_price_entry = UserPrice(
-                    user_id=current_user.id,
-                    valuation_date=grant_date,
-                    encrypted_price=encrypted_price
-                )
-                db.session.add(new_price_entry)
-                db.session.flush()
             
             # Get vesting configuration
             if vest_years:
@@ -164,30 +150,9 @@ def view_grant(grant_id):
     
     vest_events = VestEvent.query.filter_by(grant_id=grant.id).order_by(VestEvent.vest_date).all()
     
-    # Debug: attempt to retrieve and decrypt the user's price used for this grant
-    debug_decrypted_price = None
-    try:
-        from app.models.user_price import UserPrice
-        from app.utils.encryption import decrypt_for_user
-        logger = logging.getLogger(__name__)
-        user_key = current_user.get_decrypted_user_key()
-        price_entry = UserPrice.query.filter_by(user_id=grant.user_id).filter(
-            UserPrice.valuation_date <= grant.grant_date
-        ).order_by(UserPrice.valuation_date.desc()).first()
-        if price_entry:
-            try:
-                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-                debug_decrypted_price = float(price_str)
-                logger.debug(f"Debug decrypted price for grant {grant.id}: {debug_decrypted_price} (from {price_entry.valuation_date})")
-            except Exception as e:
-                logger.error(f"Failed to decrypt price for grant {grant.id}: {e}", exc_info=True)
-                debug_decrypted_price = None
-        else:
-            logger.info(f"No UserPrice entry found for grant {grant.id} on or before {grant.grant_date}")
-    except Exception as e:
-        import logging as _logging
-        _logging.getLogger(__name__).error(f"Error retrieving debug price for grant {grant.id}: {e}", exc_info=True)
-
+    # Debug: provide the decrypted price pulled via helper for the view
+    debug_decrypted_price = get_latest_user_price(grant.user_id, as_of_date=grant.grant_date)
+    
     return render_template('grants/view.html', grant=grant, vest_events=vest_events, debug_decrypted_price=debug_decrypted_price)
 
 

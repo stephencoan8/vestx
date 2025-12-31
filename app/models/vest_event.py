@@ -4,6 +4,7 @@ Vest event model for tracking individual vesting events.
 
 from app import db
 from datetime import datetime, date
+from app.utils.price_utils import get_latest_user_price
 
 
 class VestEvent(db.Model):
@@ -50,36 +51,8 @@ class VestEvent(db.Model):
     def share_price_at_vest(self) -> float:
         """Get the stock price at vest date from user's encrypted prices."""
         try:
-            from app.models.user_price import UserPrice
-            from app.utils.encryption import decrypt_for_user
-            from flask_login import current_user
-            import logging
-            
-            logger = logging.getLogger(__name__)
-            
-            # Get the grant's user_id
-            user_id = self.grant.user_id
-            
-            # Get the most recent price on or before the vest date
-            price_entry = UserPrice.query.filter_by(user_id=user_id).filter(
-                UserPrice.valuation_date <= self.vest_date
-            ).order_by(UserPrice.valuation_date.desc()).first()
-            
-            if not price_entry:
-                logger.warning(f"No price found for user {user_id} on or before {self.vest_date}")
-                return 0.0
-            
-            if not current_user.is_authenticated:
-                logger.warning(f"User not authenticated when getting share_price_at_vest")
-                return 0.0
-            
-            user_key = current_user.get_decrypted_user_key()
-            price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-            price = float(price_str)
-            
-            logger.debug(f"Found price {price} for vest date {self.vest_date} (from {price_entry.valuation_date})")
-            return price
-            
+            price = get_latest_user_price(self.grant.user_id, as_of_date=self.vest_date)
+            return price if price is not None else 0.0
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)

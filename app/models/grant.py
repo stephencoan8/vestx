@@ -5,6 +5,7 @@ Grant model for stock compensation grants.
 from app import db
 from datetime import datetime
 from enum import Enum
+from app.utils.price_utils import get_latest_user_price
 
 
 class GrantType(str, Enum):
@@ -93,24 +94,10 @@ class Grant(db.Model):
     def current_share_price(self) -> float:
         """Get the current (latest) stock price from user's encrypted prices."""
         try:
-            from app.models.user_price import UserPrice
-            from app.utils.encryption import decrypt_for_user
-            from flask_login import current_user
-            
-            # Get the user's latest price entry
-            price_entry = UserPrice.query.filter_by(user_id=self.user_id).order_by(
-                UserPrice.valuation_date.desc()
-            ).first()
-            
-            if price_entry and current_user.is_authenticated:
-                user_key = current_user.get_decrypted_user_key()
-                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-                return float(price_str)
-            
-            # Default to 0 if no price found
-            return 0.0
+            # Delegate to the centralized helper which handles decryption and auth checks
+            price = get_latest_user_price(self.user_id)
+            return price if price is not None else 0.0
         except Exception:
-            # If any error occurs, return 0
             return 0.0
     
     @property
