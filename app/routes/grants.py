@@ -72,6 +72,25 @@ def add_grant():
                 logger.error(f"Error retrieving or decrypting price: {price_error}", exc_info=True)
                 share_price = 0.0
             
+            # Fallback logic for missing or invalid prices
+            if share_price == 0.0:
+                logger.warning(f"Defaulting share_price to a fallback value for user {current_user.id}")
+                share_price = 1.0  # Example fallback value, adjust as needed
+
+            # Ensure UserPrice entry exists for the grant date
+            if not price_entry:
+                logger.info(f"Creating a default UserPrice entry for user {current_user.id} on {grant_date}")
+                from app.models.user_price import UserPrice
+                from app.utils.encryption import encrypt_for_user
+                encrypted_price = encrypt_for_user(user_key, str(share_price))
+                new_price_entry = UserPrice(
+                    user_id=current_user.id,
+                    valuation_date=grant_date,
+                    encrypted_price=encrypted_price
+                )
+                db.session.add(new_price_entry)
+                db.session.flush()
+            
             # Get vesting configuration
             if vest_years:
                 vest_years = int(vest_years)

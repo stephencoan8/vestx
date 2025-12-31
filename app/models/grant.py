@@ -74,16 +74,20 @@ class Grant(db.Model):
         For RSUs/RSAs: returns shares × price at grant
         For CASH: returns the cash amount (share_quantity represents USD amount)
         """
-        # Cash bonuses: share_quantity represents USD amount
+        import logging
+        logger = logging.getLogger(__name__)
+
         if self.share_type == ShareType.CASH.value:
+            logger.debug(f"Cash Total Value at Grant: {self.share_quantity}")
             return self.share_quantity
-        
-        # ISOs are options with no intrinsic value at grant
+
         if self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            logger.debug("ISO Total Value at Grant: 0.0")
             return 0.0
-        
-        # For RSUs/RSAs/ESPP, calculate actual share value
-        return self.share_quantity * self.share_price_at_grant
+
+        total_value = self.share_quantity * self.share_price_at_grant
+        logger.debug(f"RSU/ESPP Total Value at Grant: {total_value}")
+        return total_value
     
     @property
     def current_share_price(self) -> float:
@@ -118,15 +122,19 @@ class Grant(db.Model):
         For ISOs: strike price
         For RSUs/Cash: $0 (granted, not purchased)
         """
-        # ESPP with discount (typically 15%)
+        import logging
+        logger = logging.getLogger(__name__)
+
         if self.grant_type == GrantType.ESPP.value and self.espp_discount:
-            return self.share_price_at_grant * (1 - self.espp_discount)
-        
-        # NQESPP or ISOs - full strike/market price
+            cost_basis = self.share_price_at_grant * (1 - self.espp_discount)
+            logger.debug(f"ESPP Actual Cost Basis: {cost_basis}")
+            return cost_basis
+
         if self.grant_type == GrantType.NQESPP.value or self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            logger.debug(f"ISO/NQESPP Actual Cost Basis: {self.share_price_at_grant}")
             return self.share_price_at_grant
-        
-        # RSUs and Cash grants - no cost basis (granted)
+
+        logger.debug("RSU/Cash Actual Cost Basis: 0.0")
         return 0.0
     
     @property
