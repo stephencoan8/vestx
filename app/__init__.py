@@ -30,8 +30,8 @@ def create_app():
     app = Flask(__name__)
     
     # Load secure configuration
-    from app.config import Config
-    app.config.from_object(Config)
+    from app.config import get_config
+    app.config.from_object(get_config())
     
     # Initialize extensions with app
     db.init_app(app)
