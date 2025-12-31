@@ -325,6 +325,20 @@ def finance_deep_dive():
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
+    # Get user's tax profile and calculate rates (move up so we can use server-side estimates)
+    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+    if tax_profile:
+        tax_rates = tax_profile.get_tax_rates()
+        use_manual_rates = tax_profile.use_manual_rates
+    else:
+        # Default rates if no profile exists
+        tax_rates = {'federal': 0.24, 'state': 0.093, 'ltcg': 0.15}
+        use_manual_rates = True
+
+    federal_rate_default = tax_rates.get('federal', 0.24)
+    state_rate_default = tax_rates.get('state', 0.093)
+    ltcg_rate_default = tax_rates.get('ltcg', 0.15)
+
     # Get latest stock price from user's encrypted prices
     latest_stock_price = 0.0
     # Debug logging for latest stock price retrieval
@@ -347,9 +361,9 @@ def finance_deep_dive():
     except Exception as price_error:
         logger.error(f"Error retrieving or decrypting latest stock price: {price_error}", exc_info=True)
         latest_stock_price = 0.0
-    
+
     today = date.today()
-    
+
     # Initialize totals
     total_shares_held_vested = 0.0
     total_shares_held_all = 0.0
@@ -359,10 +373,10 @@ def finance_deep_dive():
     total_current_value_all = 0.0
     total_unrealized_gain_vested = 0.0
     total_unrealized_gain_all = 0.0
-    
+
     # Prepare data for analysis
     analysis_data = []
-    
+
     for grant in grants:
         vest_events = [ve for ve in all_vest_events if ve.grant_id == grant.id]
         
@@ -413,7 +427,16 @@ def finance_deep_dive():
             
             days_held = (today - ve.vest_date).days if has_vested else 0
             is_long_term = days_held >= 365
-            
+
+            # Server-side estimated tax on sale (capital gains)
+            if unrealized_gain > 0:
+                if is_long_term:
+                    estimated_sale_tax = unrealized_gain * (ltcg_rate_default + state_rate_default)
+                else:
+                    estimated_sale_tax = unrealized_gain * (federal_rate_default + state_rate_default)
+            else:
+                estimated_sale_tax = 0.0
+
             # Calculate holding period display
             if has_vested:
                 if days_held >= 365:
@@ -425,13 +448,8 @@ def finance_deep_dive():
                 holding_period = "—"
             
             # Calculate estimated tax on sale (capital gains)
-            # This is different from tax_amount (which is vest tax)
-            if unrealized_gain > 0:
-                # Use appropriate cap gains rate based on holding period
-                # For now, use a placeholder - will be calculated dynamically in JS
-                estimated_tax = 0.0
-            else:
-                estimated_tax = 0.0
+            # Keep the old JS placeholder behavior but populate server-side value now
+            estimated_tax = estimated_sale_tax
             
             ve_data = {
                 'vest_event': ve,
@@ -450,13 +468,13 @@ def finance_deep_dive():
                 'estimated_tax': estimated_tax
             }
             enriched_vest_events.append(ve_data)
-            
+
             # Add to grant totals
             grant_shares_held_all += shares_held
             grant_cost_basis_all += cost_basis
             grant_current_value_all += current_value
             grant_unrealized_gain_all += unrealized_gain
-            
+
             if has_vested:
                 grant_shares_held_vested += shares_held
                 grant_cost_basis_vested += cost_basis
@@ -496,16 +514,6 @@ def finance_deep_dive():
     logger.debug(f"Total Unrealized Gain (Vested): {total_unrealized_gain_vested}")
     logger.debug(f"Total Unrealized Gain (All): {total_unrealized_gain_all}")
     
-    # Get user's tax profile and calculate rates
-    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
-    if tax_profile:
-        tax_rates = tax_profile.get_tax_rates()
-        use_manual_rates = tax_profile.use_manual_rates
-    else:
-        # Default rates if no profile exists
-        tax_rates = {'federal': 0.24, 'state': 0.093, 'ltcg': 0.15}
-        use_manual_rates = True
-
     # Pass all required data to the template
     return render_template('grants/finance_deep_dive.html',
                            analysis_data=analysis_data,
