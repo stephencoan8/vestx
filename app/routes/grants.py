@@ -59,9 +59,21 @@ def add_grant():
                 from app.models.user_price import UserPrice
                 from app.utils.encryption import decrypt_for_user
                 user_key = current_user.get_decrypted_user_key()
-                price_entry = UserPrice.query.filter_by(user_id=current_user.id).filter(
+
+                # Ensure user is authenticated before retrieving prices
+                if not current_user.is_authenticated:
+                    logger.warning("User not authenticated when retrieving share_price_at_grant")
+                    flash("You must be logged in to add a grant.", "error")
+                    return redirect(url_for('grants.list_grants'))
+
+                # Use grant's user_id for price retrieval (if applicable)
+                user_id = current_user.id
+
+                # Retrieve stock price at grant date
+                price_entry = UserPrice.query.filter_by(user_id=user_id).filter(
                     UserPrice.valuation_date <= grant_date
                 ).order_by(UserPrice.valuation_date.desc()).first()
+                
                 if price_entry:
                     price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
                     share_price = float(price_str)
