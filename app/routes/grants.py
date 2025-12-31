@@ -319,6 +319,9 @@ def rules():
 @login_required
 def finance_deep_dive():
     """Comprehensive tax and capital gains analysis."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     # Get all grants and vest events for the user
     grants = Grant.query.filter_by(user_id=current_user.id).all()
     all_vest_events = VestEvent.query.join(Grant).filter(
