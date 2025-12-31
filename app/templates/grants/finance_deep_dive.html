@@ -967,6 +967,9 @@ const ficaValue = document.getElementById('ficaValue');
 </style>
 
 <script>
+// Wait for DOM to be fully loaded before running scripts
+document.addEventListener('DOMContentLoaded', function() {
+
 // Tax calculation logic
 const federalSlider = document.getElementById('federalTaxRate');
 const stateSlider = document.getElementById('stateTaxRate');
@@ -1384,6 +1387,8 @@ function getDragAfterElement(container, y) {
 
 // Apply settings on page load
 applyColumnSettings();
+
+}); // End of DOMContentLoaded
 
 </script>
 {% endblock %}
