@@ -164,7 +164,31 @@ def view_grant(grant_id):
     
     vest_events = VestEvent.query.filter_by(grant_id=grant.id).order_by(VestEvent.vest_date).all()
     
-    return render_template('grants/view.html', grant=grant, vest_events=vest_events)
+    # Debug: attempt to retrieve and decrypt the user's price used for this grant
+    debug_decrypted_price = None
+    try:
+        from app.models.user_price import UserPrice
+        from app.utils.encryption import decrypt_for_user
+        logger = logging.getLogger(__name__)
+        user_key = current_user.get_decrypted_user_key()
+        price_entry = UserPrice.query.filter_by(user_id=grant.user_id).filter(
+            UserPrice.valuation_date <= grant.grant_date
+        ).order_by(UserPrice.valuation_date.desc()).first()
+        if price_entry:
+            try:
+                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+                debug_decrypted_price = float(price_str)
+                logger.debug(f"Debug decrypted price for grant {grant.id}: {debug_decrypted_price} (from {price_entry.valuation_date})")
+            except Exception as e:
+                logger.error(f"Failed to decrypt price for grant {grant.id}: {e}", exc_info=True)
+                debug_decrypted_price = None
+        else:
+            logger.info(f"No UserPrice entry found for grant {grant.id} on or before {grant.grant_date}")
+    except Exception as e:
+        import logging as _logging
+        _logging.getLogger(__name__).error(f"Error retrieving debug price for grant {grant.id}: {e}", exc_info=True)
+
+    return render_template('grants/view.html', grant=grant, vest_events=vest_events, debug_decrypted_price=debug_decrypted_price)
 
 
 @grants_bp.route('/<int:grant_id>/delete', methods=['POST'])
