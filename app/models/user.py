@@ -132,11 +132,16 @@ class User(UserMixin, db.Model):
             try:
                 user_key = decrypt_with_master(self.encrypted_user_key)
                 return user_key
-            except Exception:
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to decrypt encrypted_user_key for user {self.id}: {e}", exc_info=True)
                 # fall through to regenerate
-                pass
-        
+
         # generate new user key and store encrypted
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Generating new encryption key for user {self.id}")
         user_key = generate_user_key()
         self.encrypted_user_key = encrypt_with_master(user_key)
         db.session.add(self)
