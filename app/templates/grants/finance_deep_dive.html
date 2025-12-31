@@ -935,37 +935,11 @@
 </style>
 
 <script>
-// Tax calculation logic
-const federalSlider = document.getElementById('federalTaxRate');
-const stateSlider = document.getElementById('stateTaxRate');
-const capitalGainsSlider = document.getElementById('capitalGainsTaxRate');
-const showAllToggle = document.getElementById('showAllToggle');
-const toggleLabel = document.getElementById('toggleLabel');
+// Server-side total estimated tax exposed to client JS (JSON-safe)
+const serverTotalEstimatedTax = {{ total_estimated_tax | default(0) | tojson }};
+</script>
 
-const federalValue = document.getElementById('federalTaxValue');
-const stateValue = document.getElementById('stateTaxValue');
-const capitalGainsValue = document.getElementById('capitalGainsValue');
-const ficaValue = document.getElementById('ficaValue');
-}
-
-.toggle-switch input:checked + .toggle-slider:before {
-    transform: translateX(26px);
-}
-
-/* Unvested rows styling */
-.data-unvested {
-    opacity: 0.6;
-    background: repeating-linear-gradient(
-        45deg,
-        transparent,
-        transparent 10px,
-        rgba(0,0,0,0.03) 10px,
-        rgba(0,0,0,0.03) 20px
-    );
-}
-
-</style>
-
+<!-- Tax calculation scripts continue below (DOMContentLoaded handler) -->
 <script>
 // Wait for DOM to be fully loaded before running scripts
 document.addEventListener('DOMContentLoaded', function() {
@@ -980,6 +954,7 @@ const toggleLabel = document.getElementById('toggleLabel');
 const federalValue = document.getElementById('federalTaxValue');
 const stateValue = document.getElementById('stateTaxValue');
 const capitalGainsValue = document.getElementById('capitalGainsValue');
+const ficaValue = document.getElementById('ficaValue');
 
 // Toggle between vested and all shares
 showAllToggle.addEventListener('change', (e) => {
@@ -1098,8 +1073,22 @@ function calculateTaxes() {
         const taxEstimateEl = card.querySelector('.grant-tax-estimate');
         const netValueEl = card.querySelector('.grant-net-value');
         if (taxEstimateEl && netValueEl) {
-            taxEstimateEl.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            netValueEl.textContent = '$' + (currentValue - grantTax).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            // Preserve server-rendered value if client-side grantTax is zero or NaN
+            const existingTaxText = taxEstimateEl.textContent.trim();
+            if (grantTax > 0) {
+                taxEstimateEl.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            } else if (existingTaxText && existingTaxText !== '$0.00') {
+                // leave the server-rendered value as-is
+            } else {
+                taxEstimateEl.textContent = '$0.00';
+            }
+
+            // For net value, prefer client calc if meaningful, otherwise keep server-rendered
+            const existingNetText = netValueEl.textContent.trim();
+            const computedNet = currentValue - grantTax;
+            if (!isNaN(computedNet) && (grantTax > 0 || existingNetText === '' || existingNetText === '$0.00')) {
+                netValueEl.textContent = '$' + computedNet.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
 
             if ((currentValue - grantTax) >= 0) {
                 netValueEl.classList.add('positive');
@@ -1114,10 +1103,13 @@ function calculateTaxes() {
         totalCurrentValue += currentValue;
     });
 
-    const netAfterTax = totalCurrentValue - totalTax;
+    // Prefer server-side total if client-side calculation yields zero or NaN
+    const clientTotalTax = totalTax;
+    const finalTotalTax = (clientTotalTax && clientTotalTax > 0) ? clientTotalTax : (typeof serverTotalEstimatedTax !== 'undefined' ? serverTotalEstimatedTax : 0);
+    const netAfterTax = totalCurrentValue - finalTotalTax;
     const totalTaxEl = document.getElementById('totalTaxLiability');
     const netAfterTaxEl = document.getElementById('netAfterTax');
-    if (totalTaxEl) totalTaxEl.textContent = '$' + totalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (totalTaxEl) totalTaxEl.textContent = '$' + finalTotalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (netAfterTaxEl) netAfterTaxEl.textContent = 'Net: $' + netAfterTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
