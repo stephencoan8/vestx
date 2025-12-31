@@ -361,13 +361,42 @@ def finance_deep_dive():
             else:
                 # Stock grants
                 shares_held = ve.shares_received if has_vested else ve.shares_vested
-                cost_basis_per_share = ve.share_price_at_vest
+                
+                # Cost basis depends on grant type:
+                # - For ISOs: cost basis is the strike price (share_price_at_grant)
+                # - For RSUs/RSAs/ESPP: cost basis is the FMV at vest (share_price_at_vest)
+                if grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+                    # For ISOs, cost basis is the strike/exercise price
+                    cost_basis_per_share = grant.share_price_at_grant
+                else:
+                    # For RSUs/RSAs/ESPP, cost basis is the FMV at vest
+                    cost_basis_per_share = ve.share_price_at_vest
+                
                 cost_basis = shares_held * cost_basis_per_share
                 current_value = shares_held * latest_stock_price
                 unrealized_gain = current_value - cost_basis
             
             days_held = (today - ve.vest_date).days if has_vested else 0
             is_long_term = days_held >= 365
+            
+            # Calculate holding period display
+            if has_vested:
+                if days_held >= 365:
+                    years = days_held // 365
+                    holding_period = f"{years}y {days_held % 365}d"
+                else:
+                    holding_period = f"{days_held}d"
+            else:
+                holding_period = "—"
+            
+            # Calculate estimated tax on sale (capital gains)
+            # This is different from tax_amount (which is vest tax)
+            if unrealized_gain > 0:
+                # Use appropriate cap gains rate based on holding period
+                # For now, use a placeholder - will be calculated dynamically in JS
+                estimated_tax = 0.0
+            else:
+                estimated_tax = 0.0
             
             ve_data = {
                 'vest_event': ve,
@@ -379,9 +408,11 @@ def finance_deep_dive():
                 'unrealized_gain': unrealized_gain,
                 'days_held': days_held,
                 'is_long_term': is_long_term,
+                'holding_period': holding_period,
                 'tax_amount': tax_info['tax_amount'],
                 'tax_is_estimated': tax_info['is_estimated'],
-                'tax_rate': tax_info['tax_rate']
+                'tax_rate': tax_info['tax_rate'],
+                'estimated_tax': estimated_tax
             }
             enriched_vest_events.append(ve_data)
             

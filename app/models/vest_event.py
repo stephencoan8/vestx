@@ -53,6 +53,9 @@ class VestEvent(db.Model):
             from app.models.user_price import UserPrice
             from app.utils.encryption import decrypt_for_user
             from flask_login import current_user
+            import logging
+            
+            logger = logging.getLogger(__name__)
             
             # Get the grant's user_id
             user_id = self.grant.user_id
@@ -62,13 +65,25 @@ class VestEvent(db.Model):
                 UserPrice.valuation_date <= self.vest_date
             ).order_by(UserPrice.valuation_date.desc()).first()
             
-            if price_entry and current_user.is_authenticated:
-                user_key = current_user.get_decrypted_user_key()
-                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-                return float(price_str)
+            if not price_entry:
+                logger.warning(f"No price found for user {user_id} on or before {self.vest_date}")
+                return 0.0
             
-            return 0.0
-        except Exception:
+            if not current_user.is_authenticated:
+                logger.warning(f"User not authenticated when getting share_price_at_vest")
+                return 0.0
+            
+            user_key = current_user.get_decrypted_user_key()
+            price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+            price = float(price_str)
+            
+            logger.debug(f"Found price {price} for vest date {self.vest_date} (from {price_entry.valuation_date})")
+            return price
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting share_price_at_vest: {str(e)}", exc_info=True)
             return 0.0
     
     @property
