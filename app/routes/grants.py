@@ -340,27 +340,9 @@ def finance_deep_dive():
     ltcg_rate_default = tax_rates.get('ltcg', 0.15)
 
     # Get latest stock price from user's encrypted prices
-    latest_stock_price = 0.0
-    # Debug logging for latest stock price retrieval
-    import logging
-    logger = logging.getLogger(__name__)
-
-    try:
-        from app.models.user_price import UserPrice
-        from app.utils.encryption import decrypt_for_user
-        user_key = current_user.get_decrypted_user_key()
-        price_entry = UserPrice.query.filter_by(user_id=current_user.id).order_by(
-            UserPrice.valuation_date.desc()
-        ).first()
-        if price_entry:
-            price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-            latest_stock_price = float(price_str)
-            logger.debug(f"Found latest stock price {latest_stock_price} for user {current_user.id} on {price_entry.valuation_date}")
-        else:
-            logger.warning(f"No UserPrice entry found for user {current_user.id}")
-    except Exception as price_error:
-        logger.error(f"Error retrieving or decrypting latest stock price: {price_error}", exc_info=True)
-        latest_stock_price = 0.0
+    from app.utils.price_utils import get_latest_user_price
+    latest_stock_price = get_latest_user_price(current_user.id) or 0.0
+    logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
 
     today = date.today()
 
@@ -394,6 +376,9 @@ def finance_deep_dive():
         enriched_vest_events = []
         is_cash_grant = grant.share_type == 'cash'
         
+        # Track grant-level estimated tax-on-sale
+        grant_estimated_tax_on_sale = 0.0
+
         for ve in vest_events:
             has_vested = ve.vest_date <= today
             
@@ -469,6 +454,9 @@ def finance_deep_dive():
             }
             enriched_vest_events.append(ve_data)
 
+            # accumulate grant estimated tax
+            grant_estimated_tax_on_sale += estimated_tax
+
             # Add to grant totals
             grant_shares_held_all += shares_held
             grant_cost_basis_all += cost_basis
@@ -491,7 +479,8 @@ def finance_deep_dive():
             'current_value_vested': grant_current_value_vested,
             'current_value_all': grant_current_value_all,
             'unrealized_gain_vested': grant_unrealized_gain_vested,
-            'unrealized_gain_all': grant_unrealized_gain_all
+            'unrealized_gain_all': grant_unrealized_gain_all,
+            'estimated_tax': grant_estimated_tax_on_sale
         })
         
         # Add to overall totals
@@ -504,6 +493,9 @@ def finance_deep_dive():
         total_unrealized_gain_vested += grant_unrealized_gain_vested
         total_unrealized_gain_all += grant_unrealized_gain_all
     
+    # Debug logging for calculated totals
+    logger = logging.getLogger(__name__)
+
     # Debug logging for calculated totals
     logger.debug(f"Total Shares Held (Vested): {total_shares_held_vested}")
     logger.debug(f"Total Shares Held (All): {total_shares_held_all}")
