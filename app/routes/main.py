@@ -6,7 +6,6 @@ from flask import Blueprint, render_template, redirect, url_for, jsonify
 from flask_login import login_required, current_user
 from app.models.grant import Grant
 from app.models.vest_event import VestEvent
-from app.models.stock_price import StockPrice
 from datetime import date
 
 main_bp = Blueprint('main', __name__)
@@ -27,10 +26,24 @@ def dashboard():
     # Get user's grants
     grants = Grant.query.filter_by(user_id=current_user.id).all()
     
+    # Get current stock price from user's encrypted prices
+    current_price = 0.0
+    try:
+        from app.models.user_price import UserPrice
+        from app.utils.encryption import decrypt_for_user
+        user_key = current_user.get_decrypted_user_key()
+        price_entry = UserPrice.query.filter_by(user_id=current_user.id).order_by(
+            UserPrice.valuation_date.desc()
+        ).first()
+        if price_entry:
+            price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+            current_price = float(price_str)
+    except Exception:
+        current_price = 0.0
+    
     # Calculate totals - use grant.current_value which handles ISOs correctly
     total_grants = len(grants)
     total_shares = sum(g.share_quantity for g in grants)
-    current_price = 0  # Placeholder, update with per-user price logic if needed
     # For total value, sum up each grant's current_value (which handles ISO spread correctly)
     total_value = sum(g.current_value for g in grants)
     
@@ -53,7 +66,26 @@ def dashboard():
     vested_value_net = vested_shares_net * current_price
     
     # Build comprehensive timeline with ALL state changes (stock price updates + vest events)
-    all_stock_prices = StockPrice.query.order_by(StockPrice.valuation_date).all()
+    from app.models.user_price import UserPrice
+    from app.utils.encryption import decrypt_for_user
+    
+    # Get user's encrypted prices and decrypt them
+    all_user_prices = UserPrice.query.filter_by(user_id=current_user.id).order_by(UserPrice.valuation_date).all()
+    all_stock_prices = []
+    try:
+        user_key = current_user.get_decrypted_user_key()
+        for price_entry in all_user_prices:
+            try:
+                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+                price_val = float(price_str)
+                all_stock_prices.append({
+                    'valuation_date': price_entry.valuation_date,
+                    'price_per_share': price_val
+                })
+            except Exception:
+                continue
+    except Exception:
+        all_stock_prices = []
     
     # Create a timeline of all significant dates (vest events + price changes)
     timeline_events = []
@@ -69,16 +101,16 @@ def dashboard():
     # Add all stock price updates
     for price in all_stock_prices:
         timeline_events.append({
-            'date': price.valuation_date,
+            'date': price['valuation_date'],
             'type': 'price_update',
-            'price': price.price_per_share
+            'price': price['price_per_share']
         })
     
     # Sort all events by date
     timeline_events.sort(key=lambda x: x['date'])
     
     # Pre-build a dict for O(1) price lookups
-    price_dict = {p.valuation_date: p.price_per_share for p in all_stock_prices}
+    price_dict = {p['valuation_date']: p['price_per_share'] for p in all_stock_prices}
     
     # Calculate cumulative values efficiently with O(n) complexity
     vesting_timeline = []
@@ -167,11 +199,31 @@ def dashboard():
 @login_required
 def stock_price_chart_data():
     """Get stock price data for dashboard chart."""
-    prices = StockPrice.query.order_by(StockPrice.valuation_date).all()
+    from app.models.user_price import UserPrice
+    from app.utils.encryption import decrypt_for_user
+    
+    # Get user's encrypted prices and decrypt them
+    price_entries = UserPrice.query.filter_by(user_id=current_user.id).order_by(UserPrice.valuation_date).all()
+    
+    dates = []
+    prices = []
+    
+    try:
+        user_key = current_user.get_decrypted_user_key()
+        for price_entry in price_entries:
+            try:
+                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+                price_val = float(price_str)
+                dates.append(price_entry.valuation_date.strftime('%Y-%m-%d'))
+                prices.append(price_val)
+            except Exception:
+                continue
+    except Exception:
+        pass
     
     data = {
-        'dates': [p.valuation_date.strftime('%Y-%m-%d') for p in prices],
-        'prices': [p.price_per_share for p in prices]
+        'dates': dates,
+        'prices': prices
     }
     
     return jsonify(data)
