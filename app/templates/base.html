@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}SpaceX Stonks{% endblock %}</title>
+    <title>{% block title %}VestX{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
@@ -12,11 +12,12 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">
-                <a href="{{ url_for('main.dashboard') }}">🚀 SpaceX Stonks</a>
+                <a href="{{ url_for('main.dashboard') }}">🚀 VestX</a>
             </div>
             <div class="nav-menu">
                 <a href="{{ url_for('main.dashboard') }}" class="nav-link">Dashboard</a>
                 <a href="{{ url_for('grants.list_grants') }}" class="nav-link">My Grants</a>
+                <a href="{{ url_for('prices.list_prices') }}" class="nav-link">My Prices</a>
                 <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link">Vest Schedule</a>
                 <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link">💰 Finance</a>
                 <a href="{{ url_for('grants.rules') }}" class="nav-link">📋 Rules</a>
@@ -28,6 +29,22 @@
             </div>
         </div>
     </nav>
+    {% else %}
+    <nav class="navbar guest-navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="/">🚀 VestX</a>
+            </div>
+            <div class="nav-menu">
+                <a href="{{ url_for('auth.login') }}" class="nav-link">Login</a>
+                <a href="{{ url_for('auth.register') }}" class="nav-link">Register</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container guest-welcome">
+        <h2>Welcome to VestX</h2>
+        <p>Your secure stock compensation tracker. Please log in to continue.</p>
+    </div>
     {% endif %}
 
     <div class="container">

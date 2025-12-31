@@ -1,6 +1,6 @@
-# 🚀 SpaceX Stonks - Stock Compensation Tracker
+# 🚀 VestX - Stock Compensation Tracker
 
-A comprehensive web application for tracking SpaceX stock compensation packages, including RSUs, ISOs, ESPP, and various grant types with automatic vesting schedule calculations and tax management.
+A comprehensive web application for tracking VestX stock compensation packages, including RSUs, ISOs, ESPP, and various grant types with automatic vesting schedule calculations and tax management.
 
 ## ✨ Features
 
@@ -96,7 +96,7 @@ A comprehensive web application for tracking SpaceX stock compensation packages,
 
 ### Admins Only
 - Manage stock prices via Admin → Stock Prices
-- Add new valuations as SpaceX shares are revalued
+- Add new valuations as VestX shares are revalued
 - View all users via Admin → Users
 
 ## 🏗️ Grant Types Reference
@@ -154,11 +154,11 @@ git push heroku main
 
 ### Docker
 ```bash
-docker build -t spacex-stonks .
+docker build -t vestx .
 docker run -p 5001:5001 \
   -e SECRET_KEY=your-secret-key \
   -e DATABASE_URL=postgresql://... \
-  spacex-stonks
+  vestx
 ```
 
 ### GitHub Setup
@@ -219,7 +219,7 @@ Private - All Rights Reserved
 
 ## 💡 Acknowledgments
 
-Built for SpaceX employees to better track and understand their stock compensation packages.
+Built for VestX users to better track and understand their stock compensation packages.
 
 ---
 

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Add Price - VestX{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Add Stock Price Entry</h2>
+    <form method="post">
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+            {{ form.valuation_date.label(class="form-label") }}
+            {{ form.valuation_date(class="form-control", type="date") }}
+        </div>
+        <div class="form-group">
+            {{ form.price.label(class="form-label") }}
+            {{ form.price(class="form-control", step="0.01") }}
+        </div>
+        <button type="submit" class="btn btn-success mt-2">Add Price</button>
+        <a href="{{ url_for('prices.list_prices') }}" class="btn btn-secondary mt-2">Cancel</a>
+    </form>
+</div>
+{% endblock %}

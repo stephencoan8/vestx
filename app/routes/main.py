@@ -7,7 +7,6 @@ from flask_login import login_required, current_user
 from app.models.grant import Grant
 from app.models.vest_event import VestEvent
 from app.models.stock_price import StockPrice
-from app.utils.init_db import get_latest_stock_price
 from datetime import date
 
 main_bp = Blueprint('main', __name__)
@@ -31,7 +30,7 @@ def dashboard():
     # Calculate totals - use grant.current_value which handles ISOs correctly
     total_grants = len(grants)
     total_shares = sum(g.share_quantity for g in grants)
-    current_price = get_latest_stock_price()
+    current_price = 0  # Placeholder, update with per-user price logic if needed
     # For total value, sum up each grant's current_value (which handles ISO spread correctly)
     total_value = sum(g.current_value for g in grants)
     

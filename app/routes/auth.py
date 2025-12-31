@@ -5,9 +5,9 @@ Security enhanced with rate limiting, CSRF protection, and audit logging.
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, abort
 from flask_login import login_user, logout_user, current_user
-from app import db, limiter
+from app import db
 from app.models.user import User
-from app.utils.password_security import PasswordValidator
+from app.utils.password_security import validate_password
 from app.utils.audit_log import AuditLogger
 from werkzeug.security import generate_password_hash
 import secrets
@@ -16,18 +16,8 @@ from email_validator import validate_email, EmailNotValidError
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
-# Initialize password validator
-password_validator = PasswordValidator(
-    min_length=12,
-    require_uppercase=True,
-    require_lowercase=True,
-    require_digit=True,
-    require_special=True
-)
-
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute")  # Rate limit login attempts
 def login():
     """User login page with security hardening."""
     if current_user.is_authenticated:
@@ -90,7 +80,6 @@ def login():
 
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
-@limiter.limit("3 per hour")  # Rate limit registration
 def register():
     """User registration page with enhanced validation."""
     if current_user.is_authenticated:
@@ -126,7 +115,7 @@ def register():
         if password != confirm_password:
             errors.append('Passwords do not match')
         else:
-            is_valid, pwd_errors = password_validator.validate(password, username)
+            is_valid, pwd_errors = validate_password(password, username)
             if not is_valid:
                 errors.extend(pwd_errors)
         
@@ -174,7 +163,6 @@ def logout():
 
 
 @auth_bp.route('/forgot-password', methods=['GET', 'POST'])
-@limiter.limit("3 per hour")  # Rate limit password reset requests
 def forgot_password():
     """Password reset request page."""
     if request.method == 'POST':
@@ -214,7 +202,6 @@ def forgot_password():
 
 
 @auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
-@limiter.limit("5 per hour")
 def reset_password(token):
     """Password reset confirmation page."""
     if current_user.is_authenticated:
@@ -233,7 +220,7 @@ def reset_password(token):
         if password != confirm_password:
             flash('Passwords do not match', 'error')
         else:
-            is_valid, errors = password_validator.validate(password)
+            is_valid, errors = validate_password(password)
             if not is_valid:
                 for error in errors:
                     flash(error, 'error')

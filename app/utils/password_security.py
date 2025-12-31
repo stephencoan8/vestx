@@ -172,11 +172,12 @@ class PasswordValidator:
 
 # Global validator instance
 password_validator = PasswordValidator(
-    min_length=12,
-    require_uppercase=True,
-    require_lowercase=True,
-    require_digit=True,
-    require_special=True
+    min_length=1,  # Only require at least 1 character
+    max_length=128,
+    require_uppercase=False,
+    require_lowercase=False,
+    require_digit=False,
+    require_special=False
 )
 
 

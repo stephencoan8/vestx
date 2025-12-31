@@ -9,7 +9,6 @@ from app.models.grant import Grant, GrantType, ShareType
 from app.models.vest_event import VestEvent
 from app.models.stock_price import StockPrice
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
-from app.utils.init_db import get_stock_price_at_date, get_latest_stock_price
 from app.models.tax_rate import UserTaxProfile
 from datetime import datetime, date, timedelta
 import logging
@@ -51,7 +50,7 @@ def add_grant():
                 espp_discount = 0.15 if grant_type == 'espp' else 0.0
             
             # Get stock price at grant date
-            share_price = get_stock_price_at_date(grant_date)
+            share_price = 0  # Placeholder, update with per-user price logic if needed
             
             # Get vesting configuration
             if vest_years:
@@ -165,7 +164,7 @@ def edit_grant(grant_id):
                 espp_discount = 0.15 if grant_type == 'espp' else 0.0
             
             # Get stock price at grant date
-            share_price = get_stock_price_at_date(grant_date)
+            share_price = 0  # Placeholder, update with per-user price logic if needed
             
             # Get vesting configuration
             if vest_years:
@@ -287,7 +286,7 @@ def finance_deep_dive():
     ).order_by(VestEvent.vest_date).all()
     
     # Get latest stock price for current value estimation
-    latest_stock_price = get_latest_stock_price() or 0.0
+    latest_stock_price = 0.0  # Placeholder, update with per-user price logic if needed
     today = date.today()
     
     # Initialize totals

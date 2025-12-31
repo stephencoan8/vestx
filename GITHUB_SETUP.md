@@ -1,11 +1,11 @@
-# How to Push SpaceX Stonks to GitHub
+# How to Push VestX to GitHub
 
 ## Quick Setup (5 minutes)
 
 ### 1. Create GitHub Repository
 1. Go to https://github.com/new
-2. Repository name: `stonks`
-3. Description: `SpaceX Stock Compensation Tracker - Track RSUs, ISOs, ESPP with vesting schedules and tax calculations`
+2. Repository name: `vestx`
+3. Description: `VestX Stock Compensation Tracker - Track RSUs, ISOs, ESPP with vesting schedules and tax calculations`
 4. **Make it Private** (contains sensitive financial tracking code)
 5. **DO NOT** initialize with README, .gitignore, or license (we already have these)
 6. Click "Create repository"
@@ -14,10 +14,10 @@
 After creating the repo, GitHub will show you commands. Use these:
 
 ```bash
-cd /Users/stephencoan/stonks
+cd /Users/stephencoan/vestx
 
 # Add your GitHub repo as remote
-git remote add origin https://github.com/YOUR_USERNAME/stonks.git
+git remote add origin https://github.com/YOUR_USERNAME/vestx.git
 
 # Push to GitHub
 git branch -M main
@@ -30,8 +30,8 @@ git push -u origin main
 If you have SSH keys set up with GitHub:
 
 ```bash
-cd /Users/stephencoan/stonks
-git remote add origin git@github.com:YOUR_USERNAME/stonks.git
+cd /Users/stephencoan/vestx
+git remote add origin git@github.com:YOUR_USERNAME/vestx.git
 git branch -M main
 git push -u origin main
 ```
@@ -53,17 +53,17 @@ Your repository now contains:
 ### Files Excluded (.gitignore)
 The following are NOT pushed to GitHub (protected):
 - `.venv/` - Your virtual environment
-- `instance/stonks.db` - **WAIT! This is included!** See below
+- `instance/vestx.db` - **WAIT! This is included!** See below
 - `.env` - Environment variables
 - `__pycache__/` - Python cache
 - Test files
 
 ### ⚠️ IMPORTANT: Database Security
-The database `instance/stonks.db` is currently tracked by git. If it contains real financial data:
+The database `instance/vestx.db` is currently tracked by git. If it contains real financial data:
 
 ```bash
 # Remove database from git tracking
-git rm --cached instance/stonks.db
+git rm --cached instance/vestx.db
 
 # Add to .gitignore
 echo "instance/*.db" >> .gitignore
@@ -98,16 +98,15 @@ After pushing to GitHub, configure these settings:
 > Track SpaceX stock compensation (RSUs, ISOs, ESPP) with automatic vesting schedules, tax calculations, and beautiful visualizations
 
 **Topics (tags):**
-- `spacex`
-- `stock-compensation`
+- `python`
+- `flask`
+- `stock-tracker`
+- `vestx`
 - `rsu`
 - `iso`
 - `espp`
-- `vesting-schedule`
-- `flask`
-- `python`
-- `finance`
-- `equity-tracking`
+- `vesting`
+- `webapp`
 
 ## Future Git Workflow
 
@@ -142,8 +141,8 @@ git pull origin main
 
 ## Clone on Another Machine
 ```bash
-git clone https://github.com/YOUR_USERNAME/stonks.git
-cd stonks
+git clone https://github.com/YOUR_USERNAME/vestx.git
+cd vestx
 python3 -m venv .venv
 source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
 pip install -r requirements.txt
@@ -154,7 +153,7 @@ python main.py
 
 Your code is now backed up on GitHub! For complete safety:
 1. **Code**: GitHub (done! ✅)
-2. **Database**: Backup `instance/stonks.db` separately
+2. **Database**: Backup `instance/vestx.db` separately
 3. **Environment**: Document any custom `.env` settings
 
 ## README Badge Ideas

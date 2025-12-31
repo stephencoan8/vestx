@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}My Prices - VestX{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h2>My Stock Price Entries</h2>
+    <a href="{{ url_for('prices.add_price') }}" class="btn btn-primary mb-3">Add Price</a>
+    {% if prices %}
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Price (USD)</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for price in prices %}
+            <tr>
+                <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
+                <td>{{ price.decrypted_price }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('prices.delete_price', price_id=price.id) }}" style="display:inline;">
+                        {{ csrf_token() }}
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p>No price entries yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

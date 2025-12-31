@@ -1,5 +1,5 @@
 """
-Main entry point for the SpaceX Stock Compensation application.
+Main entry point for the VestX Stock Compensation application.
 """
 
 from app import create_app
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     debug = os.getenv('FLASK_ENV') == 'development'
     
     print("\n" + "="*60)
-    print("🚀 SpaceX Stonks - Stock Compensation Tracker")
+    print("🚀 VestX - Stock Compensation Tracker")
     print("="*60)
     print(f"\nServer starting at: http://127.0.0.1:{port}")
     print(f"Admin login: username='admin', password='admin'")

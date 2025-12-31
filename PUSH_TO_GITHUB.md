@@ -10,8 +10,8 @@
 
 1. **Create the repository on GitHub:**
    - Go to https://github.com/new
-   - Repository name: `stonks`
-   - Description: `SpaceX Stock Compensation Tracker - Full-stack Flask app for managing RSUs, ISOs, ESPP grants with vesting schedules and tax tracking`
+   - Repository name: `vestx`
+   - Description: `VestX Stock Compensation Tracker - Full-stack Flask app for managing RSUs, ISOs, ESPP grants with vesting schedules and tax tracking`
    - Choose Public or Private
    - **DO NOT** check any initialization options
    - Click "Create repository"
@@ -33,7 +33,7 @@
 2. **Run these commands** (replace YOUR_USERNAME):
    ```bash
    # Add the remote
-   git remote add origin https://github.com/YOUR_USERNAME/stonks.git
+   git remote add origin https://github.com/YOUR_USERNAME/vestx.git
    
    # Rename branch to main
    git branch -M main
@@ -52,7 +52,7 @@ brew install gh
 gh auth login
 
 # Create and push repository
-gh repo create stonks --public --source=. --remote=origin --push
+gh repo create vestx --public --source=. --remote=origin --push
 ```
 
 ## Authentication Options
@@ -68,7 +68,7 @@ gh auth login
 ### Option B: SSH Key
 1. Generate SSH key: `ssh-keygen -t ed25519 -C "your_email@example.com"`
 2. Add to GitHub: https://github.com/settings/keys
-3. Use SSH URL: `git@github.com:YOUR_USERNAME/stonks.git`
+3. Use SSH URL: `git@github.com:YOUR_USERNAME/vestx.git`
 
 ### Option C: Personal Access Token
 1. Create token: https://github.com/settings/tokens/new
@@ -83,11 +83,11 @@ gh auth login
 ## After Pushing
 
 1. **View your repository:**
-   https://github.com/YOUR_USERNAME/stonks
+   https://github.com/YOUR_USERNAME/vestx
 
 2. **Add repository metadata:**
-   - Description: "SpaceX Stock Compensation Tracker - Full-stack Flask app for managing RSUs, ISOs, ESPP grants with vesting schedules and tax tracking"
-   - Topics: `python`, `flask`, `stock-tracker`, `spacex`, `rsu`, `iso`, `espp`, `vesting`, `webapp`
+   - Description: "VestX Stock Compensation Tracker - Full-stack Flask app for managing RSUs, ISOs, ESPP grants with vesting schedules and tax tracking"
+   - Topics: `python`, `flask`, `stock-tracker`, `vestx`, `rsu`, `iso`, `espp`, `vesting`, `webapp`
    - Website: (your deployment URL if you deploy it)
 
 3. **Repository settings to consider:**
@@ -106,7 +106,7 @@ gh auth login
 
 ### Error: "repository not found"
 - Make sure you created the repository on GitHub first
-- Check the repository name is exactly `stonks`
+- Check the repository name is exactly `vestx`
 - Verify you have access to the repository
 
 ### Error: "authentication failed"
@@ -117,7 +117,7 @@ gh auth login
 ### Error: "remote origin already exists"
 ```bash
 git remote remove origin
-git remote add origin https://github.com/YOUR_USERNAME/stonks.git
+git remote add origin https://github.com/YOUR_USERNAME/vestx.git
 ```
 
 ### Error: "failed to push some refs"

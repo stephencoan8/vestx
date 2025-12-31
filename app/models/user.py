@@ -46,8 +46,12 @@ class User(UserMixin, db.Model):
     # Session security
     session_token = db.Column(db.String(255), nullable=True)
     
+    # Per-user encrypted key (Fernet) - stored encrypted by server master key
+    encrypted_user_key = db.Column(db.LargeBinary, nullable=True)
+    
     # Relationships
     grants = db.relationship('Grant', backref='user', lazy=True, cascade='all, delete-orphan')
+    prices = db.relationship('UserPrice', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password: str) -> None:
         """
@@ -115,6 +119,39 @@ class User(UserMixin, db.Model):
         import pyotp
         totp = pyotp.TOTP(self.totp_secret)
         return totp.verify(token, valid_window=1)
+    
+    # Encryption helpers for per-user key
+    def ensure_encryption_key(self) -> bytes:
+        """Ensure the user has a per-user symmetric key. Returns decrypted key (bytes).
+        This key is encrypted with server master key and stored in `encrypted_user_key`.
+        """
+        from app.utils.encryption import decrypt_with_master, generate_user_key, encrypt_with_master
+        
+        if self.encrypted_user_key:
+            # decrypt and return
+            try:
+                user_key = decrypt_with_master(self.encrypted_user_key)
+                return user_key
+            except Exception:
+                # fall through to regenerate
+                pass
+        
+        # generate new user key and store encrypted
+        user_key = generate_user_key()
+        self.encrypted_user_key = encrypt_with_master(user_key)
+        db.session.add(self)
+        db.session.commit()
+        return user_key
+    
+    def get_decrypted_user_key(self) -> bytes:
+        """Return decrypted per-user key. Ensure it exists."""
+        return self.ensure_encryption_key()
+    
+    def set_encrypted_user_key(self, encrypted_blob: bytes) -> None:
+        """Directly set the encrypted_user_key (blob)."""
+        self.encrypted_user_key = encrypted_blob
+        db.session.add(self)
+        db.session.commit()
     
     def __repr__(self) -> str:
         return f'<User {self.username}>'

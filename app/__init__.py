@@ -21,11 +21,7 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 mail = Mail()
 csrf = CSRFProtect()
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
+limiter = None  # Disable rate limiting
 talisman = Talisman()
 
 
@@ -44,7 +40,13 @@ def create_app():
     login_manager.session_protection = 'strong'  # Enhanced session protection
     mail.init_app(app)
     csrf.init_app(app)
-    limiter.init_app(app)
+    # limiter.init_app(app)  # Disabled rate limiting
+
+    # Make csrf_token available in all templates for manual forms
+    @app.context_processor
+    def inject_csrf_token():
+        from flask_wtf.csrf import generate_csrf
+        return dict(csrf_token=generate_csrf)
     
     # Initialize Talisman with security headers
     if app.config.get('TALISMAN_FORCE_HTTPS'):
@@ -68,12 +70,14 @@ def create_app():
     from app.routes.grants import grants_bp
     from app.routes.admin import admin_bp
     from app.routes.settings import settings_bp
+    from app.routes.prices import prices_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(grants_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(prices_bp)
     
     # Register error handlers
     register_error_handlers(app)
@@ -82,9 +86,8 @@ def create_app():
     with app.app_context():
         db.create_all()
         from app.models.user import User
-        from app.utils.init_db import init_admin_user, init_stock_prices
+        from app.utils.init_db import init_admin_user
         init_admin_user()
-        init_stock_prices()
     
     return app
 

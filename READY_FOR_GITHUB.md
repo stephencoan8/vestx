@@ -1,8 +1,8 @@
-# 🚀 SpaceX Stonks - Ready for GitHub!
+# 🚀 VestX - Ready for GitHub!
 
 ## ✅ What's Done
 
-Your SpaceX Stonks application is now **committed to git** and ready to push to GitHub!
+Your VestX application is now **committed to git** and ready to push to GitHub!
 
 ### Git Status
 - **Commit Hash:** c11cb79
@@ -24,8 +24,8 @@ Your SpaceX Stonks application is now **committed to git** and ready to push to 
 
 ### Step 1: Create GitHub Repository
 1. Go to **https://github.com/new**
-2. Repository name: `stonks`
-3. Description: `SpaceX Stock Compensation Tracker - Track RSUs, ISOs, ESPP with vesting schedules and tax calculations`
+2. Repository name: `vestx`
+3. Description: `VestX Stock Compensation Tracker - Track RSUs, ISOs, ESPP with vesting schedules and tax calculations`
 4. **Visibility: Private** (recommended for financial apps)
 5. **DO NOT** check any initialization options (README, .gitignore, license)
 6. Click **"Create repository"**
@@ -34,10 +34,10 @@ Your SpaceX Stonks application is now **committed to git** and ready to push to 
 After creating the repo, run these commands:
 
 ```bash
-cd /Users/stephencoan/stonks
+cd /Users/stephencoan/vestx
 
 # Add GitHub as remote (replace YOUR_USERNAME)
-git remote add origin https://github.com/YOUR_USERNAME/stonks.git
+git remote add origin https://github.com/YOUR_USERNAME/vestx.git
 
 # Rename branch to main and push
 git branch -M main
@@ -50,7 +50,7 @@ git push -u origin main
 If you have SSH keys set up:
 
 ```bash
-git remote add origin git@github.com:YOUR_USERNAME/stonks.git
+git remote add origin git@github.com:YOUR_USERNAME/vestx.git
 git branch -M main
 git push -u origin main
 ```
@@ -124,22 +124,19 @@ Test Plan:   Complete testing guide
 ## 🎨 Suggested Repository Settings
 
 ### Description
-> SpaceX Stock Compensation Tracker - Track RSUs, ISOs, ESPP with automatic vesting schedules, tax calculations, and beautiful visualizations
+> VestX Stock Compensation Tracker - Track RSUs, ISOs, ESPP with automatic vesting schedules, tax calculations, and beautiful visualizations
 
 ### Topics (GitHub Tags)
 ```
-spacex
-stock-compensation
+python
+flask
+stock-tracker
+vestx
 rsu
 iso
 espp
-vesting-schedule
-flask
-python
-finance
-equity-tracking
-tax-calculator
-data-visualization
+vesting
+webapp
 ```
 
 ### README Badges (Optional)
