@@ -466,6 +466,16 @@ def finance_deep_dive():
         total_unrealized_gain_vested += grant_unrealized_gain_vested
         total_unrealized_gain_all += grant_unrealized_gain_all
     
+    # Debug logging for calculated totals
+    logger.debug(f"Total Shares Held (Vested): {total_shares_held_vested}")
+    logger.debug(f"Total Shares Held (All): {total_shares_held_all}")
+    logger.debug(f"Total Cost Basis (Vested): {total_cost_basis_vested}")
+    logger.debug(f"Total Cost Basis (All): {total_cost_basis_all}")
+    logger.debug(f"Total Current Value (Vested): {total_current_value_vested}")
+    logger.debug(f"Total Current Value (All): {total_current_value_all}")
+    logger.debug(f"Total Unrealized Gain (Vested): {total_unrealized_gain_vested}")
+    logger.debug(f"Total Unrealized Gain (All): {total_unrealized_gain_all}")
+    
     # Get user's tax profile and calculate rates
     tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
     if tax_profile:
