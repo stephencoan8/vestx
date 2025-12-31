@@ -279,11 +279,11 @@
                 </div>
                 <div class="summary-stat">
                     <div class="summary-label">Est. Tax on Sale</div>
-                    <div class="summary-value grant-tax-estimate">$0.00</div>
+                    <div class="summary-value grant-tax-estimate">${{ "{:,.2f}".format(item.estimated_tax) }}</div>
                 </div>
                 <div class="summary-stat">
                     <div class="summary-label">Net After Tax</div>
-                    <div class="summary-value grant-net-value">$0.00</div>
+                    <div class="summary-value grant-net-value">${{ "{:,.2f}".format(item.current_value_all - item.estimated_tax) }}</div>
                 </div>
             </div>
 
@@ -1023,165 +1023,102 @@ function calculateTaxes() {
     const stateRate = parseFloat(stateSlider.value) / 100;
     const capitalGainsRate = parseFloat(capitalGainsSlider.value) / 100;
     const showAll = showAllToggle.checked;
-    const ficaRate = 0.0765; // 7.65% FICA (Social Security + Medicare)
-    
-    // Calculate total tax across all grants and vest events
+    const ficaRate = parseFloat(ficaSlider.value) / 100;
+
+    let totalTax = 0;
+    let totalCurrentValue = 0;
+
+    console.debug('calculateTaxes invoked', { federalRate, stateRate, capitalGainsRate, ficaRate, showAll });
+
     document.querySelectorAll('.grant-analysis-card').forEach(card => {
-        const sharesHeldVested = parseFloat(card.dataset.sharesHeldVested);
-        const sharesHeldAll = parseFloat(card.dataset.sharesHeldAll);
-        const costBasisVested = parseFloat(card.dataset.costBasisVested);
-        const costBasisAll = parseFloat(card.dataset.costBasisAll);
-        const currentValueVested = parseFloat(card.dataset.currentValueVested);
-        const currentValueAll = parseFloat(card.dataset.currentValueAll);
-        const unrealizedGainVested = parseFloat(card.dataset.unrealizedGainVested);
-        const unrealizedGainAll = parseFloat(card.dataset.unrealizedGainAll);
-        
+        const sharesHeldVested = parseFloat(card.dataset.sharesHeldVested) || 0;
+        const sharesHeldAll = parseFloat(card.dataset.sharesHeldAll) || 0;
+        const costBasisVested = parseFloat(card.dataset.costBasisVested) || 0;
+        const costBasisAll = parseFloat(card.dataset.costBasisAll) || 0;
+        const currentValueVested = parseFloat(card.dataset.currentValueVested) || 0;
+        const currentValueAll = parseFloat(card.dataset.currentValueAll) || 0;
+        const unrealizedGainVested = parseFloat(card.dataset.unrealizedGainVested) || 0;
+        const unrealizedGainAll = parseFloat(card.dataset.unrealizedGainAll) || 0;
+
+        // Use vested or all depending on toggle
+        const currentValue = showAll ? currentValueAll : currentValueVested;
+        const unrealizedGain = showAll ? unrealizedGainAll : unrealizedGainVested;
+
         let grantTax = 0;
-        let totalTax = 0;
-        let totalCurrentValue = 0;
-        
-        // Calculate per-event taxes
+
+        // Iterate vest events
         card.querySelectorAll('.vest-event-row').forEach(row => {
             const hasVested = row.dataset.hasVested === 'true';
-            
-            // Skip unvested events if showing vested only
-            if (!showAll && !hasVested) return;
-            
-            const eventUnrealizedGain = parseFloat(row.dataset.unrealizedGain);
-            const sharesHeld = parseFloat(row.dataset.sharesHeld);
+            if (!showAll && !hasVested) return; // skip if filtering
+
+            const eventUnrealizedGain = parseFloat(row.dataset.unrealizedGain) || 0;
+            const sharesHeld = parseFloat(row.dataset.sharesHeld) || 0;
             const isLongTerm = row.dataset.isLongTerm === 'true';
             const taxIsEstimated = row.dataset.taxIsEstimated === 'true';
-            
-            // Update "Tax Paid at Vest" for estimated taxes
-            if (taxIsEstimated) {
-                const sharesVested = parseFloat(row.dataset.sharesVested);
-                const currentPrice = parseFloat(row.dataset.currentPrice);
-                
-                // Calculate estimated vest tax using ordinary income rates (federal + state + FICA from slider)
-                const estimatedVestValue = sharesVested * currentPrice;
-                const estimatedVestTax = estimatedVestValue * (federalRate + stateRate + ficaRate);
-                
-                // Update the "Tax Paid at Vest" cell
+
+            console.debug('event', { eventUnrealizedGain, sharesHeld, isLongTerm, taxIsEstimated });
+
+            // Update estimated 'Tax Paid at Vest' for future/estimated rows (if present)
+            if (taxIsEstimated && !hasVested) {
+                const sharesVested = parseFloat(row.dataset.sharesVested) || 0;
+                const currentPrice = parseFloat(row.dataset.currentPrice) || 0;
+
+                // Determine vestValue per grant/row
+                let vestValue = sharesVested * currentPrice;
+                // Update withholding cell if present
                 const taxPaidSpan = row.querySelector('.event-tax-paid .estimated-tax');
                 if (taxPaidSpan) {
+                    const estimatedVestTax = vestValue * (federalRate + stateRate + ficaRate);
                     taxPaidSpan.textContent = '$' + estimatedVestTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '*';
                 }
             }
-            
-            // Calculate withholding tax estimate for future vests (for "Tax Paid at Vest" column)
-            if (taxIsEstimated && !hasVested) {
-                const sharesVested = parseFloat(row.dataset.sharesVested);
-                const currentPrice = parseFloat(row.dataset.currentPrice);
-                const shareType = row.dataset.shareType;
-                const grantType = row.dataset.grantType;
-                const esppDiscount = parseFloat(row.dataset.esppDiscount) || 0;
-                const strikePrice = parseFloat(row.dataset.strikePrice) || 0;
-                
-                let vestValue = 0;
-                
-                // Calculate taxable value at vest based on grant type
-                if (shareType === 'cash') {
-                    // Cash grants: simple USD amount
-                    vestValue = sharesVested;
-                } else if (shareType === 'iso_5y' || shareType === 'iso_6y') {
-                    // ISOs: tax on spread (current_price - strike_price)
-                    const spread = currentPrice - strikePrice;
-                    vestValue = sharesVested * (spread > 0 ? spread : 0);
-                } else if (grantType === 'espp' && esppDiscount > 0) {
-                    // ESPP: tax on discount portion (ordinary income)
-                    const discountGain = sharesVested * currentPrice * esppDiscount;
-                    vestValue = discountGain;
+
+            // Calculate tax on unrealized gain (if positive)
+            let eventTax = 0;
+            if (eventUnrealizedGain > 0) {
+                if (isLongTerm) {
+                    eventTax = eventUnrealizedGain * (capitalGainsRate + stateRate);
                 } else {
-                    // RSUs/RSAs: full value is taxable as ordinary income
-                    vestValue = sharesVested * currentPrice;
-                }
-                
-                // Calculate withholding tax: federal + state + FICA (7.65%)
-                const ficaRate = 0.0765;
-                const estimatedWithholding = vestValue * (federalRate + stateRate + ficaRate);
-                
-                // Update the "Tax Paid at Vest" display
-                const withholdingCell = row.querySelector('.withholding-amount');
-                if (withholdingCell) {
-                    withholdingCell.textContent = estimatedWithholding.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    eventTax = eventUnrealizedGain * (federalRate + stateRate);
                 }
             }
-            
-            let eventTax;
-            // Calculate tax on unrealized gains (if you were to sell now)
-            // Short-term: taxed as ordinary income (federal + state)
-            // Long-term: taxed at capital gains rate + state
-            if (isLongTerm) {
-                eventTax = eventUnrealizedGain * (capitalGainsRate + stateRate);
-            } else {
-                eventTax = eventUnrealizedGain * (federalRate + stateRate);
+
+            console.debug('eventTax computed', { eventTax });
+
+            // Update the event-level Est. Tax cell (data-column="est-tax")
+            const estTaxCell = row.querySelector('td[data-column="est-tax"]');
+            if (estTaxCell) {
+                estTaxCell.textContent = '$' + eventTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
             }
-            
-            // Update the event tax display (tax on sale)
-            const eventTaxCell = row.querySelector('.event-tax-estimate');
-            if (eventTaxCell) {
-                eventTaxCell.textContent = '$' + eventTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            }
-            
-            grantTax += eventTax;
+
+            grantTax += (eventTax > 0 ? eventTax : 0);
         });
-        
-        // Use unrealized gain for grant-level calculation (weighted average)
-        const estimatedTax = unrealizedGain * (capitalGainsRate + stateRate);
-        const netValue = currentValue - estimatedTax;
-        
+
         // Update grant-level displays
-        const taxEstimate = card.querySelector('.grant-tax-estimate');
+        const taxEstimateEl = card.querySelector('.grant-tax-estimate');
         const netValueEl = card.querySelector('.grant-net-value');
-        
-        if (taxEstimate && netValueEl) {
-            taxEstimate.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (taxEstimateEl && netValueEl) {
+            taxEstimateEl.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
             netValueEl.textContent = '$' + (currentValue - grantTax).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            
-            if (netValue > 0) {
+
+            if ((currentValue - grantTax) >= 0) {
                 netValueEl.classList.add('positive');
                 netValueEl.classList.remove('negative');
+            } else {
+                netValueEl.classList.add('negative');
+                netValueEl.classList.remove('positive');
             }
         }
-        
+
         totalTax += grantTax;
         totalCurrentValue += currentValue;
     });
-    
+
     const netAfterTax = totalCurrentValue - totalTax;
-    
-    // Update summary cards
-    document.getElementById('totalTaxLiability').textContent = 
-        '$' + totalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('netAfterTax').textContent = 
-        'Net: $' + netAfterTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}       const netValue = currentValue - estimatedTax;
-        
-        // Update grant-level displays
-        const taxEstimate = card.querySelector('.grant-tax-estimate');
-        const netValueEl = card.querySelector('.grant-net-value');
-        
-        if (taxEstimate && netValueEl) {
-            taxEstimate.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            netValueEl.textContent = '$' + (currentValue - grantTax).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            
-            if (netValue > 0) {
-                netValueEl.classList.add('positive');
-                netValueEl.classList.remove('negative');
-            }
-        }
-        
-        totalTax += grantTax;
-        totalCurrentValue += currentValue;
-    });
-    
-    const netAfterTax = totalCurrentValue - totalTax;
-    
-    // Update summary cards
-    document.getElementById('totalTaxLiability').textContent = 
-        '$' + totalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('netAfterTax').textContent = 
-        'Net: $' + netAfterTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const totalTaxEl = document.getElementById('totalTaxLiability');
+    const netAfterTaxEl = document.getElementById('netAfterTax');
+    if (totalTaxEl) totalTaxEl.textContent = '$' + totalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (netAfterTaxEl) netAfterTaxEl.textContent = 'Net: $' + netAfterTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 // Calculate on page load

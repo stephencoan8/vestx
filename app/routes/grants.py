@@ -355,6 +355,7 @@ def finance_deep_dive():
     total_current_value_all = 0.0
     total_unrealized_gain_vested = 0.0
     total_unrealized_gain_all = 0.0
+    total_estimated_tax = 0.0
 
     # Prepare data for analysis
     analysis_data = []
@@ -492,6 +493,7 @@ def finance_deep_dive():
         total_current_value_all += grant_current_value_all
         total_unrealized_gain_vested += grant_unrealized_gain_vested
         total_unrealized_gain_all += grant_unrealized_gain_all
+        total_estimated_tax += grant_estimated_tax_on_sale
     
     # Debug logging for calculated totals
     logger = logging.getLogger(__name__)
@@ -518,5 +520,6 @@ def finance_deep_dive():
                            total_current_value_all=total_current_value_all,
                            total_unrealized_gain_vested=total_unrealized_gain_vested,
                            total_unrealized_gain_all=total_unrealized_gain_all,
+                           total_estimated_tax=total_estimated_tax,
                            tax_rates=tax_rates,
                            use_manual_rates=use_manual_rates)
