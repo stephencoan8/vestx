@@ -51,6 +51,10 @@ def add_grant():
             
             # Get stock price at grant date from user's encrypted prices
             share_price = 0.0
+            # Debug logging for stock price retrieval
+            import logging
+            logger = logging.getLogger(__name__)
+
             try:
                 from app.models.user_price import UserPrice
                 from app.utils.encryption import decrypt_for_user
@@ -61,8 +65,11 @@ def add_grant():
                 if price_entry:
                     price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
                     share_price = float(price_str)
+                    logger.debug(f"Found price {share_price} for user {current_user.id} on {price_entry.valuation_date}")
+                else:
+                    logger.warning(f"No UserPrice entry found for user {current_user.id} on or before {grant_date}")
             except Exception as price_error:
-                # If no price found or error, default to 0
+                logger.error(f"Error retrieving or decrypting price: {price_error}", exc_info=True)
                 share_price = 0.0
             
             # Get vesting configuration
@@ -300,6 +307,10 @@ def finance_deep_dive():
     
     # Get latest stock price from user's encrypted prices
     latest_stock_price = 0.0
+    # Debug logging for latest stock price retrieval
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         from app.models.user_price import UserPrice
         from app.utils.encryption import decrypt_for_user
@@ -310,7 +321,11 @@ def finance_deep_dive():
         if price_entry:
             price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
             latest_stock_price = float(price_str)
-    except Exception:
+            logger.debug(f"Found latest stock price {latest_stock_price} for user {current_user.id} on {price_entry.valuation_date}")
+        else:
+            logger.warning(f"No UserPrice entry found for user {current_user.id}")
+    except Exception as price_error:
+        logger.error(f"Error retrieving or decrypting latest stock price: {price_error}", exc_info=True)
         latest_stock_price = 0.0
     
     today = date.today()
