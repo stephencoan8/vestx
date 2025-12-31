@@ -115,8 +115,8 @@
             <div class="stat-icon">🧾</div>
             <div class="stat-content">
                 <div class="stat-label">Est. Tax on Sale</div>
-                <div class="stat-value" id="totalTaxLiability">$0.00</div>
-                <small id="netAfterTax">Net: $0.00</small>
+                <div class="stat-value" id="totalTaxLiability">${{ "{:,.2f}".format(total_estimated_tax) }}</div>
+                <small id="netAfterTax">Net: ${{ "{:,.2f}".format(total_current_value_all - total_estimated_tax) }}</small>
             </div>
         </div>
     </div>
