@@ -48,13 +48,28 @@ class VestEvent(db.Model):
     
     @property
     def share_price_at_vest(self) -> float:
-        """Get the stock price at vest date dynamically from stock_prices table."""
-        from app.models.stock_price import StockPrice
-        from app.utils.init_db import get_stock_price_at_date
-        
-        # Get the most recent stock price on or before the vest date
-        price = get_stock_price_at_date(self.vest_date)
-        return price if price else 0.0
+        """Get the stock price at vest date from user's encrypted prices."""
+        try:
+            from app.models.user_price import UserPrice
+            from app.utils.encryption import decrypt_for_user
+            from flask_login import current_user
+            
+            # Get the grant's user_id
+            user_id = self.grant.user_id
+            
+            # Get the most recent price on or before the vest date
+            price_entry = UserPrice.query.filter_by(user_id=user_id).filter(
+                UserPrice.valuation_date <= self.vest_date
+            ).order_by(UserPrice.valuation_date.desc()).first()
+            
+            if price_entry and current_user.is_authenticated:
+                user_key = current_user.get_decrypted_user_key()
+                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+                return float(price_str)
+            
+            return 0.0
+        except Exception:
+            return 0.0
     
     @property
     def value_at_vest(self) -> float:
