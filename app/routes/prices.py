@@ -76,4 +76,60 @@ def delete_price(price_id):
     db.session.delete(p)
     db.session.commit()
     AuditLogger.log_security_event('USER_PRICE_DELETED', {'user_id': current_user.id, 'price_id': price_id})
-    return jsonify({'success': True})
+    flash('Price deleted successfully!', 'success')
+    return redirect(url_for('prices.list_prices'))
+
+
+@prices_bp.route('/<int:price_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_price(price_id):
+    """Edit an existing price entry."""
+    from datetime import datetime
+    p = UserPrice.query.filter_by(id=price_id, user_id=current_user.id).first_or_404()
+    
+    if request.method == 'GET':
+        user_key = current_user.get_decrypted_user_key()
+        try:
+            price_str = decrypt_for_user(user_key, p.encrypted_price)
+            price_val = float(price_str)
+        except Exception:
+            price_val = None
+        return render_template('prices/edit.html', price=p, decrypted_price=price_val)
+    
+    # Handle form or JSON POST
+    if request.is_json:
+        data = request.get_json() or {}
+        date_str = data.get('date')
+        price_val = data.get('price')
+    else:
+        date_str = request.form.get('date')
+        price_val = request.form.get('price')
+    
+    if not date_str or price_val is None:
+        if request.is_json:
+            return jsonify({'error': 'date and price required'}), 400
+        flash('Date and price are required.', 'danger')
+        return redirect(url_for('prices.edit_price', price_id=price_id))
+    
+    try:
+        valuation_date = datetime.fromisoformat(date_str).date()
+        price_float = float(price_val)
+    except Exception:
+        if request.is_json:
+            return jsonify({'error': 'invalid date or price'}), 400
+        flash('Invalid date or price.', 'danger')
+        return redirect(url_for('prices.edit_price', price_id=price_id))
+    
+    user_key = current_user.get_decrypted_user_key()
+    token = encrypt_for_user(user_key, str(price_float))
+    
+    p.valuation_date = valuation_date
+    p.encrypted_price = token
+    db.session.commit()
+    
+    AuditLogger.log_security_event('USER_PRICE_UPDATED', {'user_id': current_user.id, 'price_id': p.id, 'date': p.valuation_date.isoformat()})
+    
+    if request.is_json:
+        return jsonify({'id': p.id, 'date': p.valuation_date.isoformat(), 'price': price_float}), 200
+    flash('Price updated successfully!', 'success')
+    return redirect(url_for('prices.list_prices'))

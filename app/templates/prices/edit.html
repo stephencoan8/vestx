@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Edit Price - VestX{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="card-title mb-3">Edit Stock Price Entry</h3>
+                    <p class="text-muted mb-4">Update the date and price for this entry. Your data remains encrypted and private.</p>
+                    <form method="post" action="{{ url_for('prices.edit_price', price_id=price.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label for="date" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="date" name="date" value="{{ price.valuation_date.strftime('%Y-%m-%d') }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="price" class="form-label">Price (USD)</label>
+                            <input type="number" step="0.01" class="form-control" id="price" name="price" value="{{ decrypted_price }}" required>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <button type="submit" class="btn btn-primary">Update Price</button>
+                            <a href="{{ url_for('prices.list_prices') }}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
