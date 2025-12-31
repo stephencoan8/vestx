@@ -298,8 +298,21 @@ def finance_deep_dive():
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
-    # Get latest stock price for current value estimation
-    latest_stock_price = 0.0  # Placeholder, update with per-user price logic if needed
+    # Get latest stock price from user's encrypted prices
+    latest_stock_price = 0.0
+    try:
+        from app.models.user_price import UserPrice
+        from app.utils.encryption import decrypt_for_user
+        user_key = current_user.get_decrypted_user_key()
+        price_entry = UserPrice.query.filter_by(user_id=current_user.id).order_by(
+            UserPrice.valuation_date.desc()
+        ).first()
+        if price_entry:
+            price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
+            latest_stock_price = float(price_str)
+    except Exception:
+        latest_stock_price = 0.0
+    
     today = date.today()
     
     # Initialize totals
