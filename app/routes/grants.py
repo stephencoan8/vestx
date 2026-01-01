@@ -203,8 +203,13 @@ def edit_grant(grant_id):
                 # Default 15% for ESPP, 0% for others
                 espp_discount = 0.15 if grant_type == 'espp' else 0.0
             
-            # Get stock price at grant date
-            share_price = 0  # Placeholder, update with per-user price logic if needed
+            # Get stock price at grant date using centralized per-user price helper
+            try:
+                share_price = get_latest_user_price(current_user.id, as_of_date=grant_date) or 0.0
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Failed to retrieve user price for edit_grant; defaulting to 0.0")
+                share_price = 0.0
             
             # Get vesting configuration
             if vest_years:
@@ -271,13 +276,29 @@ def update_vest_event(event_id):
         logger.debug(f"update_vest_event called for event_id={event_id} form={dict(request.form)}")
 
         # New simplified tax fields (defensive parsing)
+        def _parse_numeric(val):
+            """Parse a numeric form input tolerant of common formats like "$1,234.56".
+
+            Returns a float or raises ValueError on invalid input.
+            """
+            if val is None:
+                return 0.0
+            if isinstance(val, (int, float)):
+                return float(val)
+            s = str(val).strip()
+            if s == '':
+                return 0.0
+            # Remove common thousands separators and currency symbols
+            s = s.replace(',', '').replace('$', '')
+            return float(s)
+
         try:
-            cash_paid = float(request.form.get('cash_paid', 0) or 0)
+            cash_paid = _parse_numeric(request.form.get('cash_paid', 0) or 0)
         except ValueError:
             return jsonify({'error': 'Invalid cash_paid value'}), 400
-        cash_covered_all = request.form.get('cash_covered_all', 'true').lower() == 'true'
+        cash_covered_all = str(request.form.get('cash_covered_all', 'true')).lower() == 'true'
         try:
-            shares_sold = float(request.form.get('shares_sold', 0) or 0)
+            shares_sold = _parse_numeric(request.form.get('shares_sold', 0) or 0)
         except ValueError:
             return jsonify({'error': 'Invalid shares_sold value'}), 400
         
