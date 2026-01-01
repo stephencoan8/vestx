@@ -171,12 +171,19 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
         const netValueCell = row.querySelector('.net-value');
         const statusCell = row.querySelector('.status-cell');
         
-        const cashPaid = cashPaidInput.value || 0;
+        const cashPaidRaw = cashPaidInput.value || '';
+        const sharesSoldRaw = sharesSoldInput.value || '';
+
+        // Sanitize numeric inputs (remove commas, trim)
+        const cashPaidSanitized = cashPaidRaw.toString().replace(/,/g, '').trim() || '0';
+        const sharesSoldSanitized = sharesSoldRaw.toString().replace(/,/g, '').trim() || '0';
+
+        const cashPaid = cashPaidSanitized;
         const cashCoveredAll = cashCoveredSelect.value === 'yes';
-        const sharesSold = sharesSoldInput.value || 0;
-        
+        const sharesSold = sharesSoldSanitized;
+
         console.log('Saving vest event:', vestId, 'Cash:', cashPaid, 'Covered:', cashCoveredAll, 'Sold:', sharesSold);
-        
+
         const formData = new FormData();
         formData.append('cash_paid', cashPaid);
         formData.append('cash_covered_all', cashCoveredAll ? 'true' : 'false');
