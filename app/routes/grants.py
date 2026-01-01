@@ -277,20 +277,32 @@ def update_vest_event(event_id):
 
         # New simplified tax fields (defensive parsing)
         def _parse_numeric(val):
-            """Parse a numeric form input tolerant of common formats like "$1,234.56".
+             """Parse a numeric form input tolerant of common formats like "$1,234.56".
 
-            Returns a float or raises ValueError on invalid input.
-            """
-            if val is None:
-                return 0.0
-            if isinstance(val, (int, float)):
-                return float(val)
-            s = str(val).strip()
-            if s == '':
-                return 0.0
-            # Remove common thousands separators and currency symbols
-            s = s.replace(',', '').replace('$', '')
-            return float(s)
+             Returns a float or raises ValueError on invalid input.
+             """
+             if val is None:
+                 return 0.0
+             if isinstance(val, (int, float)):
+                 return float(val)
+             s = str(val).strip()
+             if s == '':
+                 return 0.0
+             # Remove common thousands separators and currency symbols
+             s_clean = s.replace(',', '').replace('$', '').replace('(', '-').replace(')', '')
+             # Allow locale variants by extracting the first numeric-looking substring
+             import re
+             m = re.search(r"[-+]?[0-9]*\.?[0-9]+", s_clean)
+             if m:
+                 try:
+                     return float(m.group(0))
+                 except ValueError:
+                     pass
+
+             # As a last resort, log and coerce to 0.0 rather than raising
+             import logging
+             logging.getLogger(__name__).warning("_parse_numeric: could not parse numeric value '%s' - coercing to 0.0", s)
+             return 0.0
 
         try:
             cash_paid = _parse_numeric(request.form.get('cash_paid', 0) or 0)
