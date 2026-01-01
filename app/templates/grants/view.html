@@ -174,9 +174,16 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
         const cashPaidRaw = cashPaidInput.value || '';
         const sharesSoldRaw = sharesSoldInput.value || '';
 
-        // Sanitize numeric inputs (remove commas, trim)
-        const cashPaidSanitized = cashPaidRaw.toString().replace(/,/g, '').trim() || '0';
-        const sharesSoldSanitized = sharesSoldRaw.toString().replace(/,/g, '').trim() || '0';
+        // Sanitize numeric inputs (remove commas, dollar signs, parentheses, etc.)
+        const sanitizeNumber = (raw) => {
+            if (!raw) return '0';
+            // Remove common formatting characters, keep digits, dot, minus
+            const cleaned = raw.toString().replace(/[^0-9.\-]/g, '').trim();
+            return cleaned === '' ? '0' : cleaned;
+        };
+
+        const cashPaidSanitized = sanitizeNumber(cashPaidRaw);
+        const sharesSoldSanitized = sanitizeNumber(sharesSoldRaw);
 
         const cashPaid = cashPaidSanitized;
         const cashCoveredAll = cashCoveredSelect.value === 'yes';
