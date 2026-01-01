@@ -142,6 +142,9 @@
 </div>
 
 <script>
+// CSRF token for AJAX requests
+const VESTX_CSRF_TOKEN = '{{ csrf_token() }}';
+
 // Handle "Fully Covered?" dropdown changes  
 document.querySelectorAll('.cash-covered-select').forEach(select => {
     select.addEventListener('change', function() {
@@ -192,6 +195,7 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
         console.log('Saving vest event:', vestId, 'Cash:', cashPaid, 'Covered:', cashCoveredAll, 'Sold:', sharesSold);
 
         const formData = new FormData();
+        formData.append('csrf_token', VESTX_CSRF_TOKEN);
         formData.append('cash_paid', cashPaid);
         formData.append('cash_covered_all', cashCoveredAll ? 'true' : 'false');
         formData.append('shares_sold', sharesSold);
@@ -202,7 +206,10 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 
             const response = await fetch(`/grants/vest-event/${vestId}/update`, {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: {
+                    'X-CSRFToken': VESTX_CSRF_TOKEN
+                }
             });
 
             // Always attempt to read JSON body for helpful error messages
