@@ -185,27 +185,37 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
         try {
             btn.textContent = 'Saving...';
             btn.disabled = true;
-            
+
             const response = await fetch(`/grants/vest-event/${vestId}/update`, {
                 method: 'POST',
                 body: formData
             });
-            
-            if (!response.ok) {
+
+            // Always attempt to read JSON body for helpful error messages
+            let data;
+            try {
+                data = await response.json();
+            } catch (e) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
-            const data = await response.json();
+
+            if (!response.ok) {
+                const errMsg = data.error || data.message || (`HTTP ${response.status}`);
+                // Include trace if available for debugging
+                const detail = data.trace ? `\n${data.trace}` : '';
+                throw new Error(errMsg + detail);
+            }
+
             console.log('Server response:', data);
-            
+
             if (data.success) {
                 // Update inputs with saved values
                 if (data.cash_paid !== undefined) {
                     cashPaidInput.value = parseFloat(data.cash_paid) > 0 ? parseFloat(data.cash_paid).toFixed(2) : '';
                 }
-                
+
                 cashCoveredSelect.value = data.cash_covered_all ? 'yes' : 'no';
-                
+
                 if (data.cash_covered_all) {
                     sharesSoldInput.disabled = true;
                     sharesSoldInput.value = '';
@@ -215,26 +225,26 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
                         sharesSoldInput.value = parseFloat(data.shares_sold).toFixed(0);
                     }
                 }
-                
+
                 // Update calculated fields
                 if (data.shares_received !== undefined) {
                     sharesReceivedCell.textContent = parseFloat(data.shares_received).toLocaleString('en-US', {maximumFractionDigits: 0});
                 }
-                
+
                 if (data.net_value !== undefined) {
                     netValueCell.textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 }
-                
+
                 // Update status to "Vested" if tax info was provided
                 if (parseFloat(cashPaid) > 0 || parseFloat(sharesSold) > 0) {
                     statusCell.innerHTML = '<span class="badge badge-success">✓ Vested</span>';
                 }
-                
+
                 // Show success
                 btn.textContent = '✓ Saved';
                 btn.classList.add('btn-success');
                 row.classList.add('vest-row-saved');
-                
+
                 setTimeout(() => {
                     btn.textContent = 'Save';
                     btn.classList.remove('btn-success');
@@ -242,13 +252,14 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
                     row.classList.remove('vest-row-saved');
                 }, 2000);
             } else {
-                alert('Error saving: ' + (data.error || 'Unknown error'));
+                alert('Error saving: ' + (data.error || data.message || 'Unknown error'));
                 btn.textContent = 'Save';
                 btn.disabled = false;
             }
         } catch (error) {
             console.error('Save error:', error);
-            alert('Error saving vest event: ' + error.message);
+            // Show the detailed error message if available
+            alert('Error saving vest event: ' + (error.message || error));
             btn.textContent = 'Save';
             btn.disabled = false;
         }
