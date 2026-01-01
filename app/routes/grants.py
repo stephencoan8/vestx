@@ -265,18 +265,46 @@ def update_vest_event(event_id):
         return jsonify({'error': 'Access denied'}), 403
     
     try:
-        # New simplified tax fields
-        cash_paid = float(request.form.get('cash_paid', 0) or 0)
+        # Log incoming form for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"update_vest_event called for event_id={event_id} form={dict(request.form)}")
+
+        # New simplified tax fields (defensive parsing)
+        try:
+            cash_paid = float(request.form.get('cash_paid', 0) or 0)
+        except ValueError:
+            return jsonify({'error': 'Invalid cash_paid value'}), 400
         cash_covered_all = request.form.get('cash_covered_all', 'true').lower() == 'true'
-        shares_sold = float(request.form.get('shares_sold', 0) or 0)
+        try:
+            shares_sold = float(request.form.get('shares_sold', 0) or 0)
+        except ValueError:
+            return jsonify({'error': 'Invalid shares_sold value'}), 400
+        
+        # Validate non-negative
+        if cash_paid < 0 or shares_sold < 0:
+            return jsonify({'error': 'Values must be non-negative'}), 400
+
+        # Cap shares_sold to available shares_vested
+        if shares_sold > vest_event.shares_vested:
+            logger.warning(f"shares_sold ({shares_sold}) > shares_vested ({vest_event.shares_vested}) for event {event_id}; capping")
+            shares_sold = vest_event.shares_vested
         
         # Update vest event with new fields
         vest_event.cash_paid = cash_paid
         vest_event.cash_covered_all = cash_covered_all
-        vest_event.shares_sold = shares_sold if not cash_covered_all else 0
+        vest_event.shares_sold = 0.0 if cash_covered_all else shares_sold
         
         # Commit to database
+        db.session.add(vest_event)
         db.session.commit()
+        
+        # Compute derived values to return
+        tax_withheld = vest_event.tax_withheld
+        shares_received = vest_event.shares_received
+        net_value = vest_event.net_value
+        
+        logger.debug(f"Updated vest_event {event_id}: cash_paid={cash_paid}, cash_covered_all={cash_covered_all}, shares_sold={shares_sold}, tax_withheld={tax_withheld}, shares_received={shares_received}, net_value={net_value}")
         
         # Return calculated values
         return jsonify({
@@ -285,16 +313,19 @@ def update_vest_event(event_id):
             'cash_paid': vest_event.cash_paid,
             'cash_covered_all': vest_event.cash_covered_all,
             'shares_sold': vest_event.shares_sold,
-            'shares_received': vest_event.shares_received,
-            'net_value': vest_event.net_value
+            'shares_received': shares_received,
+            'tax_withheld': tax_withheld,
+            'net_value': net_value
         })
     
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR: Failed to update vest event: {str(e)}")
         import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        logger = logging.getLogger(__name__)
+        logger.error(f"ERROR: Failed to update vest event {event_id}: {e}", exc_info=True)
+        tb = traceback.format_exc()
+        # Return error detail for debugging (remove in production)
+        return jsonify({'error': str(e), 'trace': tb}), 500
 
 
 @grants_bp.route('/schedule')
