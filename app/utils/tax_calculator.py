@@ -56,7 +56,7 @@ class TaxCalculator:
         social_security_tax = self._calculate_social_security(vest_value)
         
         # Medicare Tax (1.45% on all wages)
-        medicare_tax = vest_value * MEDICARE_rate
+        medicare_tax = vest_value * MEDICARE_RATE
         
         # Additional Medicare Tax (0.9% over threshold)
         additional_medicare_tax = self._calculate_additional_medicare(vest_value)
