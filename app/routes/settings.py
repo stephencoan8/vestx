@@ -18,7 +18,11 @@ def tax_settings():
     # Get or create tax profile
     tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
     if not tax_profile:
-        tax_profile = UserTaxProfile(user_id=current_user.id)
+        tax_profile = UserTaxProfile(
+            user_id=current_user.id,
+            filing_status='single',
+            use_manual_rates=False
+        )
         db.session.add(tax_profile)
         db.session.commit()
     
