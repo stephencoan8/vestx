@@ -239,23 +239,26 @@ class VestEvent(db.Model):
             }
     
     def estimate_tax_withholding(self, current_stock_price: float = None, 
-                                 federal_rate: float = 0.22, 
-                                 state_rate: float = 0.093, 
-                                 fica_rate: float = 0.0765) -> dict:
+                                 federal_rate: float = None, 
+                                 state_rate: float = None, 
+                                 fica_rate: float = None) -> dict:
         """
         Estimate tax withholding for future vesting events.
+        Uses comprehensive tax calculator for accurate FICA calculations.
         Returns dict with estimated_tax, is_estimated flag.
         
-        For unvested events: calculates based on current/projected stock price and custom tax rates
+        For unvested events: calculates based on current/projected stock price and tax profile
         For vested events: returns actual tax_withheld
         
         Args:
             current_stock_price: Stock price to use for estimation (defaults to latest)
-            federal_rate: Federal tax rate (default 22%)
-            state_rate: State tax rate (default 9.3% for CA)
-            fica_rate: FICA tax rate (default 7.65%)
+            federal_rate: Federal tax rate (optional - will use tax profile if not provided)
+            state_rate: State tax rate (optional - will use tax profile if not provided)
+            fica_rate: DEPRECATED - now calculated accurately using TaxCalculator
         """
         from app.models.grant import ShareType, GrantType
+        from app.models.tax_rate import UserTaxProfile
+        from app.utils.tax_calculator import TaxCalculator
         
         # If already vested, return actual taxes paid
         if self.has_vested:
@@ -267,7 +270,75 @@ class VestEvent(db.Model):
         
         # For future vests, estimate based on current price
         if current_stock_price is None:
-            from app.utils.init_db import get_latest_stock_price
+            from app.utils.price_utils import get_latest_user_price
+            current_stock_price = get_latest_user_price(self.grant.user_id) or 0.0
+        
+        # Get user's tax profile for accurate calculation
+        tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+        
+        # Calculate vest value based on grant type
+        if self.grant.share_type == ShareType.CASH.value:
+            vest_value = self.shares_vested
+        elif self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            # ISOs: tax on spread (current_price - strike_price)
+            spread = current_stock_price - self.grant.share_price_at_grant
+            vest_value = self.shares_vested * spread if spread > 0 else 0.0
+        elif self.grant.grant_type == GrantType.ESPP.value and self.grant.espp_discount:
+            # ESPP: tax on discount portion (ordinary income)
+            discount_gain = self.shares_vested * current_stock_price * self.grant.espp_discount
+            vest_value = discount_gain
+        else:
+            # RSUs/RSAs: full value is taxable as ordinary income
+            vest_value = self.shares_vested * current_stock_price
+        
+        # If we have a tax profile, use comprehensive calculator
+        if tax_profile and tax_profile.annual_income:
+            try:
+                # Get tax rates for this year
+                rates = tax_profile.get_tax_rates(tax_year=self.vest_date.year)
+                
+                # Use TaxCalculator for accurate FICA calculation
+                calculator = TaxCalculator(
+                    annual_income=tax_profile.annual_income,
+                    filing_status=tax_profile.filing_status or 'single',
+                    state=tax_profile.state
+                )
+                # Set YTD wages if available (for SS wage base limit)
+                calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
+                
+                # Calculate comprehensive taxes
+                breakdown = calculator.calculate_vest_taxes(
+                    vest_value=vest_value,
+                    federal_rate=rates['federal'],
+                    state_rate=rates['state']
+                )
+                
+                return {
+                    'tax_amount': breakdown['total_tax'],
+                    'is_estimated': True,
+                    'tax_rate': breakdown['effective_rate']
+                }
+            except Exception:
+                # Fall back to simple calculation if comprehensive fails
+                pass
+        
+        # Fallback: simple calculation if no tax profile
+        # Use provided rates or defaults
+        if federal_rate is None:
+            federal_rate = 0.22
+        if state_rate is None:
+            state_rate = 0.093
+        if fica_rate is None:
+            fica_rate = 0.0765
+        
+        estimated_rate = federal_rate + state_rate + fica_rate
+        estimated_tax = vest_value * estimated_rate
+        
+        return {
+            'tax_amount': estimated_tax,
+            'is_estimated': True,
+            'tax_rate': estimated_rate
+        }
             current_stock_price = get_latest_stock_price() or 0.0
         
         # Cash grants - simple percentage
