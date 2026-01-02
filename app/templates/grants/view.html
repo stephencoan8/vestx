@@ -84,9 +84,11 @@
                             <th>Vest Date</th>
                             <th>Shares</th>
                             <th>Value at Vest</th>
+                            {% if grant.grant_type not in ['espp', 'nqespp'] %}
                             <th>Cash Paid</th>
                             <th>Fully Covered?</th>
                             <th>Shares Sold</th>
+                            {% endif %}
                             <th>Shares Received</th>
                             <th>Net Value</th>
                             <th>Status</th>
@@ -99,6 +101,7 @@
                             <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
                             <td class="shares-vesting">{{ "{:,.0f}".format(vest.shares_vested) }}</td>
                             <td class="vest-value">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
+                            {% if grant.grant_type not in ['espp', 'nqespp'] %}
                             <td>
                                 <input type="number" class="cash-paid-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
@@ -116,6 +119,7 @@
                                        step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
                                        {% if vest.cash_covered_all %}disabled{% endif %}>
                             </td>
+                            {% endif %}
                             <td class="shares-received highlight">{{ "{:,.0f}".format(vest.shares_received) }}</td>
                             <td class="net-value">${{ "{:,.2f}".format(vest.net_value) }}</td>
                             <td class="status-cell">

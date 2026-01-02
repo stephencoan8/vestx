@@ -304,19 +304,29 @@ def update_vest_event(event_id):
              logging.getLogger(__name__).warning("_parse_numeric: could not parse numeric value '%s' - coercing to 0.0", s)
              return 0.0
 
-        try:
-            cash_paid = _parse_numeric(request.form.get('cash_paid', 0) or 0)
-        except ValueError:
-            return jsonify({'error': 'Invalid cash_paid value'}), 400
-        cash_covered_all = str(request.form.get('cash_covered_all', 'true')).lower() == 'true'
-        try:
-            shares_sold = _parse_numeric(request.form.get('shares_sold', 0) or 0)
-        except ValueError:
-            return jsonify({'error': 'Invalid shares_sold value'}), 400
+        # For ESPP and nqESPP, taxes are already handled prior to receipt
+        # So we automatically set cash_paid to 0 and skip validation
+        grant = vest_event.grant
+        is_espp_type = grant.grant_type in ['espp', 'nqespp']
         
-        # Validate non-negative
-        if cash_paid < 0 or shares_sold < 0:
-            return jsonify({'error': 'Values must be non-negative'}), 400
+        if is_espp_type:
+            cash_paid = 0.0
+            cash_covered_all = True
+            shares_sold = 0.0
+        else:
+            try:
+                cash_paid = _parse_numeric(request.form.get('cash_paid', 0) or 0)
+            except ValueError:
+                return jsonify({'error': 'Invalid cash_paid value'}), 400
+            cash_covered_all = str(request.form.get('cash_covered_all', 'true')).lower() == 'true'
+            try:
+                shares_sold = _parse_numeric(request.form.get('shares_sold', 0) or 0)
+            except ValueError:
+                return jsonify({'error': 'Invalid shares_sold value'}), 400
+            
+            # Validate non-negative
+            if cash_paid < 0 or shares_sold < 0:
+                return jsonify({'error': 'Values must be non-negative'}), 400
 
         # Cap shares_sold to available shares_vested
         if shares_sold > vest_event.shares_vested:
