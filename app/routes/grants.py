@@ -120,7 +120,8 @@ def add_grant():
                 vest_event = VestEvent(
                     grant_id=grant.id,
                     vest_date=vest['vest_date'],
-                    shares_vested=vest['shares']
+                    shares_vested=vest['shares'],
+                    tax_year=vest['vest_date'].year
                 )
                 db.session.add(vest_event)
             
@@ -240,7 +241,8 @@ def edit_grant(grant_id):
                 vest_event = VestEvent(
                     grant_id=grant.id,
                     vest_date=vest['vest_date'],
-                    shares_vested=vest['shares']
+                    shares_vested=vest['shares'],
+                    tax_year=vest['vest_date'].year
                 )
                 db.session.add(vest_event)
             

@@ -27,6 +27,7 @@ class VestEvent(db.Model):
     cash_paid = db.Column(db.Float, default=0.0)  # Cash paid towards taxes
     cash_covered_all = db.Column(db.Boolean, default=True)  # Did cash cover all taxes?
     shares_sold = db.Column(db.Float, default=0.0)  # Shares sold to cover remaining taxes
+    tax_year = db.Column(db.Integer, nullable=True)  # Tax year for historical rate tracking
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -153,6 +154,7 @@ class VestEvent(db.Model):
         """
         Get detailed tax breakdown including FICA, Medicare, Social Security.
         Uses user's tax profile for accurate calculations.
+        Uses stored tax_year if available, otherwise defaults to vest year.
         """
         try:
             from app.models.tax_rate import UserTaxProfile
@@ -169,8 +171,11 @@ class VestEvent(db.Model):
                     'net_value': self.net_value
                 }
             
-            # Get federal and state rates
-            rates = tax_profile.get_tax_rates()
+            # Determine tax year: use stored tax_year, or default to vest year
+            tax_year = self.tax_year or self.vest_date.year
+            
+            # Get federal and state rates for the specific tax year
+            rates = tax_profile.get_tax_rates(tax_year=tax_year)
             
             # Ensure filing_status has a default value
             filing_status = tax_profile.filing_status or 'single'
@@ -191,6 +196,7 @@ class VestEvent(db.Model):
             )
             
             breakdown['has_breakdown'] = True
+            breakdown['tax_year'] = tax_year
             return breakdown
             
         except Exception as e:

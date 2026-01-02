@@ -117,6 +117,7 @@ def run_migration():
     """Run database migration to add ytd_wages and populate tax brackets."""
     from sqlalchemy import text
     from app.models.tax_rate import TaxBracket
+    from app.models.vest_event import VestEvent
     
     try:
         # Add ytd_wages column
@@ -136,6 +137,30 @@ def run_migration():
             flash('✓ Added ytd_wages column', 'success')
         else:
             flash('✓ ytd_wages column already exists', 'info')
+        
+        # Add tax_year column to vest_events
+        result = db.session.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='vest_events' 
+            AND column_name='tax_year'
+        """))
+        
+        if result.fetchone() is None:
+            db.session.execute(text("""
+                ALTER TABLE vest_events 
+                ADD COLUMN tax_year INTEGER
+            """))
+            # Update existing records to use vest_date year
+            db.session.execute(text("""
+                UPDATE vest_events 
+                SET tax_year = EXTRACT(YEAR FROM vest_date)
+                WHERE tax_year IS NULL
+            """))
+            db.session.commit()
+            flash('✓ Added tax_year column to vest_events', 'success')
+        else:
+            flash('✓ tax_year column already exists', 'info')
         
         # Populate tax brackets
         existing = TaxBracket.query.filter_by(tax_year=2025).count()

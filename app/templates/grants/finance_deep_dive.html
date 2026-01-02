@@ -352,10 +352,11 @@
                         <!-- Tax Breakdown Row (Hidden by default) -->
                         {% if ve_data.has_vested and ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
                         <tr class="tax-breakdown-row" style="display: none;">
-                            <td colspan="9" style="background: #f8f9fa; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
+                            <td colspan="9" style="background: #e8e8e8; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
                                 <div style="max-width: 800px;">
                                     <h4 style="margin-top: 0; color: var(--primary-color); display: flex; align-items: center; gap: 0.5rem;">
                                         💰 Detailed Tax Breakdown for {{ ve.vest_date.strftime('%b %d, %Y') }}
+                                        <span style="font-size: 0.75em; font-weight: normal; color: #666;">({{ ve_data.tax_breakdown.tax_year }} Tax Rates)</span>
                                     </h4>
                                     
                                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
