@@ -19,6 +19,7 @@
                     <th data-sort="number">Shares Vesting</th>
                     <th data-sort="number">Price at Vest</th>
                     <th data-sort="number">Gross Value</th>
+                    <th data-sort="number">Est. Tax</th>
                     <th data-sort="number">Shares Received</th>
                     <th data-sort="number">Net Value</th>
                     <th data-sort="text">Status</th>
@@ -33,6 +34,13 @@
                     <td>{{ "{:,.2f}".format(vest.shares_vested) }}</td>
                     <td>${{ "{:,.2f}".format(vest.share_price_at_vest or 0) }}</td>
                     <td>${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
+                    <td>
+                        {% if vest.has_vested %}
+                            <span style="color: #333;">${{ "{:,.2f}".format(vest.tax_withheld) }}</span>
+                        {% else %}
+                            <span style="color: #f57c00;">${{ "{:,.2f}".format(vest.tax_withheld) }}*</span>
+                        {% endif %}
+                    </td>
                     <td class="highlight">{{ "{:,.2f}".format(vest.shares_received) }}</td>
                     <td class="highlight">${{ "{:,.2f}".format(vest.net_value) }}</td>
                     <td>
@@ -46,6 +54,10 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+    
+    <div style="margin-top: 1rem; padding: 0.75rem; background: #fff3cd; border-left: 4px solid #f57c00; border-radius: 4px;">
+        <strong>📝 Note:</strong> Taxes marked with an asterisk (*) are <em>estimated</em> for future vesting events based on your current tax profile and latest stock price. Actual taxes may vary.
     </div>
     {% else %}
     <div class="empty-state-large">
