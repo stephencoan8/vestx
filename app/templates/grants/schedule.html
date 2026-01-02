@@ -35,18 +35,6 @@
                     <td>{{ "{:,.2f}".format(vest.shares_vested) }}</td>
                     <td>${{ "{:,.2f}".format(vest.share_price_at_vest or 0) }}</td>
                     <td>${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
-                    <td>
-                        <span class="badge {% if vest.payment_method == 'cash_to_cover' %}badge-success{% else %}badge-pending{% endif %}">
-                            {{ vest.payment_method.replace('_', ' ').title() }}
-                        </span>
-                    </td>
-                    <td>
-                        {% if vest.payment_method == 'cash_to_cover' %}
-                            ${{ "{:,.2f}".format(vest.cash_to_cover) }}
-                        {% else %}
-                            {{ "{:,.2f}".format(vest.shares_sold_to_cover) }} shares
-                        {% endif %}
-                    </td>
                     <td class="highlight">{{ "{:,.2f}".format(vest.shares_received) }}</td>
                     <td class="highlight">${{ "{:,.2f}".format(vest.net_value) }}</td>
                     <td>

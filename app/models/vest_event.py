@@ -28,15 +28,6 @@ class VestEvent(db.Model):
     cash_covered_all = db.Column(db.Boolean, default=True)  # Did cash cover all taxes?
     shares_sold = db.Column(db.Float, default=0.0)  # Shares sold to cover remaining taxes
     
-    # Legacy fields (kept for backward compatibility)
-    payment_method = db.Column(db.String(20), default='sell_to_cover')
-    cash_to_cover = db.Column(db.Float, default=0.0)
-    shares_sold_to_cover = db.Column(db.Float, default=0.0)
-    
-    # Status
-    is_vested = db.Column(db.Boolean, default=False)
-    vested_at = db.Column(db.DateTime, nullable=True)
-    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def __repr__(self) -> str:
@@ -45,19 +36,11 @@ class VestEvent(db.Model):
     @property
     def has_vested(self) -> bool:
         """Check if vest date has passed (based on today's date)."""
-        import logging
-        logger = logging.getLogger(__name__)
-        
         vest_date = self.vest_date
-        today = date.today()
-        
         # Handle both datetime and date objects
         if isinstance(vest_date, datetime):
             vest_date = vest_date.date()
-        
-        result = vest_date <= today
-        logger.debug(f"VestEvent {self.id}: vest_date={vest_date}, today={today}, has_vested={result}")
-        return result
+        return vest_date <= date.today()
     
     @property
     def share_price_at_vest(self) -> float:
