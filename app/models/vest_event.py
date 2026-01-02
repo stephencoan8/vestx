@@ -339,38 +339,3 @@ class VestEvent(db.Model):
             'is_estimated': True,
             'tax_rate': estimated_rate
         }
-            current_stock_price = get_latest_stock_price() or 0.0
-        
-        # Cash grants - simple percentage
-        if self.grant.share_type == ShareType.CASH.value:
-            # Use custom tax rates
-            estimated_rate = federal_rate + state_rate + fica_rate
-            estimated_tax = self.shares_vested * estimated_rate
-            return {
-                'tax_amount': estimated_tax,
-                'is_estimated': True,
-                'tax_rate': estimated_rate
-            }
-        
-        # Stock grants - calculate based on value at vest
-        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            # ISOs: tax on spread (current_price - strike_price)
-            spread = current_stock_price - self.grant.share_price_at_grant
-            vest_value = self.shares_vested * spread if spread > 0 else 0.0
-        elif self.grant.grant_type == GrantType.ESPP.value and self.grant.espp_discount:
-            # ESPP: tax on discount portion (ordinary income)
-            discount_gain = self.shares_vested * current_stock_price * self.grant.espp_discount
-            vest_value = discount_gain
-        else:
-            # RSUs/RSAs: full value is taxable as ordinary income
-            vest_value = self.shares_vested * current_stock_price
-        
-        # Calculate tax using custom rates
-        estimated_rate = federal_rate + state_rate + fica_rate
-        estimated_tax = vest_value * estimated_rate
-        
-        return {
-            'tax_amount': estimated_tax,
-            'is_estimated': True,
-            'tax_rate': estimated_rate
-        }
