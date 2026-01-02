@@ -181,8 +181,7 @@ class VestEvent(db.Model):
                 filing_status=filing_status,
                 state=tax_profile.state
             )
-            # ytd_wages temporarily disabled until migration runs
-            # calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
+            calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
             
             # Calculate comprehensive taxes
             breakdown = calculator.calculate_vest_taxes(

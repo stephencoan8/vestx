@@ -46,7 +46,7 @@ class UserTaxProfile(db.Model):
     state = db.Column(db.String(2), nullable=True)  # State abbreviation (e.g., 'CA', 'TX')
     filing_status = db.Column(db.String(20), default='single')  # 'single', 'married_joint', etc.
     annual_income = db.Column(db.Float, nullable=True)  # Total annual income
-    # ytd_wages = db.Column(db.Float, default=0.0)  # Year-to-date wages for Social Security calculation (commented out until migration runs)
+    ytd_wages = db.Column(db.Float, default=0.0)  # Year-to-date wages for Social Security calculation
     
     # Manual override option
     use_manual_rates = db.Column(db.Boolean, default=False)

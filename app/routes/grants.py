@@ -463,6 +463,9 @@ def finance_deep_dive():
             # Calculate estimated or actual taxes
             tax_info = ve.estimate_tax_withholding(latest_stock_price)
             
+            # Get comprehensive tax breakdown (FICA, Medicare, SS, etc.)
+            tax_breakdown = ve.get_comprehensive_tax_breakdown() if has_vested else None
+            
             # For cash grants, shares_vested/shares_received represent USD amounts
             if is_cash_grant:
                 shares_held = ve.shares_received if has_vested else ve.shares_vested
@@ -528,7 +531,8 @@ def finance_deep_dive():
                 'tax_amount': tax_info['tax_amount'],
                 'tax_is_estimated': tax_info['is_estimated'],
                 'tax_rate': tax_info['tax_rate'],
-                'estimated_tax': estimated_tax
+                'estimated_tax': estimated_tax,
+                'tax_breakdown': tax_breakdown
             }
             enriched_vest_events.append(ve_data)
 

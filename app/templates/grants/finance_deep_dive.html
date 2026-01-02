@@ -333,7 +333,12 @@
                                         ${{ "{:,.2f}".format(ve_data.tax_amount) }}*
                                     </span>
                                 {% elif ve_data.has_vested %}
-                                    ${{ "{:,.2f}".format(ve_data.tax_amount) }}
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        ${{ "{:,.2f}".format(ve_data.tax_amount) }}
+                                        {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
+                                        <button class="btn-icon" onclick="toggleTaxBreakdown(this)" title="View tax breakdown" style="font-size: 0.8em; padding: 0.2rem 0.4rem;">📊</button>
+                                        {% endif %}
+                                    </div>
                                 {% else %}
                                     <span style="color: var(--text-secondary);">—</span>
                                 {% endif %}
@@ -343,6 +348,106 @@
                             <td data-column="unrealized-gain">${{ "{:,.2f}".format(ve_data.unrealized_gain) }}</td>
                             <td data-column="est-tax">${{ "{:,.2f}".format(ve_data.estimated_tax or 0) }}</td>
                         </tr>
+                        
+                        <!-- Tax Breakdown Row (Hidden by default) -->
+                        {% if ve_data.has_vested and ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
+                        <tr class="tax-breakdown-row" style="display: none;">
+                            <td colspan="9" style="background: #f8f9fa; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
+                                <div style="max-width: 800px;">
+                                    <h4 style="margin-top: 0; color: var(--primary-color); display: flex; align-items: center; gap: 0.5rem;">
+                                        💰 Detailed Tax Breakdown for {{ ve.vest_date.strftime('%b %d, %Y') }}
+                                    </h4>
+                                    
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                                        <div class="tax-breakdown-item">
+                                            <div style="font-size: 0.85em; color: #666; margin-bottom: 0.25rem;">Gross Value</div>
+                                            <div style="font-size: 1.2em; font-weight: bold;">${{ "{:,.2f}".format(ve_data.tax_breakdown.gross_value) }}</div>
+                                        </div>
+                                        
+                                        <div class="tax-breakdown-item">
+                                            <div style="font-size: 0.85em; color: #666; margin-bottom: 0.25rem;">Federal Income Tax</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #d32f2f;">
+                                                ${{ "{:,.2f}".format(ve_data.tax_breakdown.federal_tax) }}
+                                                <span style="font-size: 0.8em; color: #666;">({{ "%.1f"|format(ve_data.tax_breakdown.federal_rate * 100) }}%)</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="tax-breakdown-item">
+                                            <div style="font-size: 0.85em; color: #666; margin-bottom: 0.25rem;">State Income Tax</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #d32f2f;">
+                                                ${{ "{:,.2f}".format(ve_data.tax_breakdown.state_tax) }}
+                                                <span style="font-size: 0.8em; color: #666;">({{ "%.1f"|format(ve_data.tax_breakdown.state_rate * 100) }}%)</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="tax-breakdown-item">
+                                            <div style="font-size: 0.85em; color: #666; margin-bottom: 0.25rem;">Social Security</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #1976d2;">
+                                                ${{ "{:,.2f}".format(ve_data.tax_breakdown.social_security_tax) }}
+                                                <span style="font-size: 0.8em; color: #666;">({{ "%.2f"|format(ve_data.tax_breakdown.social_security_rate * 100) }}%)</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="tax-breakdown-item">
+                                            <div style="font-size: 0.85em; color: #666; margin-bottom: 0.25rem;">Medicare</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #1976d2;">
+                                                ${{ "{:,.2f}".format(ve_data.tax_breakdown.medicare_tax) }}
+                                                <span style="font-size: 0.8em; color: #666;">({{ "%.2f"|format(ve_data.tax_breakdown.medicare_rate * 100) }}%)</span>
+                                            </div>
+                                        </div>
+                                        
+                                        {% if ve_data.tax_breakdown.additional_medicare_tax > 0 %}
+                                        <div class="tax-breakdown-item">
+                                            <div style="font-size: 0.85em; color: #666; margin-bottom: 0.25rem;">Additional Medicare</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #1976d2;">
+                                                ${{ "{:,.2f}".format(ve_data.tax_breakdown.additional_medicare_tax) }}
+                                                <span style="font-size: 0.8em; color: #666;">({{ "%.2f"|format(ve_data.tax_breakdown.additional_medicare_rate * 100) }}%)</span>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 2px solid #ddd;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                                            <div>
+                                                <div style="font-size: 0.85em; color: #666;">Total FICA (SS + Medicare)</div>
+                                                <div style="font-size: 1.2em; font-weight: bold; color: #1976d2;">
+                                                    ${{ "{:,.2f}".format(ve_data.tax_breakdown.total_fica) }}
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <div style="font-size: 0.85em; color: #666;">Total Tax Withheld</div>
+                                                <div style="font-size: 1.3em; font-weight: bold; color: #d32f2f;">
+                                                    ${{ "{:,.2f}".format(ve_data.tax_breakdown.total_tax) }}
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <div style="font-size: 0.85em; color: #666;">Net Amount Received</div>
+                                                <div style="font-size: 1.3em; font-weight: bold; color: #2e7d32;">
+                                                    ${{ "{:,.2f}".format(ve_data.tax_breakdown.net_amount) }}
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <div style="font-size: 0.85em; color: #666;">Effective Tax Rate</div>
+                                                <div style="font-size: 1.2em; font-weight: bold;">
+                                                    {{ "%.1f"|format(ve_data.tax_breakdown.effective_rate * 100) }}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="margin-top: 1rem; padding: 0.75rem; background: #e3f2fd; border-radius: 4px; font-size: 0.9em;">
+                                        <strong>📝 Note:</strong> This breakdown shows actual paycheck taxes including FICA (Social Security 6.2% up to $168,600 wage base + Medicare 1.45%). 
+                                        Additional Medicare (0.9%) applies to income over $200k (single) or $250k (married).
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        
                         {% endfor %}
                     </tbody>
                 </table>
@@ -941,6 +1046,24 @@ const serverTotalEstimatedTax = {{ total_estimated_tax | default(0) | tojson }};
 
 <!-- Tax calculation scripts continue below (DOMContentLoaded handler) -->
 <script>
+// Toggle tax breakdown visibility
+function toggleTaxBreakdown(button) {
+    const row = button.closest('tr');
+    const breakdownRow = row.nextElementSibling;
+    
+    if (breakdownRow && breakdownRow.classList.contains('tax-breakdown-row')) {
+        if (breakdownRow.style.display === 'none') {
+            breakdownRow.style.display = 'table-row';
+            button.textContent = '📊';
+            button.title = 'Hide tax breakdown';
+        } else {
+            breakdownRow.style.display = 'none';
+            button.textContent = '📊';
+            button.title = 'View tax breakdown';
+        }
+    }
+}
+
 // Wait for DOM to be fully loaded before running scripts
 document.addEventListener('DOMContentLoaded', function() {
 
