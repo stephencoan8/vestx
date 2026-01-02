@@ -377,11 +377,29 @@ def update_vest_event(event_id):
 @login_required
 def vest_schedule():
     """View complete vesting schedule."""
+    from app.utils.price_utils import get_latest_user_price
+    from datetime import date
+    
     vest_events = VestEvent.query.join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
-    return render_template('grants/schedule.html', vest_events=vest_events)
+    # Get latest stock price for estimating future vests
+    latest_stock_price = get_latest_user_price(current_user.id) or 0.0
+    today = date.today()
+    
+    # Enrich vest events with tax estimates
+    enriched_events = []
+    for ve in vest_events:
+        # For future vests, calculate estimated tax
+        if ve.vest_date > today:
+            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            ve.estimated_tax = tax_info['tax_amount']
+        else:
+            ve.estimated_tax = None  # Use actual tax_withheld for vested events
+        enriched_events.append(ve)
+    
+    return render_template('grants/schedule.html', vest_events=enriched_events)
 
 
 @grants_bp.route('/rules')
