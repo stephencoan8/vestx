@@ -379,8 +379,10 @@ def vest_schedule():
     """View complete vesting schedule."""
     from app.utils.price_utils import get_latest_user_price
     from datetime import date
+    from sqlalchemy.orm import joinedload
     
-    vest_events = VestEvent.query.join(Grant).filter(
+    # Eagerly load grants to avoid N+1
+    vest_events = VestEvent.query.options(joinedload(VestEvent.grant)).join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
@@ -388,12 +390,15 @@ def vest_schedule():
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
     
+    # Get tax profile once to avoid repeated queries
+    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+    
     # Enrich vest events with tax estimates
     enriched_events = []
     for ve in vest_events:
         # For future vests, calculate estimated tax
         if ve.vest_date > today:
-            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            tax_info = ve.estimate_tax_withholding(latest_stock_price, _tax_profile=tax_profile)
             ve.estimated_tax = tax_info['tax_amount']
         else:
             ve.estimated_tax = None  # Use actual tax_withheld for vested events
@@ -414,15 +419,16 @@ def rules():
 def finance_deep_dive():
     """Comprehensive tax and capital gains analysis."""
     import logging
+    from sqlalchemy.orm import joinedload
     logger = logging.getLogger(__name__)
 
-    # Get all grants and vest events for the user
-    grants = Grant.query.filter_by(user_id=current_user.id).all()
-    all_vest_events = VestEvent.query.join(Grant).filter(
+    # Get all grants and vest events for the user (eagerly load relationships)
+    grants = Grant.query.options(joinedload(Grant.vest_events)).filter_by(user_id=current_user.id).all()
+    all_vest_events = VestEvent.query.options(joinedload(VestEvent.grant)).join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
-    # Get user's tax profile and calculate rates (move up so we can use server-side estimates)
+    # Get user's tax profile and calculate rates (cache to avoid N+1)
     tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
     if tax_profile:
         tax_rates = tax_profile.get_tax_rates()
@@ -440,6 +446,10 @@ def finance_deep_dive():
     from app.utils.price_utils import get_latest_user_price
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
+
+    # Pre-fetch annual incomes to avoid N+1 queries
+    from app.models.tax_rate import AnnualIncome
+    annual_incomes = {ai.year: ai.annual_income for ai in AnnualIncome.query.filter_by(user_id=current_user.id).all()}
 
     today = date.today()
 
@@ -480,11 +490,11 @@ def finance_deep_dive():
         for ve in vest_events:
             has_vested = ve.vest_date <= today
             
-            # Calculate estimated or actual taxes
-            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            # Calculate estimated or actual taxes (pass cached tax_profile)
+            tax_info = ve.estimate_tax_withholding(latest_stock_price, _tax_profile=tax_profile)
             
-            # Get comprehensive tax breakdown (FICA, Medicare, SS, etc.)
-            tax_breakdown = ve.get_comprehensive_tax_breakdown() if has_vested else None
+            # Get comprehensive tax breakdown (pass cached data to avoid queries)
+            tax_breakdown = ve.get_comprehensive_tax_breakdown(_tax_profile=tax_profile, _annual_incomes=annual_incomes) if has_vested else None
             
             # For cash grants, shares_vested/shares_received represent USD amounts
             if is_cash_grant:

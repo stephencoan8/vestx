@@ -150,19 +150,27 @@ class VestEvent(db.Model):
         
         return total_tax
     
-    def get_comprehensive_tax_breakdown(self) -> dict:
+    def get_comprehensive_tax_breakdown(self, _tax_profile=None, _annual_incomes=None) -> dict:
         """
         Get detailed tax breakdown including FICA, Medicare, Social Security.
         Uses user's tax profile for accurate calculations.
         Uses stored tax_year if available, otherwise defaults to vest year.
+        
+        Args:
+            _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
+            _annual_incomes: INTERNAL - dict of {year: income} to avoid N+1 queries
         """
         try:
             from app.models.tax_rate import UserTaxProfile
             from app.models.annual_income import AnnualIncome
             from app.utils.tax_calculator import TaxCalculator
             
-            # Get user's tax profile
-            tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+            # Get user's tax profile (use cached if available)
+            if _tax_profile is None:
+                tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+            else:
+                tax_profile = _tax_profile
+                
             if not tax_profile:
                 # Return basic breakdown if no profile
                 return {
@@ -175,13 +183,15 @@ class VestEvent(db.Model):
             # Determine tax year: use stored tax_year, or default to vest year
             tax_year = self.tax_year or self.vest_date.year
             
-            # Get income for the specific year, fall back to current annual_income
-            year_income = AnnualIncome.query.filter_by(
-                user_id=self.grant.user_id,
-                year=tax_year
-            ).first()
-            
-            annual_income = year_income.annual_income if year_income else tax_profile.annual_income
+            # Get income for the specific year (use cached if available)
+            if _annual_incomes is not None:
+                annual_income = _annual_incomes.get(tax_year, tax_profile.annual_income)
+            else:
+                year_income = AnnualIncome.query.filter_by(
+                    user_id=self.grant.user_id,
+                    year=tax_year
+                ).first()
+                annual_income = year_income.annual_income if year_income else tax_profile.annual_income
             
             if not annual_income:
                 # Return basic breakdown if no income data
@@ -241,7 +251,8 @@ class VestEvent(db.Model):
     def estimate_tax_withholding(self, current_stock_price: float = None, 
                                  federal_rate: float = None, 
                                  state_rate: float = None, 
-                                 fica_rate: float = None) -> dict:
+                                 fica_rate: float = None,
+                                 _tax_profile = None) -> dict:
         """
         Estimate tax withholding for future vesting events.
         Uses comprehensive tax calculator for accurate FICA calculations.
@@ -255,6 +266,7 @@ class VestEvent(db.Model):
             federal_rate: Federal tax rate (optional - will use tax profile if not provided)
             state_rate: State tax rate (optional - will use tax profile if not provided)
             fica_rate: DEPRECATED - now calculated accurately using TaxCalculator
+            _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
         """
         from app.models.grant import ShareType, GrantType
         from app.models.tax_rate import UserTaxProfile
@@ -273,8 +285,11 @@ class VestEvent(db.Model):
             from app.utils.price_utils import get_latest_user_price
             current_stock_price = get_latest_user_price(self.grant.user_id) or 0.0
         
-        # Get user's tax profile for accurate calculation
-        tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+        # Get user's tax profile for accurate calculation (use cached if available)
+        if _tax_profile is None:
+            tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+        else:
+            tax_profile = _tax_profile
         
         # Calculate vest value based on grant type
         if self.grant.share_type == ShareType.CASH.value:
