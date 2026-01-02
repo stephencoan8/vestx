@@ -183,11 +183,15 @@ def run_migration():
         else:
             flash('✓ tax_year column already exists', 'info')
         
-        # Populate tax brackets
-        existing = TaxBracket.query.filter_by(tax_year=2025).count()
-        if existing > 0:
-            flash(f'✓ Tax brackets already populated ({existing} brackets)', 'info')
-        else:
+        # Populate tax brackets for multiple years (2023-2025)
+        # Use the same brackets for all years (tax brackets change slowly)
+        years_to_populate = [2023, 2024, 2025]
+        
+        for year in years_to_populate:
+            existing = TaxBracket.query.filter_by(tax_year=year).count()
+            if existing > 0:
+                continue  # Skip if already populated
+            
             # Federal ordinary income (Single)
             federal_single = [
                 {'min': 0, 'max': 11600, 'rate': 0.10},
@@ -201,7 +205,7 @@ def run_migration():
             
             for b in federal_single:
                 db.session.add(TaxBracket(
-                    jurisdiction='federal', tax_year=2025, filing_status='single',
+                    jurisdiction='federal', tax_year=year, filing_status='single',
                     tax_type='ordinary', income_min=b['min'], income_max=b['max'], rate=b['rate']
                 ))
             
@@ -214,7 +218,7 @@ def run_migration():
             
             for b in ltcg_single:
                 db.session.add(TaxBracket(
-                    jurisdiction='federal', tax_year=2025, filing_status='single',
+                    jurisdiction='federal', tax_year=year, filing_status='single',
                     tax_type='capital_gains_long', income_min=b['min'], income_max=b['max'], rate=b['rate']
                 ))
             
@@ -233,13 +237,13 @@ def run_migration():
             
             for b in ca_single:
                 db.session.add(TaxBracket(
-                    jurisdiction='CA', tax_year=2025, filing_status='single',
+                    jurisdiction='CA', tax_year=year, filing_status='single',
                     tax_type='ordinary', income_min=b['min'], income_max=b['max'], rate=b['rate']
                 ))
-            
-            db.session.commit()
-            count = TaxBracket.query.filter_by(tax_year=2025).count()
-            flash(f'✓ Populated {count} tax brackets for 2025', 'success')
+        
+        db.session.commit()
+        total_count = TaxBracket.query.count()
+        flash(f'✓ Populated tax brackets for 2023-2025 ({total_count} total brackets)', 'success')
         
         flash('Migration completed successfully! Tax rates should now calculate correctly.', 'success')
         

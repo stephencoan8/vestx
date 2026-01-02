@@ -106,7 +106,8 @@ class UserTaxProfile(db.Model):
         # Safety check - if no filing status or income, return 0
         if not self.filing_status or not self.annual_income:
             return 0.0
-            
+        
+        # Try to find bracket for the requested year
         bracket = TaxBracket.query.filter_by(
             jurisdiction=jurisdiction,
             tax_year=tax_year,
@@ -121,4 +122,35 @@ class UserTaxProfile(db.Model):
             )
         ).first()
         
-        return bracket.rate if bracket else 0.0
+        # If bracket found, return it
+        if bracket:
+            return bracket.rate
+        
+        # If not found, try to find the closest year available
+        available_year = TaxBracket.query.filter_by(
+            jurisdiction=jurisdiction,
+            filing_status=self.filing_status,
+            tax_type=tax_type
+        ).order_by(
+            db.func.abs(TaxBracket.tax_year - tax_year)
+        ).first()
+        
+        if available_year:
+            # Use the closest year's brackets
+            bracket = TaxBracket.query.filter_by(
+                jurisdiction=jurisdiction,
+                tax_year=available_year.tax_year,
+                filing_status=self.filing_status,
+                tax_type=tax_type
+            ).filter(
+                TaxBracket.income_min <= self.annual_income
+            ).filter(
+                db.or_(
+                    TaxBracket.income_max >= self.annual_income,
+                    TaxBracket.income_max.is_(None)
+                )
+            ).first()
+            
+            return bracket.rate if bracket else 0.0
+        
+        return 0.0
