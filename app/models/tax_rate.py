@@ -103,6 +103,10 @@ class UserTaxProfile(db.Model):
     
     def _get_rate_for_income(self, jurisdiction: str, tax_type: str, tax_year: int) -> float:
         """Find the tax rate for the given income level."""
+        # Safety check - if no filing status or income, return 0
+        if not self.filing_status or not self.annual_income:
+            return 0.0
+            
         bracket = TaxBracket.query.filter_by(
             jurisdiction=jurisdiction,
             tax_year=tax_year,
