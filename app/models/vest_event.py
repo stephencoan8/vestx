@@ -45,7 +45,11 @@ class VestEvent(db.Model):
     @property
     def has_vested(self) -> bool:
         """Check if vest date has passed (based on today's date)."""
-        return self.vest_date <= date.today()
+        vest_date = self.vest_date
+        # Handle both datetime and date objects
+        if isinstance(vest_date, datetime):
+            vest_date = vest_date.date()
+        return vest_date <= date.today()
     
     @property
     def share_price_at_vest(self) -> float:
