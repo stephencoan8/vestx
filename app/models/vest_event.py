@@ -303,8 +303,10 @@ class VestEvent(db.Model):
                     filing_status=tax_profile.filing_status or 'single',
                     state=tax_profile.state
                 )
-                # Set YTD wages if available (for SS wage base limit)
-                calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
+                # Set YTD wages for SS wage base limit
+                # Use annual_income as YTD since we're estimating future vests
+                # (assumes person has already earned their salary for the year)
+                calculator.set_ytd_wages(tax_profile.annual_income)
                 
                 # Calculate comprehensive taxes
                 breakdown = calculator.calculate_vest_taxes(
