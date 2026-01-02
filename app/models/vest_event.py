@@ -101,6 +101,9 @@ class VestEvent(db.Model):
         """Check if vested event is missing tax payment information."""
         if not self.has_vested:
             return False
+        # ESPP/nqESPP don't need tax info - taxes handled at receipt
+        if self.grant.grant_type in ['espp', 'nqespp']:
+            return False
         # Needs info if vested but no cash paid recorded (for past vests)
         return self.cash_paid == 0 and self.shares_sold == 0
     
