@@ -116,6 +116,45 @@
                         <strong>Note:</strong> These rates are based on 2025 IRS tax brackets and are updated annually.
                     </div>
                 </div>
+                
+                <!-- Historical Income Section -->
+                {% if vest_years %}
+                <div style="margin-top: 2rem; padding: 1.5rem; background: #fff3cd; border-left: 4px solid #ff9800; border-radius: 4px;">
+                    <h3 style="margin-top: 0; color: #f57c00;">📅 Historical Income (For Accurate Past Tax Calculations)</h3>
+                    <p style="margin-bottom: 1rem; color: #666;">
+                        To calculate accurate taxes for past vests, enter your annual income for each year you had vesting events.
+                        This ensures tax breakdowns reflect the correct tax brackets you were in at the time.
+                    </p>
+                    
+                    <div class="form-grid" style="margin-top: 1rem;">
+                        {% for year in vest_years %}
+                        <div class="form-group">
+                            <label for="income_{{ year }}">{{ year }} Annual Income</label>
+                            <div class="input-group">
+                                <span class="input-prefix">$</span>
+                                <input 
+                                    type="number" 
+                                    id="income_{{ year }}" 
+                                    class="form-control historical-income-input" 
+                                    value="{{ annual_incomes.get(year, '') }}" 
+                                    placeholder="e.g., 175000"
+                                    step="1000"
+                                    data-year="{{ year }}"
+                                    onchange="saveHistoricalIncome({{ year }}, this.value)"
+                                >
+                            </div>
+                            <small class="form-text" id="status_{{ year }}">
+                                {% if annual_incomes.get(year) %}
+                                    ✓ Saved: ${{ "{:,.0f}".format(annual_incomes.get(year)) }}
+                                {% else %}
+                                    <span style="color: #f57c00;">⚠️ Not set - using current income</span>
+                                {% endif %}
+                            </small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
 
             <!-- Manual Mode Form -->
@@ -481,6 +520,48 @@ async function previewRates() {
         document.getElementById('previewLTCG').textContent = data.ltcg.toFixed(1) + '%';
         
     } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+async function saveHistoricalIncome(year, income) {
+    if (!income) {
+        return;
+    }
+    
+    const statusElement = document.getElementById(`status_${year}`);
+    statusElement.textContent = 'Saving...';
+    statusElement.style.color = '#666';
+    
+    try {
+        const response = await fetch('{{ url_for("settings.save_annual_income") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                year: year,
+                annual_income: parseFloat(income)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            statusElement.textContent = '✗ Error: ' + data.error;
+            statusElement.style.color = '#d32f2f';
+        } else {
+            const formattedIncome = parseFloat(income).toLocaleString('en-US', {
+                style: 'decimal',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            });
+            statusElement.textContent = `✓ Saved: $${formattedIncome}`;
+            statusElement.style.color = '#2e7d32';
+        }
+    } catch (error) {
+        statusElement.textContent = '✗ Error saving';
+        statusElement.style.color = '#d32f2f';
         console.error('Error:', error);
     }
 }

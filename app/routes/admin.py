@@ -120,6 +120,27 @@ def run_migration():
     from app.models.vest_event import VestEvent
     
     try:
+        # Create annual_incomes table if it doesn't exist
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS annual_incomes (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                year INTEGER NOT NULL,
+                annual_income FLOAT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_user_year_income UNIQUE (user_id, year)
+            )
+        """))
+        db.session.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_annual_incomes_user_id ON annual_incomes(user_id)
+        """))
+        db.session.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_annual_incomes_year ON annual_incomes(year)
+        """))
+        db.session.commit()
+        flash('✓ Created annual_incomes table', 'success')
+        
         # Add ytd_wages column
         result = db.session.execute(text("""
             SELECT column_name 

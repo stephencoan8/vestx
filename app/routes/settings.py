@@ -6,7 +6,10 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from app import db
 from app.models.tax_rate import UserTaxProfile, TaxBracket
+from app.models.annual_income import AnnualIncome
+from app.models.vest_event import VestEvent
 from app.utils.tax_calculator import get_all_us_states, NO_INCOME_TAX_STATES
+from datetime import date
 
 settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 
@@ -61,12 +64,31 @@ def tax_settings():
     # Get all US states for dropdown
     all_states = get_all_us_states()
     
+    # Get years where user has vested events
+    vest_years = db.session.query(
+        db.func.extract('year', VestEvent.vest_date).label('year')
+    ).join(
+        VestEvent.grant
+    ).filter(
+        VestEvent.grant.has(user_id=current_user.id)
+    ).distinct().order_by('year').all()
+    
+    vest_years = [int(year[0]) for year in vest_years]
+    
+    # Get existing annual income records
+    annual_incomes = {
+        ai.year: ai.annual_income 
+        for ai in AnnualIncome.query.filter_by(user_id=current_user.id).all()
+    }
+    
     return render_template(
         'settings/tax.html',
         tax_profile=tax_profile,
         calculated_rates=rates,
         all_states=all_states,
-        no_tax_states=NO_INCOME_TAX_STATES
+        no_tax_states=NO_INCOME_TAX_STATES,
+        vest_years=vest_years,
+        annual_incomes=annual_incomes
     )
 
 
@@ -101,4 +123,44 @@ def calculate_rates_preview():
         })
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@settings_bp.route('/tax/save-annual-income', methods=['POST'])
+@login_required
+def save_annual_income():
+    """Save annual income for a specific year."""
+    try:
+        data = request.get_json()
+        year = int(data.get('year'))
+        annual_income = float(data.get('annual_income'))
+        
+        if not year or not annual_income:
+            return jsonify({'error': 'Year and income required'}), 400
+        
+        # Get or create annual income record
+        income_record = AnnualIncome.query.filter_by(
+            user_id=current_user.id,
+            year=year
+        ).first()
+        
+        if income_record:
+            income_record.annual_income = annual_income
+        else:
+            income_record = AnnualIncome(
+                user_id=current_user.id,
+                year=year,
+                annual_income=annual_income
+            )
+            db.session.add(income_record)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Saved {year} income: ${annual_income:,.0f}'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 400

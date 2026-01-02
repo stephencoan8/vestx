@@ -158,11 +158,12 @@ class VestEvent(db.Model):
         """
         try:
             from app.models.tax_rate import UserTaxProfile
+            from app.models.annual_income import AnnualIncome
             from app.utils.tax_calculator import TaxCalculator
             
             # Get user's tax profile
             tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
-            if not tax_profile or not tax_profile.annual_income:
+            if not tax_profile:
                 # Return basic breakdown if no profile
                 return {
                     'has_breakdown': False,
@@ -174,8 +175,34 @@ class VestEvent(db.Model):
             # Determine tax year: use stored tax_year, or default to vest year
             tax_year = self.tax_year or self.vest_date.year
             
-            # Get federal and state rates for the specific tax year
-            rates = tax_profile.get_tax_rates(tax_year=tax_year)
+            # Get income for the specific year, fall back to current annual_income
+            year_income = AnnualIncome.query.filter_by(
+                user_id=self.grant.user_id,
+                year=tax_year
+            ).first()
+            
+            annual_income = year_income.annual_income if year_income else tax_profile.annual_income
+            
+            if not annual_income:
+                # Return basic breakdown if no income data
+                return {
+                    'has_breakdown': False,
+                    'gross_value': self.value_at_vest,
+                    'total_tax': self.tax_withheld,
+                    'net_value': self.net_value,
+                    'missing_year': tax_year  # Flag that we're missing this year's income
+                }
+            
+            # Get federal and state rates for the specific tax year using year-specific income
+            # Create temporary profile with year-specific income
+            temp_profile = UserTaxProfile(
+                user_id=tax_profile.user_id,
+                state=tax_profile.state,
+                filing_status=tax_profile.filing_status or 'single',
+                annual_income=annual_income,
+                use_manual_rates=False
+            )
+            rates = temp_profile.get_tax_rates(tax_year=tax_year)
             
             # Ensure filing_status has a default value
             filing_status = tax_profile.filing_status or 'single'
