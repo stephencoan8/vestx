@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from app import db
 from app.models.tax_rate import UserTaxProfile, TaxBracket
+from app.utils.tax_calculator import get_all_us_states, NO_INCOME_TAX_STATES
 
 settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 
@@ -39,6 +40,8 @@ def tax_settings():
                 tax_profile.filing_status = request.form.get('filing_status', 'single')
                 annual_income_str = request.form.get('annual_income', '')
                 tax_profile.annual_income = float(annual_income_str) if annual_income_str else None
+                ytd_wages_str = request.form.get('ytd_wages', '')
+                tax_profile.ytd_wages = float(ytd_wages_str) if ytd_wages_str else 0.0
             
             db.session.commit()
             flash('Tax settings saved successfully!', 'success')
@@ -51,18 +54,15 @@ def tax_settings():
     # Get calculated rates for display
     rates = tax_profile.get_tax_rates()
     
-    # Get list of states with tax brackets
-    states_with_data = db.session.query(TaxBracket.jurisdiction).filter(
-        TaxBracket.tax_year == 2025,
-        TaxBracket.jurisdiction != 'federal'
-    ).distinct().all()
-    available_states = [s[0] for s in states_with_data]
+    # Get all US states for dropdown
+    all_states = get_all_us_states()
     
     return render_template(
         'settings/tax.html',
         tax_profile=tax_profile,
         calculated_rates=rates,
-        available_states=sorted(available_states)
+        all_states=all_states,
+        no_tax_states=NO_INCOME_TAX_STATES
     )
 
 

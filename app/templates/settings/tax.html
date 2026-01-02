@@ -38,8 +38,10 @@
                         <label for="state">State</label>
                         <select name="state" id="state" class="form-control" onchange="previewRates()">
                             <option value="">-- No State Tax --</option>
-                            {% for state in available_states %}
-                            <option value="{{ state }}" {% if tax_profile.state == state %}selected{% endif %}>{{ state }}</option>
+                            {% for code, name in all_states %}
+                            <option value="{{ code }}" {% if tax_profile.state == code %}selected{% endif %}>
+                                {{ name }} ({{ code }}){% if code in no_tax_states %} - No Income Tax{% endif %}
+                            </option>
                             {% endfor %}
                         </select>
                         <small class="form-text">Select your state of residence for state tax calculation</small>
@@ -54,8 +56,8 @@
                         <small class="form-text">Your IRS filing status</small>
                     </div>
 
-                    <div class="form-group full-width">
-                        <label for="annual_income">Annual Income</label>
+                    <div class="form-group">
+                        <label for="annual_income">Annual Base Salary</label>
                         <div class="input-group">
                             <span class="input-prefix">$</span>
                             <input 
@@ -68,6 +70,43 @@
                                 step="1000"
                                 onchange="previewRates()"
                             >
+                        </div>
+                        <small class="form-text">Your total annual income (salary + bonuses)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ytd_wages">Year-to-Date Wages (Optional)</label>
+                        <div class="input-group">
+                            <span class="input-prefix">$</span>
+                            <input 
+                                type="number" 
+                                name="ytd_wages" 
+                                id="ytd_wages" 
+                                class="form-control" 
+                                value="{{ tax_profile.ytd_wages or '' }}" 
+                                placeholder="e.g., 100000"
+                                step="1000"
+                            >
+                        </div>
+                        <small class="form-text">For accurate Social Security tax (stops at $168,600 in 2025)</small>
+                    </div>
+                </div>
+
+                <!-- Removed duplicate annual_income div below -->
+                <div style="display: none;" class="form-group full-width">
+                    <label for="annual_income_old">Annual Income</label>
+                    <div class="input-group">
+                        <span class="input-prefix">$</span>
+                        <input 
+                            type="number" 
+                            name="annual_income_old" 
+                            id="annual_income_old" 
+                            class="form-control" 
+                            value="{{ tax_profile.annual_income or '' }}" 
+                            placeholder="e.g., 175000"
+                            step="1000"
+                            onchange="previewRates()"
+                        >
                         </div>
                         <small class="form-text">Your total annual taxable income (including salary, bonuses, RSU vests, etc.)</small>
                     </div>

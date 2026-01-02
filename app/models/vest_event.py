@@ -149,6 +149,56 @@ class VestEvent(db.Model):
         
         return total_tax
     
+    def get_comprehensive_tax_breakdown(self) -> dict:
+        """
+        Get detailed tax breakdown including FICA, Medicare, Social Security.
+        Uses user's tax profile for accurate calculations.
+        """
+        try:
+            from app.models.tax_rate import UserTaxProfile
+            from app.utils.tax_calculator import TaxCalculator
+            
+            # Get user's tax profile
+            tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+            if not tax_profile or not tax_profile.annual_income:
+                # Return basic breakdown if no profile
+                return {
+                    'has_breakdown': False,
+                    'gross_value': self.value_at_vest,
+                    'total_tax': self.tax_withheld,
+                    'net_value': self.net_value
+                }
+            
+            # Get federal and state rates
+            rates = tax_profile.get_tax_rates()
+            
+            # Initialize tax calculator
+            calculator = TaxCalculator(
+                annual_income=tax_profile.annual_income,
+                filing_status=tax_profile.filing_status,
+                state=tax_profile.state
+            )
+            calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
+            
+            # Calculate comprehensive taxes
+            breakdown = calculator.calculate_vest_taxes(
+                vest_value=self.value_at_vest,
+                federal_rate=rates['federal'],
+                state_rate=rates['state']
+            )
+            
+            breakdown['has_breakdown'] = True
+            return breakdown
+            
+        except Exception:
+            # Fallback to basic breakdown
+            return {
+                'has_breakdown': False,
+                'gross_value': self.value_at_vest,
+                'total_tax': self.tax_withheld,
+                'net_value': self.net_value
+            }
+    
     def estimate_tax_withholding(self, current_stock_price: float = None, 
                                  federal_rate: float = 0.22, 
                                  state_rate: float = 0.093, 
