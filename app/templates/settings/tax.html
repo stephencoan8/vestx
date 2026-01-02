@@ -92,26 +92,6 @@
                     </div>
                 </div>
 
-                <!-- Removed duplicate annual_income div below -->
-                <div style="display: none;" class="form-group full-width">
-                    <label for="annual_income_old">Annual Income</label>
-                    <div class="input-group">
-                        <span class="input-prefix">$</span>
-                        <input 
-                            type="number" 
-                            name="annual_income_old" 
-                            id="annual_income_old" 
-                            class="form-control" 
-                            value="{{ tax_profile.annual_income or '' }}" 
-                            placeholder="e.g., 175000"
-                            step="1000"
-                            onchange="previewRates()"
-                        >
-                        </div>
-                        <small class="form-text">Your total annual taxable income (including salary, bonuses, RSU vests, etc.)</small>
-                    </div>
-                </div>
-
                 <!-- Preview of calculated rates -->
                 <div class="rate-preview" id="ratePreview">
                     <h3>📊 Your Calculated Tax Rates (2025)</h3>
