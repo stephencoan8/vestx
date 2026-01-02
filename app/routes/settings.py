@@ -132,11 +132,21 @@ def save_annual_income():
     """Save annual income for a specific year."""
     try:
         data = request.get_json()
-        year = int(data.get('year'))
-        annual_income = float(data.get('annual_income'))
         
-        if not year or not annual_income:
-            return jsonify({'error': 'Year and income required'}), 400
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        year = data.get('year')
+        annual_income = data.get('annual_income')
+        
+        if not year:
+            return jsonify({'error': 'Year is required'}), 400
+            
+        if not annual_income:
+            return jsonify({'error': 'Annual income is required'}), 400
+        
+        year = int(year)
+        annual_income = float(annual_income)
         
         # Get or create annual income record
         income_record = AnnualIncome.query.filter_by(
@@ -161,6 +171,10 @@ def save_annual_income():
             'message': f'Saved {year} income: ${annual_income:,.0f}'
         })
         
+    except ValueError as e:
+        return jsonify({'error': f'Invalid number format: {str(e)}'}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

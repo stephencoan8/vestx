@@ -534,10 +534,13 @@ async function saveHistoricalIncome(year, income) {
     statusElement.style.color = '#666';
     
     try {
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+        
         const response = await fetch('{{ url_for("settings.save_annual_income") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
                 year: year,
