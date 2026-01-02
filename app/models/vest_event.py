@@ -172,10 +172,13 @@ class VestEvent(db.Model):
             # Get federal and state rates
             rates = tax_profile.get_tax_rates()
             
+            # Ensure filing_status has a default value
+            filing_status = tax_profile.filing_status or 'single'
+            
             # Initialize tax calculator
             calculator = TaxCalculator(
                 annual_income=tax_profile.annual_income,
-                filing_status=tax_profile.filing_status,
+                filing_status=filing_status,
                 state=tax_profile.state
             )
             calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
@@ -190,7 +193,10 @@ class VestEvent(db.Model):
             breakdown['has_breakdown'] = True
             return breakdown
             
-        except Exception:
+        except Exception as e:
+            # Log the error but don't crash
+            import logging
+            logging.getLogger(__name__).error(f"Error in get_comprehensive_tax_breakdown: {e}")
             # Fallback to basic breakdown
             return {
                 'has_breakdown': False,
