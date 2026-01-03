@@ -909,10 +909,11 @@ def calculate_sale_taxes():
         # Calculate federal taxes
         # LTCG rates: 0%, 15%, 20% based on income
         # STCG taxed as ordinary income
+        income = tax_profile.annual_income or 0
         ltcg_rate = 0.15  # Could be 0%, 15%, or 20% based on income
-        if tax_profile.base_salary > 500000:
+        if income > 500000:
             ltcg_rate = 0.20
-        elif tax_profile.base_salary < 80000:
+        elif income < 80000:
             ltcg_rate = 0.0
         
         stcg_rate = tax_profile.federal_tax_rate / 100.0 if tax_profile.federal_tax_rate else 0.24
@@ -923,7 +924,7 @@ def calculate_sale_taxes():
         
         # NIIT (3.8% on investment income for high earners)
         niit = 0
-        if tax_profile.base_salary > 200000:
+        if income > 200000:
             niit = (total_ltcg + total_stcg) * 0.038
         
         total_tax = federal_tax_ltcg + federal_tax_stcg + state_tax + niit
