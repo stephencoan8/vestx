@@ -1325,19 +1325,27 @@ function applyColumnSettings() {
             
             // Update all body cells
             bodyRows.forEach(row => {
-                const cell = Array.from(row.querySelectorAll('td')).find(c => c.dataset.column === column);
-                if (cell) {
-                    cell.style.display = visible ? '' : 'none';
-                    cell.style.order = index;
-                }
-            });
+            // Skip tax breakdown rows - they have their own toggle
+            if (row.classList.contains('tax-breakdown-row')) {
+                return;
+            }
+            
+            const cell = Array.from(row.querySelectorAll('td')).find(c => c.dataset.column === column);
+            if (cell) {
+                cell.style.display = visible ? '' : 'none';
+                cell.style.order = index;
+            }
         });
+    });
+    
+    // Use flexbox for reordering
+    headerRow.style.display = 'flex';
+    bodyRows.forEach(row => {
+        // Skip tax breakdown rows - they have their own toggle
+        if (row.classList.contains('tax-breakdown-row')) {
+            return;
+        }
         
-        // Use flexbox for reordering
-        headerRow.style.display = 'flex';
-        bodyRows.forEach(row => {
-            // Check if row should be hidden (unvested rows when showing vested only)
-            const isUnvested = row.classList.contains('data-unvested');
             const showAll = showAllToggle.checked;
             
             // Only set display to flex if row should be visible
