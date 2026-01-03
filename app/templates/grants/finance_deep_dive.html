@@ -1347,22 +1347,24 @@ function applyColumnSettings() {
             return;
         }
         
-            const showAll = showAllToggle.checked;
-            
-            // Only set display to flex if row should be visible
-            if (!isUnvested || showAll) {
-                row.style.display = 'flex';
-            }
-            
-            row.querySelectorAll('td').forEach(cell => {
-                cell.style.flex = '1';
-                cell.style.minWidth = '100px';
-            });
+        // Check if row should be hidden (unvested rows when showing vested only)
+        const isUnvested = row.classList.contains('data-unvested');
+        const showAll = showAllToggle.checked;
+        
+        // Only set display to flex if row should be visible
+        if (!isUnvested || showAll) {
+            row.style.display = 'flex';
+        }
+        
+        row.querySelectorAll('td').forEach(cell => {
+            cell.style.flex = '1';
+            cell.style.minWidth = '100px';
         });
-        headerRow.querySelectorAll('th').forEach(th => {
-            th.style.flex = '1';
-            th.style.minWidth = '100px';
-        });
+    });
+    headerRow.querySelectorAll('th').forEach(th => {
+        th.style.flex = '1';
+        th.style.minWidth = '100px';
+    });
     });
 }
 
