@@ -256,13 +256,11 @@
 
 <div id="saleCanvas">
     <div id="canvasContent">
-        <!-- Year tiles positioned in 2D space -->
+        <!-- Year tiles positioned in single row -->
         {% for year in range(2026, 2036) %}
-        {% set col = (year - 2026) % 5 %}
-        {% set row = (year - 2026) // 5 %}
         <div class="year-tile"
              data-year="{{ year }}"
-             style="left: {{ col * 450 + 200 }}px; top: {{ row * 550 + 150 }}px;"
+             style="left: {{ (year - 2026) * 450 + 200 }}px; top: 150px;"
              ondrop="drop(event)" 
              ondragover="allowDrop(event)"
              ondragleave="dragLeave(event)">
