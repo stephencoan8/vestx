@@ -71,11 +71,13 @@
                                 onchange="previewRates()"
                             >
                         </div>
-                        <small class="form-text">Your total annual income (salary + bonuses)</small>
+                        <small class="form-text">Your total annual income (determines marginal tax brackets)</small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="ytd_wages">Year-to-Date Wages (Optional)</label>
+                    <div class="form-group" style="background: #e3f2fd; padding: 1rem; border-radius: 8px; border-left: 4px solid #2196f3;">
+                        <label for="ytd_wages" style="color: #1976d2; font-weight: 600;">
+                            💰 Current Year-to-Date Wages (from your paycheck)
+                        </label>
                         <div class="input-group">
                             <span class="input-prefix">$</span>
                             <input 
@@ -88,7 +90,11 @@
                                 step="1000"
                             >
                         </div>
-                        <small class="form-text">For accurate Social Security tax (stops at $168,600 in 2025)</small>
+                        <small class="form-text" style="color: #1565c0;">
+                            <strong>Important for SS Tax:</strong> Enter your actual YTD wages from your most recent paystub. 
+                            Social Security tax (6.2%) stops at $168,600. If you've already earned $168,600+ from your salary, 
+                            your RSU vests won't have SS tax deducted.
+                        </small>
                     </div>
                 </div>
 

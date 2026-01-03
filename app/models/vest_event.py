@@ -319,9 +319,10 @@ class VestEvent(db.Model):
                     state=tax_profile.state
                 )
                 # Set YTD wages for SS wage base limit
-                # Use annual_income as YTD since we're estimating future vests
-                # (assumes person has already earned their salary for the year)
-                calculator.set_ytd_wages(tax_profile.annual_income)
+                # Use actual YTD wages if provided (from paycheck), otherwise use annual_income
+                # YTD wages determine when SS tax stops (at $168,600 wage base)
+                ytd_for_calc = tax_profile.ytd_wages if tax_profile.ytd_wages else tax_profile.annual_income
+                calculator.set_ytd_wages(ytd_for_calc)
                 
                 # Calculate comprehensive taxes
                 breakdown = calculator.calculate_vest_taxes(
