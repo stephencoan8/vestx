@@ -29,16 +29,26 @@
             </div>
         </div>
         {% if use_manual_rates %}
-        <p class="text-muted">Adjust these sliders to calculate estimated tax impact if you sold all shares today</p>
+        <p class="text-muted">
+            <strong>✍️ Manual Mode Active.</strong>
+            Using your manual tax rates. 
+            <a href="{{ url_for('settings.tax_settings') }}">Switch to automatic</a> for calculated rates.
+        </p>
+        <div class="tax-sliders" id="taxSliders">
         {% else %}
         <p class="text-muted">
-            <strong>💡 Tax rates auto-calculated from your profile.</strong> 
-            Adjust sliders below to see different scenarios, or 
-            <a href="{{ url_for('settings.tax_settings') }}">update your tax profile</a>.
+            <strong>💡 Automatic Mode Active.</strong> 
+            Tax rates calculated from your profile.
+            <button onclick="document.getElementById('taxSliders').style.display = document.getElementById('taxSliders').style.display === 'none' ? 'block' : 'none'; this.textContent = document.getElementById('taxSliders').style.display === 'none' ? '▼ Show rate sliders' : '▲ Hide rate sliders';" 
+                    class="btn btn-sm btn-secondary" style="margin-left: 1rem;">
+                ▼ Show rate sliders
+            </button>
         </p>
+        <div class="tax-sliders" id="taxSliders" style="display: none;">
         {% endif %}
-        
-        <div class="tax-sliders">
+            <small class="slider-help" style="display: block; margin-bottom: 1rem; opacity: 0.8;">
+                💭 Adjust sliders to explore different tax scenarios. These are temporary changes and won't be saved.
+            </small>
             <div class="tax-slider-item">
                 <label for="federalTaxRate">
                     Federal Tax Rate: <strong><span id="federalTaxValue">{{ "%.1f"|format(tax_rates.federal * 100) }}</span>%</strong>
