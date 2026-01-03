@@ -309,15 +309,16 @@
              data-shares="{{ vest.shares_received }}"
              data-value="{{ vest.value_at_vest or 0 }}"
              data-vest-date="{{ vest.vest_date.isoformat() }}">
-            <div class="vest-type">{{ vest.grant.grant_type }}{% if not vest.has_vested %} ⏳{% endif %
-    <div class="control-group" style="border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 16px;">
-        <div class="control-label">Zoom</div>
-        <div style="text-align: center; font-size: 1.25rem; font-weight: 700; color: white;" id="zoomDisplay">100%</div>
-        <div class="hint-text">Mouse wheel to zoom</div>
+            <div class="vest-type">{{ vest.grant.grant_type }}{% if not vest.has_vested %} ⏳{% endif %}</div>
+            <div class="vest-info">{{ vest.shares_received }} shares</div>
+            <div class="vest-info">${{ '{:,.0f}'.format(vest.value_at_vest or 0) }}</div>
+            <div class="vest-info" style="opacity: 0.6;">{{ vest.vest_date.strftime('%Y-%m-%d') }}</div>
+        </div>
+        {% endfor %}
     </div>
-    <div class="control-group">
-        <div class="control-label">Navigation</div>
-        <div class="hint-text">Drag canvas to pan<br>Click vest to view details</div>
+</div>
+
+<script>
     </div>
 </div>
 
