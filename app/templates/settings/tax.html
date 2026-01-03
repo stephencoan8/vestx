@@ -57,7 +57,9 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="annual_income">Annual Base Salary</label>
+                        <label for="annual_income">
+                            Current Year Base Salary ({{ current_year }})
+                        </label>
                         <div class="input-group">
                             <span class="input-prefix">$</span>
                             <input 
@@ -71,7 +73,10 @@
                                 onchange="previewRates()"
                             >
                         </div>
-                        <small class="form-text">Your total annual income (determines marginal tax brackets)</small>
+                        <small class="form-text">
+                            <strong>Base salary only</strong> - do NOT include stock vests, bonuses, or other income. 
+                            This determines your marginal tax brackets for future vests.
+                        </small>
                     </div>
 
                     <div class="form-group" style="background: #e3f2fd; padding: 1rem; border-radius: 8px; border-left: 4px solid #2196f3;">
@@ -125,17 +130,20 @@
                 
                 <!-- Historical Income Section -->
                 {% if vest_years %}
-                <div style="margin-top: 2rem; padding: 1.5rem; background: #fff3cd; border-left: 4px solid #ff9800; border-radius: 4px;">
-                    <h3 style="margin-top: 0; color: #f57c00;">📅 Historical Income (For Accurate Past Tax Calculations)</h3>
-                    <p style="margin-bottom: 1rem; color: #666;">
-                        To calculate accurate taxes for past vests, enter your annual income for each year you had vesting events.
-                        This ensures tax breakdowns reflect the correct tax brackets you were in at the time.
+                <div style="margin-top: 2rem; padding: 1.5rem; background: #4a5568; color: white; border-left: 4px solid #ff9800; border-radius: 4px;">
+                    <h3 style="margin-top: 0; color: #ffa726;">📅 Historical Gross Income (From Tax Returns)</h3>
+                    <p style="margin-bottom: 1rem; color: #e0e0e0;">
+                        <strong>Enter your "Gross Income" from your tax return for each year.</strong> This is the total income 
+                        you reported to the IRS (salary + bonuses + stock vests + all other income). This ensures accurate 
+                        tax bracket calculations for past vesting events.
                     </p>
                     
                     <div class="form-grid" style="margin-top: 1rem;">
                         {% for year in vest_years %}
                         <div class="form-group">
-                            <label for="income_{{ year }}">{{ year }} Annual Income</label>
+                            <label for="income_{{ year }}" style="color: white; font-weight: 600;">
+                                {{ year }} Gross Income (Line 9 of Form 1040)
+                            </label>
                             <div class="input-group">
                                 <span class="input-prefix">$</span>
                                 <input 
@@ -143,17 +151,17 @@
                                     id="income_{{ year }}" 
                                     class="form-control historical-income-input" 
                                     value="{{ annual_incomes.get(year, '') }}" 
-                                    placeholder="e.g., 175000"
+                                    placeholder="e.g., 425000"
                                     step="1000"
                                     data-year="{{ year }}"
                                     onchange="saveHistoricalIncome({{ year }}, this.value)"
                                 >
                             </div>
-                            <small class="form-text" id="status_{{ year }}">
+                            <small class="form-text" id="status_{{ year }}" style="color: #e0e0e0;">
                                 {% if annual_incomes.get(year) %}
                                     ✓ Saved: ${{ "{:,.0f}".format(annual_incomes.get(year)) }}
                                 {% else %}
-                                    <span style="color: #f57c00;">⚠️ Not set - using current income</span>
+                                    <span style="color: #ffa726;">⚠️ Not set - using current base salary (will be inaccurate!)</span>
                                 {% endif %}
                             </small>
                         </div>
@@ -400,11 +408,11 @@
 }
 
 .tax-note {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
+    background: #4a5568;
+    border: 1px solid #718096;
     border-radius: 8px;
     padding: 1rem;
-    color: #856404;
+    color: white;
 }
 
 .tax-sliders {

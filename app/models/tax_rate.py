@@ -64,9 +64,13 @@ class UserTaxProfile(db.Model):
     def __repr__(self) -> str:
         return f'<UserTaxProfile user_id={self.user_id} {self.state} ${self.annual_income}>'
     
-    def get_tax_rates(self, tax_year: int = 2025) -> dict:
+    def get_tax_rates(self, tax_year: int = 2025, income_override: float = None) -> dict:
         """
         Calculate tax rates based on profile.
+        
+        Args:
+            tax_year: Year to use for tax brackets
+            income_override: Optional income to use instead of self.annual_income (for historical calculations)
         
         Returns:
             dict: {'federal': float, 'state': float, 'ltcg': float}
@@ -80,9 +84,16 @@ class UserTaxProfile(db.Model):
             }
         
         # Otherwise, calculate from brackets
-        if not self.annual_income:
+        # Use income_override if provided (for historical tax calculations)
+        income_to_use = income_override if income_override is not None else self.annual_income
+        
+        if not income_to_use:
             # Default rates if no income specified
             return {'federal': 0.22, 'state': 0.093, 'ltcg': 0.15}
+        
+        # Temporarily set income for bracket lookups
+        original_income = self.annual_income
+        self.annual_income = income_to_use
         
         # Get federal ordinary income rate
         federal_rate = self._get_rate_for_income('federal', 'ordinary', tax_year)
@@ -94,6 +105,9 @@ class UserTaxProfile(db.Model):
         state_rate = 0.0
         if self.state:
             state_rate = self._get_rate_for_income(self.state, 'ordinary', tax_year)
+        
+        # Restore original income
+        self.annual_income = original_income
         
         return {
             'federal': federal_rate,

@@ -81,6 +81,10 @@ def tax_settings():
         for ai in AnnualIncome.query.filter_by(user_id=current_user.id).all()
     }
     
+    # Get current year
+    from datetime import date
+    current_year = date.today().year
+    
     return render_template(
         'settings/tax.html',
         tax_profile=tax_profile,
@@ -88,7 +92,8 @@ def tax_settings():
         all_states=all_states,
         no_tax_states=NO_INCOME_TAX_STATES,
         vest_years=vest_years,
-        annual_incomes=annual_incomes
+        annual_incomes=annual_incomes,
+        current_year=current_year
     )
 
 

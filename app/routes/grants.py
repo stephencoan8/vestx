@@ -457,11 +457,14 @@ def finance_deep_dive():
     ltcg_rate_default = tax_rates.get('ltcg', 0.15)
     
     # Pre-calculate rates for all possible years to avoid repeated queries
+    # Use year-specific income (gross income from tax returns for accurate bracket calculation)
     years_with_vests = set(ve.vest_date.year for ve in all_vest_events)
     cached_rates_by_year = {}
     if tax_profile:
         for year in years_with_vests:
-            cached_rates_by_year[year] = tax_profile.get_tax_rates(tax_year=year)
+            # Use historical income for that year if available, otherwise current income
+            year_income = annual_incomes_dict.get(year, tax_profile.annual_income)
+            cached_rates_by_year[year] = tax_profile.get_tax_rates(tax_year=year, income_override=year_income)
 
     # Get latest stock price from user's encrypted prices
     from app.utils.price_utils import get_latest_user_price
