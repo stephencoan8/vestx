@@ -1341,6 +1341,11 @@ function applyColumnSettings() {
     
     // Use flexbox for reordering
     headerRow.style.display = 'flex';
+    
+    // Batch DOM reads and writes for better performance
+    const showAll = showAllToggle.checked;
+    const rowsToProcess = [];
+    
     bodyRows.forEach(row => {
         // Skip tax breakdown rows - they have their own toggle
         if (row.classList.contains('tax-breakdown-row')) {
@@ -1349,21 +1354,28 @@ function applyColumnSettings() {
         
         // Check if row should be hidden (unvested rows when showing vested only)
         const isUnvested = row.classList.contains('data-unvested');
-        const showAll = showAllToggle.checked;
         
-        // Only set display to flex if row should be visible
+        // Only process rows that should be visible
         if (!isUnvested || showAll) {
-            row.style.display = 'flex';
+            rowsToProcess.push(row);
         }
-        
-        row.querySelectorAll('td').forEach(cell => {
-            cell.style.flex = '1';
-            cell.style.minWidth = '100px';
-        });
     });
-    headerRow.querySelectorAll('th').forEach(th => {
-        th.style.flex = '1';
-        th.style.minWidth = '100px';
+    
+    // Apply styles in batch
+    requestAnimationFrame(() => {
+        rowsToProcess.forEach(row => {
+            row.style.display = 'flex';
+            const cells = row.querySelectorAll('td');
+            cells.forEach(cell => {
+                cell.style.flex = '1';
+                cell.style.minWidth = '100px';
+            });
+        });
+        
+        headerRow.querySelectorAll('th').forEach(th => {
+            th.style.flex = '1';
+            th.style.minWidth = '100px';
+        });
     });
     });
 }
@@ -1457,8 +1469,8 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-// Apply settings on page load
-applyColumnSettings();
+// Apply settings on page load with slight delay to not block initial render
+setTimeout(() => applyColumnSettings(), 0);
 
 }); // End of DOMContentLoaded
 
