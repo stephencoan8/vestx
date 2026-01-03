@@ -395,14 +395,24 @@ def vest_schedule():
     # Pre-fetch tax profile once to avoid N+1 queries
     tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
     
+    # Pre-calculate tax rates for current year (for future vests)
+    current_year_rates = None
+    if tax_profile:
+        current_year_rates = tax_profile.get_tax_rates(tax_year=today.year)
+    
     # Enrich vest events with tax estimates
     enriched_events = []
     for ve in vest_events:
-        # For future vests, calculate estimated tax (pass cached tax_profile)
+        # For future vests, calculate estimated tax (pass cached tax_profile and rates)
         if ve.vest_date > today:
-            if tax_profile:
-                # Pass the cached tax_profile to avoid repeated DB queries
-                tax_info = ve.estimate_tax_withholding(latest_stock_price, _tax_profile=tax_profile)
+            if tax_profile and current_year_rates:
+                # Pass the cached tax_profile and rates to avoid repeated DB queries
+                tax_info = ve.estimate_tax_withholding(
+                    latest_stock_price, 
+                    federal_rate=current_year_rates['federal'],
+                    state_rate=current_year_rates['state'],
+                    _tax_profile=tax_profile
+                )
             else:
                 tax_info = ve.estimate_tax_withholding(latest_stock_price)
             ve.estimated_tax = tax_info['tax_amount']
@@ -456,6 +466,11 @@ def finance_deep_dive():
     state_rate_default = tax_rates.get('state', 0.093)
     ltcg_rate_default = tax_rates.get('ltcg', 0.15)
     
+    # Pre-fetch annual incomes once to avoid N+1 queries (needed for tax rate calculation)
+    from app.models.annual_income import AnnualIncome
+    annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
+    annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
+    
     # Pre-calculate rates for all possible years to avoid repeated queries
     # Use year-specific income (gross income from tax returns for accurate bracket calculation)
     years_with_vests = set(ve.vest_date.year for ve in all_vest_events)
@@ -470,11 +485,6 @@ def finance_deep_dive():
     from app.utils.price_utils import get_latest_user_price
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
-
-    # Pre-fetch annual incomes once to avoid N+1 queries
-    from app.models.annual_income import AnnualIncome
-    annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
-    annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
 
     today = date.today()
 
