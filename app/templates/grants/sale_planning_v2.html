@@ -368,11 +368,12 @@
              ondragstart="drag(event)"
              ondragend="dragEnd(event)"
              data-vest-id="{{ vest.id }}"
+             data-vested="{{ vest.has_vested|lower }}"
              data-grant-type="{{ vest.grant.grant_type }}"
              data-shares="{{ vest.shares_received }}"
              data-value="{{ vest.value_at_vest or 0 }}"
              data-vest-date="{{ vest.vest_date.isoformat() }}">
-            <div class="vest-type">{{ vest.grant.grant_type }}</div>
+            <div class="vest-type">{{ vest.grant.grant_type }}{% if not vest.has_vested %} ⏳{% endif %}</div>
             <div class="vest-info">{{ vest.shares_received }} shares</div>
             <div class="vest-info">${{ '{:,.0f}'.format(vest.value_at_vest or 0) }}</div>
             <div class="vest-info" style="opacity: 0.6;">{{ vest.vest_date.strftime('%Y-%m-%d') }}</div>
