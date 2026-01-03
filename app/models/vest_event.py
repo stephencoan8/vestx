@@ -150,7 +150,7 @@ class VestEvent(db.Model):
         
         return total_tax
     
-    def get_comprehensive_tax_breakdown(self, _tax_profile=None, _annual_incomes=None, _cached_rates=None, _ytd_at_vest=None) -> dict:
+    def get_comprehensive_tax_breakdown(self, _tax_profile=None, _annual_incomes=None, _cached_rates=None, _year_income=None) -> dict:
         """
         Get detailed tax breakdown including FICA, Medicare, Social Security.
         Uses user's tax profile for accurate calculations.
@@ -160,7 +160,7 @@ class VestEvent(db.Model):
             _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
             _annual_incomes: INTERNAL - dict of {year: income} to avoid N+1 queries
             _cached_rates: INTERNAL - pre-calculated tax rates dict to avoid TaxBracket queries
-            _ytd_at_vest: INTERNAL - YTD wages at time of this vest (for accurate SS tax calculation)
+            _year_income: INTERNAL - total income for this vest's year (for effective SS rate calculation)
         """
         try:
             from app.models.tax_rate import UserTaxProfile
@@ -231,16 +231,15 @@ class VestEvent(db.Model):
                 state=tax_profile.state
             )
             
-            # Set YTD wages for SS calculation
-            if _ytd_at_vest is not None:
-                # Use provided YTD (calculated by caller to avoid N+1 queries)
-                calculator.set_ytd_wages(_ytd_at_vest)
-            elif tax_year >= date.today().year:
+            # For past years, use effective SS rate based on total annual income
+            # For current/future years, use progressive YTD calculation
+            if tax_year < date.today().year:
+                # Past year: calculate effective SS rate for the whole year
+                year_total_income = _year_income if _year_income is not None else annual_income
+                calculator.set_effective_ss_rate(year_total_income)
+            else:
                 # Current/future year: use actual YTD wages from profile
                 calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
-            else:
-                # Past year without YTD info: assume full annual income (conservative estimate)
-                calculator.set_ytd_wages(annual_income)
             
             # Calculate comprehensive taxes
             breakdown = calculator.calculate_vest_taxes(

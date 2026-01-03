@@ -29,10 +29,29 @@ class TaxCalculator:
         self.filing_status = filing_status
         self.state = state
         self.ytd_wages = 0  # Year-to-date wages for SS calculation
+        self.effective_ss_rate = None  # Effective SS rate for past years (when we know total income)
         
     def set_ytd_wages(self, ytd_wages: float):
         """Set year-to-date wages for accurate Social Security calculation."""
         self.ytd_wages = ytd_wages
+    
+    def set_effective_ss_rate(self, total_annual_income: float):
+        """
+        Calculate and set effective Social Security rate for the entire year.
+        Use this for past years where we know total income but not progressive YTD.
+        
+        Example: If total income is $200k and SS cap is $168,600:
+        - First $168,600 pays 6.2% SS = $10,453.20
+        - Remaining $31,400 pays 0% = $0
+        - Effective rate = $10,453.20 / $200,000 = 5.227%
+        """
+        if total_annual_income <= SOCIAL_SECURITY_WAGE_BASE:
+            # All income is under the cap
+            self.effective_ss_rate = SOCIAL_SECURITY_RATE
+        else:
+            # Calculate what portion of income pays SS tax
+            taxable_portion = SOCIAL_SECURITY_WAGE_BASE / total_annual_income
+            self.effective_ss_rate = taxable_portion * SOCIAL_SECURITY_RATE
         
     def calculate_vest_taxes(self, vest_value: float, federal_rate: float, state_rate: float) -> dict:
         """
@@ -52,8 +71,16 @@ class TaxCalculator:
         # State Income Tax
         state_tax = vest_value * state_rate if state_rate else 0.0
         
-        # Social Security Tax (6.2% up to wage base)
-        social_security_tax = self._calculate_social_security(vest_value)
+        # Social Security Tax
+        if self.effective_ss_rate is not None:
+            # Use effective rate (for past years with known total income)
+            social_security_tax = vest_value * self.effective_ss_rate
+            displayed_ss_rate = self.effective_ss_rate
+        else:
+            # Use progressive calculation (6.2% up to wage base)
+            social_security_tax = self._calculate_social_security(vest_value)
+            # Calculate the effective rate for this specific vest
+            displayed_ss_rate = (social_security_tax / vest_value) if vest_value > 0 else 0.0
         
         # Medicare Tax (1.45% on all wages)
         medicare_tax = vest_value * MEDICARE_RATE
@@ -80,7 +107,7 @@ class TaxCalculator:
             'state_tax': state_tax,
             'state_rate': state_rate,
             'social_security_tax': social_security_tax,
-            'social_security_rate': SOCIAL_SECURITY_RATE,
+            'social_security_rate': displayed_ss_rate,
             'medicare_tax': medicare_tax,
             'medicare_rate': MEDICARE_RATE,
             'additional_medicare_tax': additional_medicare_tax,
