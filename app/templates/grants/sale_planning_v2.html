@@ -283,26 +283,27 @@
 
 <div id="unplacedPanel" class="floating-panel">
     <h3 style="font-size: 0.875rem; font-weight: 700; color: rgba(148, 163, 184, 0.9); margin: 0 0 16px 0; text-transform: uppercase; letter-spacing: 0.05em;">
-        📦 Unplaced Vests ({{ vests|length }})
+        📦 Unplaced Vests ({{ vest_data|length }})
     </h3>
     <div id="unplacedVests" 
          style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;"
          ondrop="drop(event)" 
          ondragover="allowDrop(event)">
-        {% for vest in vests %}
+        {% for vest_info in vest_data %}
         <div class="vest-tile"
              draggable="true"
              ondragstart="drag(event)"
              ondragend="dragEnd(event)"
-             data-vest-id="{{ vest.id }}"
-             data-grant-type="{{ vest.grant.grant_type }}"
-             data-shares="{{ vest.shares_received }}"
-             data-value="{{ vest.value_at_vest or 0 }}"
-             data-vest-date="{{ vest.vest_date.isoformat() }}">
-            <div class="vest-type">{{ vest.grant.grant_type }}</div>
-            <div class="vest-info">{{ vest.shares_received }} shares</div>
-            <div class="vest-info">${{ '{:,.0f}'.format(vest.value_at_vest or 0) }}</div>
-            <div class="vest-info" style="opacity: 0.6;">{{ vest.vest_date.strftime('%Y-%m-%d') }}</div>
+             data-vest-id="{{ vest_info.id }}"
+             data-planned-year="{{ vest_info.planned_year }}"
+             data-grant-type="{{ vest_info.grant_type }}"
+             data-shares="{{ vest_info.shares_received }}"
+             data-value="{{ vest_info.value_at_vest }}"
+             data-vest-date="{{ vest_info.vest_date }}">
+            <div class="vest-type">{{ vest_info.grant_type }}</div>
+            <div class="vest-info">{{ vest_info.shares_received }} shares</div>
+            <div class="vest-info">${{ '{:,.0f}'.format(vest_info.value_at_vest) }}</div>
+            <div class="vest-info" style="opacity: 0.6;">{{ vest_info.vest_date[:10] }}</div>
         </div>
         {% endfor %}
     </div>
@@ -483,6 +484,28 @@
             el.textContent = '$0';
         });
     }
+    
+    // Load existing plan on page load
+    window.addEventListener('DOMContentLoaded', () => {
+        // Move vests to their saved year tiles based on backend data
+        document.querySelectorAll('.vest-tile[data-vest-id]').forEach(vestTile => {
+            const vestId = vestTile.dataset.vestId;
+            const plannedYear = vestTile.dataset.plannedYear;
+            
+            if (plannedYear && plannedYear !== 'None') {
+                const year = parseInt(plannedYear);
+                const yearTile = document.querySelector(`.year-tile[data-year="${year}"]`);
+                if (yearTile) {
+                    yearTile.querySelector('.vests-container').appendChild(vestTile);
+                    vestPlacements[vestId] = year;
+                }
+            }
+        });
+        
+        // Recalculate taxes for all years with vests
+        const yearsWithVests = new Set(Object.values(vestPlacements));
+        yearsWithVests.forEach(year => recalculateYearTaxes(year));
+    });
     
     // Load existing plan
     async function loadExistingPlan() {
