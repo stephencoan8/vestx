@@ -388,18 +388,26 @@ def vest_schedule():
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
     
+    # Pre-fetch tax profile once to avoid N+1 queries
+    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+    
     # Enrich vest events with tax estimates
     enriched_events = []
     for ve in vest_events:
-        # For future vests, calculate estimated tax
+        # For future vests, calculate estimated tax (pass cached tax_profile)
         if ve.vest_date > today:
-            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            if tax_profile:
+                # Pass the cached tax_profile to avoid repeated DB queries
+                tax_info = ve.estimate_tax_withholding(latest_stock_price, _tax_profile=tax_profile)
+            else:
+                tax_info = ve.estimate_tax_withholding(latest_stock_price)
             ve.estimated_tax = tax_info['tax_amount']
         else:
             ve.estimated_tax = None  # Use actual tax_withheld for vested events
         enriched_events.append(ve)
     
     return render_template('grants/schedule.html', vest_events=enriched_events)
+
 
 
 @grants_bp.route('/rules')
@@ -441,6 +449,11 @@ def finance_deep_dive():
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
 
+    # Pre-fetch annual incomes once to avoid N+1 queries
+    from app.models.tax_rate import AnnualIncome
+    annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
+    annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
+
     today = date.today()
 
     # Initialize totals
@@ -480,11 +493,20 @@ def finance_deep_dive():
         for ve in vest_events:
             has_vested = ve.vest_date <= today
             
-            # Calculate estimated or actual taxes
-            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            # Calculate estimated or actual taxes (pass cached tax_profile)
+            if tax_profile:
+                tax_info = ve.estimate_tax_withholding(latest_stock_price, _tax_profile=tax_profile)
+            else:
+                tax_info = ve.estimate_tax_withholding(latest_stock_price)
             
-            # Get comprehensive tax breakdown (FICA, Medicare, SS, etc.)
-            tax_breakdown = ve.get_comprehensive_tax_breakdown() if has_vested else None
+            # Get comprehensive tax breakdown (pass cached data to avoid queries)
+            if has_vested:
+                if tax_profile:
+                    tax_breakdown = ve.get_comprehensive_tax_breakdown(_tax_profile=tax_profile, _annual_incomes=annual_incomes_dict)
+                else:
+                    tax_breakdown = ve.get_comprehensive_tax_breakdown()
+            else:
+                tax_breakdown = None
             
             # For cash grants, shares_vested/shares_received represent USD amounts
             if is_cash_grant:
