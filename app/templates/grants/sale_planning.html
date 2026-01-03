@@ -68,6 +68,11 @@ const VEST_DATA = {{ vest_data | tojson }};
 const STOCK_PRICE = {{ latest_stock_price }};
 const CSRF_TOKEN = '{{ csrf_token() }}';
 
+console.log('Sale Planning initialized');
+console.log('Number of vests:', VEST_DATA.length);
+console.log('Stock price:', STOCK_PRICE);
+console.log('CSRF token:', CSRF_TOKEN ? 'present' : 'missing');
+
 // State
 let vestPlacements = {}; // {vest_id: year}
 let zoomLevel = 1.0;
@@ -84,7 +89,32 @@ document.addEventListener('DOMContentLoaded', function() {
     setupPanControls();
     setupToggles();
     loadExistingPlan();
+    
+    // Test API connectivity
+    testAPIConnection();
 });
+
+async function testAPIConnection() {
+    console.log('Testing API connection...');
+    try {
+        const response = await fetch('/grants/api/sale-planning/calculate-taxes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify({
+                year: 2026,
+                vest_ids: []
+            })
+        });
+        console.log('API test response status:', response.status);
+        const data = await response.json();
+        console.log('API test response data:', data);
+    } catch (error) {
+        console.error('API test failed:', error);
+    }
+}
 
 function initializeVests() {
     const container = document.getElementById('unassigned-vests');
