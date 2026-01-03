@@ -299,38 +299,41 @@
 
 <div id="titlePanel" class="floating-panel">
     <h1 style="font-size: 1.5rem; font-weight: 800; color: white; margin: 0;">💡 Sale Planning</h1>
-    <p style="font-size: 0.75 {% if not vest.has_vested %}unvested{% endif %}"
-             draggable="true"
-             ondragstart="drag(event)"
-             ondragend="dragEnd(event)"
-             data-vest-id="{{ vest.id }}"
-             data-vested="{{ vest.has_vested|lower }}"
-             data-grant-type="{{ vest.grant.grant_type }}"
-             data-shares="{{ vest.shares_received }}"
-             data-value="{{ vest.value_at_vest or 0 }}"
-             data-vest-date="{{ vest.vest_date.isoformat() }}">
-            <div class="vest-type">{{ vest.grant.grant_type }}{% if not vest.has_vested %} ⏳{% endif %}</div>
-            <div class="vest-info">{{ vest.shares_received }} shares</div>
-            <div class="vest-info">${{ '{:,.0f}'.format(vest.value_at_vest or 0) }}</div>
-            <div class="vest-info" style="opacity: 0.6;">{{ vest.vest_date.strftime('%Y-%m-%d') }}</div>
-        </div>
-        {% endfor %}
+    <p style="font-size: 0.75rem; color: rgba(148, 163, 184, 0.8); margin: 8px 0 0 0;">Optimize your tax strategy</p>
+</div>
+
+<div id="togglePanel" class="floating-panel">
+    <div class="toggle-switch">
+        <span class="toggle-label">Show Unvested</span>
+        <input type="checkbox" id="showUnvested" checked onchange="toggleUnvested()">
     </div>
 </div>
 
-<script>
+<div id="controlPanel" class="floating-panel">
+    <div class="control-group">
+        <button class="btn btn-primary" onclick="savePlan()">💾 Save Plan</button>
+    </div>
+    <div class="control-group">
+        <button class="btn btn-secondary" onclick="resetPlan()">🔄 Reset</button>
+    </div>
+    <div class="control-group" style="border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 16px;">
+        <div class="control-label">Zoom</div>
+        <div style="text-align: center; font-size: 1.25rem; font-weight: 700; color: white;" id="zoomDisplay">100%</div>
+        <div class="hint-text">Mouse wheel to zoom</div>
+    </div>
+    <div class="control-group">
+        <div class="control-label">Navigation</div>
+        <div class="hint-text">Drag canvas to pan<br>Click vest to view details</div>
     </div>
 </div>
 
 <div id="saleCanvas">
     <div id="canvasContent">
-        <!-- Year tiles positioned in 2D space -->
+        <!-- Year tiles positioned in single row -->
         {% for year in range(2026, 2036) %}
-        {% set col = (year - 2026) % 5 %}
-        {% set row = (year - 2026) // 5 %}
         <div class="year-tile"
              data-year="{{ year }}"
-             style="left: {{ col * 450 + 200 }}px; top: {{ row * 550 + 150 }}px;"
+             style="left: {{ (year - 2026) * 450 + 200 }}px; top: 150px;"
              ondrop="drop(event)" 
              ondragover="allowDrop(event)"
              ondragleave="dragLeave(event)">
@@ -360,7 +363,7 @@
          ondrop="drop(event)" 
          ondragover="allowDrop(event)">
         {% for vest in vests %}
-        <div class="vest-tile"
+        <div class="vest-tile {% if not vest.has_vested %}unvested{% endif %}"
              draggable="true"
              ondragstart="drag(event)"
              ondragend="dragEnd(event)"
