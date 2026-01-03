@@ -97,7 +97,7 @@
                     </thead>
                     <tbody>
                         {% for vest in vest_events %}
-                        <tr data-vest-id="{{ vest.id }}" class="vest-row">
+                        <tr data-vest-id="{{ vest.id }}" class="vest-row clickable-vest-row" onclick="window.location.href='{{ url_for('grants.vest_detail', vest_id=vest.id) }}'">
                             <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
                             <td class="shares-vesting">{{ "{:,.0f}".format(vest.shares_vested) }}</td>
                             <td class="vest-value">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
@@ -105,10 +105,10 @@
                             <td>
                                 <input type="number" class="cash-paid-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
-                                       step="0.01" min="0" placeholder="$0.00">
+                                       step="0.01" min="0" placeholder="$0.00" onclick="event.stopPropagation();">
                             </td>
                             <td>
-                                <select class="cash-covered-select" data-vest-id="{{ vest.id }}">
+                                <select class="cash-covered-select" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">
                                     <option value="yes" {% if vest.cash_covered_all %}selected{% endif %}>Yes</option>
                                     <option value="no" {% if not vest.cash_covered_all %}selected{% endif %}>No</option>
                                 </select>
@@ -117,7 +117,7 @@
                                 <input type="number" class="shares-sold-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.0f}'.format(vest.shares_sold) if vest.shares_sold else '' }}" 
                                        step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
-                                       {% if vest.cash_covered_all %}disabled{% endif %}>
+                                       {% if vest.cash_covered_all %}disabled{% endif %} onclick="event.stopPropagation();">
                             </td>
                             {% endif %}
                             <td class="shares-received highlight">{{ "{:,.0f}".format(vest.shares_received) }}</td>
@@ -134,7 +134,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-primary save-vest-btn" data-vest-id="{{ vest.id }}">Save</button>
+                                <button class="btn btn-sm btn-primary save-vest-btn" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">Save</button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -346,6 +346,15 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
     background: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
+}
+
+.clickable-vest-row {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.clickable-vest-row:hover {
+    background-color: rgba(59, 130, 246, 0.05) !important;
 }
 </style>
 {% endblock %}

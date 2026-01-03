@@ -27,7 +27,7 @@
             </thead>
             <tbody>
                 {% for vest in vest_events %}
-                <tr class="{% if vest.has_vested %}vested-row{% endif %} clickable-row" onclick="window.location.href='{{ url_for('grants.view_grant', grant_id=vest.grant.id) }}';" style="cursor: pointer;" title="Click to view grant details">
+                <tr class="{% if vest.has_vested %}vested-row{% endif %} clickable-row" onclick="window.location.href='{{ url_for('grants.vest_detail', vest_id=vest.id) }}';" style="cursor: pointer;" title="Click to view vest details">
                     <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
                     <td><span class="badge badge-{{ vest.grant.grant_type }}">{{ vest.grant.grant_type.replace('_', ' ').title() }}</span></td>
                     <td><span class="badge badge-share">{{ vest.grant.share_type.upper() }}</span></td>
