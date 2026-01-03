@@ -379,8 +379,12 @@ def vest_schedule():
     """View complete vesting schedule."""
     from app.utils.price_utils import get_latest_user_price
     from datetime import date
+    from sqlalchemy.orm import joinedload
     
-    vest_events = VestEvent.query.join(Grant).filter(
+    # Eagerly load grant relationship to avoid N+1 queries
+    vest_events = VestEvent.query.options(
+        joinedload(VestEvent.grant)
+    ).join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
@@ -422,11 +426,18 @@ def rules():
 def finance_deep_dive():
     """Comprehensive tax and capital gains analysis."""
     import logging
+    from sqlalchemy.orm import joinedload
     logger = logging.getLogger(__name__)
 
-    # Get all grants and vest events for the user
-    grants = Grant.query.filter_by(user_id=current_user.id).all()
-    all_vest_events = VestEvent.query.join(Grant).filter(
+    # Get all grants with eager loading of vest events
+    grants = Grant.query.options(
+        joinedload(Grant.vest_events)
+    ).filter_by(user_id=current_user.id).all()
+    
+    # Get all vest events with eager loading of grants
+    all_vest_events = VestEvent.query.options(
+        joinedload(VestEvent.grant)
+    ).join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
