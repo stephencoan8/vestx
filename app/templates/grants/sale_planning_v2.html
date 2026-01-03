@@ -453,11 +453,6 @@
     
     // Save/Reset
     async function savePlan() {
-        const plans = Object.entries(vestPlacements).map(([vest_id, year]) => ({
-            vest_event_id: parseInt(vest_id),
-            planned_sale_year: year
-        }));
-        
         try {
             const response = await fetch('/grants/api/sale-planning/save', {
                 method: 'POST',
@@ -465,7 +460,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': CSRF_TOKEN
                 },
-                body: JSON.stringify({plans})
+                body: JSON.stringify({plans: vestPlacements})
             });
             
             const data = await response.json();
