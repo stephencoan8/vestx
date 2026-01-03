@@ -165,6 +165,7 @@ class VestEvent(db.Model):
             from app.models.tax_rate import UserTaxProfile
             from app.models.annual_income import AnnualIncome
             from app.utils.tax_calculator import TaxCalculator
+            from datetime import date
             
             # Get user's tax profile (use cached if available)
             if _tax_profile is None:
@@ -222,13 +223,20 @@ class VestEvent(db.Model):
             # Ensure filing_status has a default value
             filing_status = tax_profile.filing_status or 'single'
             
-            # Initialize tax calculator
+            # Initialize tax calculator with YEAR-SPECIFIC income (not current year)
             calculator = TaxCalculator(
-                annual_income=tax_profile.annual_income,
+                annual_income=annual_income,  # Use the year-specific income from above
                 filing_status=filing_status,
                 state=tax_profile.state
             )
-            calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
+            # For past years, use the annual income as YTD (assumes all income earned by year end)
+            # For current/future years, use actual YTD wages if available
+            if tax_year < date.today().year:
+                # Past year: use full annual income as YTD wages (year is over)
+                calculator.set_ytd_wages(annual_income)
+            else:
+                # Current/future year: use actual YTD wages from profile
+                calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
             
             # Calculate comprehensive taxes
             breakdown = calculator.calculate_vest_taxes(
