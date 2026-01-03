@@ -450,7 +450,7 @@ def finance_deep_dive():
     logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
 
     # Pre-fetch annual incomes once to avoid N+1 queries
-    from app.models.tax_rate import AnnualIncome
+    from app.models.annual_income import AnnualIncome
     annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
     annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
 
