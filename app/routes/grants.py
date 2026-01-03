@@ -907,31 +907,39 @@ def calculate_sale_taxes():
             logging.debug(f"Vest {vest.id}: {shares} shares, gain ${gain}, holding {holding_period} days")
         
         # Calculate federal taxes
-        # Get tax rates from profile (use current year rates for future year projections)
+        # Get tax rates from user's profile
         from datetime import date
         current_year = date.today().year
-        tax_rates = tax_profile.get_tax_rates(tax_year=current_year)
         
-        # LTCG rates: 0%, 15%, 20% based on income
-        income = tax_profile.annual_income or 0
-        ltcg_rate = 0.15  # Default
-        if income > 500000:
-            ltcg_rate = 0.20
-        elif income < 80000:
-            ltcg_rate = 0.0
+        # Get rates from profile - this returns dict with 'federal', 'state', 'ltcg'
+        try:
+            tax_rates = tax_profile.get_tax_rates(tax_year=current_year)
+            logging.debug(f"Tax rates from profile: {tax_rates}")
+        except Exception as e:
+            logging.error(f"Error getting tax rates: {e}")
+            # Fallback to simple rates
+            tax_rates = {'federal': 0.24, 'state': 0.093, 'ltcg': 0.15}
+        
+        # LTCG rate from profile
+        ltcg_rate = tax_rates.get('ltcg', 0.15)
         
         # STCG taxed as ordinary income
         stcg_rate = tax_rates.get('federal', 0.24)
         state_rate = tax_rates.get('state', 0.0)
+        
+        logging.debug(f"Using rates - LTCG: {ltcg_rate}, STCG: {stcg_rate}, State: {state_rate}")
         
         federal_tax_ltcg = total_ltcg * ltcg_rate if total_ltcg > 0 else 0
         federal_tax_stcg = total_stcg * stcg_rate if total_stcg > 0 else 0
         state_tax = (total_ltcg + total_stcg) * state_rate
         
         # NIIT (3.8% on investment income for high earners)
+        income = tax_profile.annual_income or 0
         niit = 0
         if income > 200000:
             niit = (total_ltcg + total_stcg) * 0.038
+        
+        logging.debug(f"Calculated taxes - Fed LTCG: ${federal_tax_ltcg}, Fed STCG: ${federal_tax_stcg}, State: ${state_tax}, NIIT: ${niit}")
         
         total_tax = federal_tax_ltcg + federal_tax_stcg + state_tax + niit
         net_proceeds = total_proceeds - total_tax
