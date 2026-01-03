@@ -137,7 +137,7 @@
         border-radius: 10px;
         padding: 12px;
         margin-bottom: 8px;
-        cursor: move;
+        cursor: pointer;
         transition: all 0.15s ease;
     }
     
@@ -294,6 +294,7 @@
              draggable="true"
              ondragstart="drag(event)"
              ondragend="dragEnd(event)"
+             onclick="navigateToVest(event, {{ vest_info.id }})"
              data-vest-id="{{ vest_info.id }}"
              data-planned-year="{{ vest_info.planned_year }}"
              data-grant-type="{{ vest_info.grant_type }}"
@@ -373,9 +374,10 @@
     }
     
     // Drag & Drop
-    let draggedVest = null;
+    let isDragging = false;
     
     function drag(e) {
+        isDragging = true;
         draggedVest = e.target;
         e.target.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
@@ -383,6 +385,15 @@
     }
     
     function dragEnd(e) {
+        isDragging = false;
+        e.target.classList.remove('dragging');
+    }
+    
+    function navigateToVest(e, vestId) {
+        // Only navigate if we didn't just drag
+        if (!isDragging) {
+            window.location.href = `/grants/vest/${vestId}`;
+        }
         e.target.classList.remove('dragging');
     }
     
