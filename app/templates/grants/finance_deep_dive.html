@@ -333,12 +333,13 @@
                                         ${{ "{:,.2f}".format(ve_data.tax_amount) }}*
                                     </span>
                                 {% elif ve_data.has_vested %}
-                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
+                                        <span onclick="toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: var(--primary-color);" title="Click to view tax breakdown">
+                                            ${{ "{:,.2f}".format(ve_data.tax_amount) }}
+                                        </span>
+                                    {% else %}
                                         ${{ "{:,.2f}".format(ve_data.tax_amount) }}
-                                        {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
-                                        <button class="btn-icon" onclick="toggleTaxBreakdown(this)" title="View tax breakdown" style="font-size: 0.8em; padding: 0.2rem 0.4rem;">📊</button>
-                                        {% endif %}
-                                    </div>
+                                    {% endif %}
                                 {% else %}
                                     <span style="color: var(--text-secondary);">—</span>
                                 {% endif %}
@@ -352,7 +353,7 @@
                         <!-- Tax Breakdown Row (Hidden by default) -->
                         {% if ve_data.has_vested and ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
                         <tr class="tax-breakdown-row" style="display: none;">
-                            <td colspan="9" style="background: #f5f5f5; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
+                            <td colspan="9" style="background: #e8e8e8; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
                                 <div style="max-width: 800px;">
                                     <h4 style="margin-top: 0; color: #1976d2; display: flex; align-items: center; gap: 0.5rem;">
                                         💰 Detailed Tax Breakdown for {{ ve.vest_date.strftime('%b %d, %Y') }}
@@ -1048,19 +1049,15 @@ const serverTotalEstimatedTax = {{ total_estimated_tax | default(0) | tojson }};
 <!-- Tax calculation scripts continue below (DOMContentLoaded handler) -->
 <script>
 // Toggle tax breakdown visibility
-function toggleTaxBreakdown(button) {
-    const row = button.closest('tr');
+function toggleTaxBreakdown(element) {
+    const row = element.closest('tr');
     const breakdownRow = row.nextElementSibling;
     
     if (breakdownRow && breakdownRow.classList.contains('tax-breakdown-row')) {
         if (breakdownRow.style.display === 'none') {
             breakdownRow.style.display = 'table-row';
-            button.textContent = '📊';
-            button.title = 'Hide tax breakdown';
         } else {
             breakdownRow.style.display = 'none';
-            button.textContent = '📊';
-            button.title = 'View tax breakdown';
         }
     }
 }
