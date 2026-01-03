@@ -487,6 +487,43 @@ def finance_deep_dive():
     logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
 
     today = date.today()
+    
+    # Calculate cumulative YTD wages for each vest (for accurate SS tax on past years)
+    # Group vests by year and calculate running total
+    ytd_by_vest = {}  # {vest_event_id: ytd_wages_at_vest}
+    
+    for year in sorted(years_with_vests):
+        if year >= today.year:
+            # Current/future years: will use actual YTD from profile
+            continue
+            
+        # Get all vests in this year, sorted chronologically
+        year_vests = [ve for ve in all_vest_events if ve.vest_date.year == year]
+        year_vests.sort(key=lambda v: v.vest_date)
+        
+        # Get total income for this year
+        year_income = annual_incomes_dict.get(year, tax_profile.annual_income if tax_profile else 0)
+        
+        # Calculate total vest income for the year
+        total_vest_income = sum(ve.value_at_vest for ve in year_vests)
+        
+        # Estimate base salary (non-vest income) for the year
+        base_salary = max(0, year_income - total_vest_income)
+        
+        # Track cumulative income as we go through vests chronologically
+        for ve in year_vests:
+            # Estimate salary earned up to this vest date (proportional)
+            days_in_year = 366 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 365
+            day_of_year = ve.vest_date.timetuple().tm_yday
+            salary_ytd = base_salary * (day_of_year / days_in_year)
+            
+            # Add all earlier vests in this year
+            earlier_vest_income = sum(
+                v.value_at_vest for v in year_vests 
+                if v.vest_date < ve.vest_date
+            )
+            
+            ytd_by_vest[ve.id] = salary_ytd + earlier_vest_income
 
     # Initialize totals
     total_shares_held_vested = 0.0
@@ -543,10 +580,14 @@ def finance_deep_dive():
             # Get comprehensive tax breakdown (pass cached data to avoid queries)
             if has_vested:
                 if tax_profile:
+                    # Get YTD wages at time of this vest (if calculated)
+                    ytd_at_vest = ytd_by_vest.get(ve.id)
+                    
                     tax_breakdown = ve.get_comprehensive_tax_breakdown(
                         _tax_profile=tax_profile, 
                         _annual_incomes=annual_incomes_dict,
-                        _cached_rates=vest_year_rates
+                        _cached_rates=vest_year_rates,
+                        _ytd_at_vest=ytd_at_vest
                     )
                 else:
                     tax_breakdown = ve.get_comprehensive_tax_breakdown()
