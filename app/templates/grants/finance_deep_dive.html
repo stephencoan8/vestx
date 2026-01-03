@@ -1072,7 +1072,7 @@ document.addEventListener('DOMContentLoaded', function() {
 const federalSlider = document.getElementById('federalTaxRate');
 const stateSlider = document.getElementById('stateTaxRate');
 const capitalGainsSlider = document.getElementById('capitalGainsTaxRate');
-const ficaSlider = document.getElementById('ficaRate');
+const ficaSlider = document.getElementById('ficaTaxRate');
 const showAllToggle = document.getElementById('showAllToggle');
 const toggleLabel = document.getElementById('toggleLabel');
 
@@ -1113,17 +1113,19 @@ capitalGainsSlider.addEventListener('input', (e) => {
     calculateTaxes();
 });
 
-ficaSlider.addEventListener('input', (e) => {
-    ficaValue.textContent = parseFloat(e.target.value).toFixed(2);
-    calculateTaxes();
-});
+if (ficaSlider && ficaValue) {
+    ficaSlider.addEventListener('input', (e) => {
+        ficaValue.textContent = parseFloat(e.target.value).toFixed(2);
+        calculateTaxes();
+    });
+}
 
 function calculateTaxes() {
     const federalRate = parseFloat(federalSlider.value) / 100;
     const stateRate = parseFloat(stateSlider.value) / 100;
     const capitalGainsRate = parseFloat(capitalGainsSlider.value) / 100;
     const showAll = showAllToggle.checked;
-    const ficaRate = parseFloat(ficaSlider.value) / 100;
+    const ficaRate = ficaSlider ? parseFloat(ficaSlider.value) / 100 : 0.0765;
 
     let totalTax = 0;
     let totalCurrentValue = 0;
