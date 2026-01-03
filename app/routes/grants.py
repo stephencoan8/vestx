@@ -856,6 +856,23 @@ def calculate_sale_taxes():
             logging.error("Tax profile not found")
             return jsonify({'success': False, 'error': 'Tax profile not found'}), 400
         
+        # Handle empty vest list
+        if not vest_ids:
+            return jsonify({
+                'success': True,
+                'total_proceeds': 0.0,
+                'total_ltcg': 0.0,
+                'total_stcg': 0.0,
+                'federal_tax_ltcg': 0.0,
+                'federal_tax_stcg': 0.0,
+                'state_tax': 0.0,
+                'niit': 0.0,
+                'total_tax': 0.0,
+                'net_proceeds': 0.0,
+                'ltcg_rate': 15.0,
+                'stcg_rate': 24.0
+            })
+        
         # Get vests
         vests = VestEvent.query.filter(VestEvent.id.in_(vest_ids)).all()
         logging.debug(f"Found {len(vests)} vests")

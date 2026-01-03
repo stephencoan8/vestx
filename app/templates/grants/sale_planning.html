@@ -111,6 +111,9 @@ async function testAPIConnection() {
         console.log('API test response status:', response.status);
         const data = await response.json();
         console.log('API test response data:', data);
+        if (!data.success) {
+            console.error('API test error:', data.error);
+        }
     } catch (error) {
         console.error('API test failed:', error);
     }
