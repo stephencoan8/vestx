@@ -52,6 +52,13 @@
         left: 24px;
     }
     
+    #togglePanel {
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 20px;
+    }
+    
     #unplacedPanel {
         bottom: 24px;
         left: 24px;
@@ -145,7 +152,16 @@
         background: rgba(71, 85, 105, 0.95);
         border-color: rgba(148, 163, 184, 0.4);
         transform: translateX(6px);
+    }ile.unvested {
+        opacity: 0.5;
+        border-left: 3px solid #fbbf24;
     }
+    
+    .vest-tile.hidden {
+        display: none;
+    }
+    
+    .vest-t
     
     .vest-tile.dragging {
         opacity: 0.4;
@@ -206,7 +222,57 @@
     }
     
     .btn-secondary:hover {
-        background: rgba(100, 116, 139, 0.9);
+       Toggle Switch */
+    .toggle-switch {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .toggle-switch input[type="checkbox"] {
+        width: 48px;
+        height: 24px;
+        appearance: none;
+        background: rgba(71, 85, 105, 0.8);
+        border-radius: 12px;
+        position: relative;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .toggle-switch input[type="checkbox"]:checked {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+    }
+    togglePanel" class="floating-panel">
+    <div class="toggle-switch">
+        <span class="toggle-label">Show Unvested</span>
+        <input type="checkbox" id="showUnvested" checked onchange="toggleUnvested()">
+    </div>
+</div>
+
+<div id="
+    .toggle-switch input[type="checkbox"]::before {
+        content: '';
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: white;
+        top: 2px;
+        left: 2px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    single row -->
+        {% for year in range(2026, 2036) %}
+        <div class="year-tile"
+             data-year="{{ year }}"
+             style="left: {{ (year - 2026) * 450 + 200 }}px; top: 150
+        font-weight: 600;
+        color: white;
+    }
+    
+    /*  background: rgba(100, 116, 139, 0.9);
     }
     
     .hint-text {
@@ -233,16 +299,17 @@
 
 <div id="titlePanel" class="floating-panel">
     <h1 style="font-size: 1.5rem; font-weight: 800; color: white; margin: 0;">💡 Sale Planning</h1>
-    <p style="font-size: 0.75rem; color: rgba(148, 163, 184, 0.8); margin: 8px 0 0 0;">Optimize your tax strategy</p>
-</div>
-
-<div id="controlPanel" class="floating-panel">
-    <div class="control-group">
-        <button class="btn btn-primary" onclick="savePlan()">💾 Save Plan</button>
-    </div>
-    <div class="control-group">
-        <button class="btn btn-secondary" onclick="resetPlan()">🔄 Reset</button>
-    </div>
+    <p style="font-size: 0.75 {% if not vest.has_vested %}unvested{% endif %}"
+             draggable="true"
+             ondragstart="drag(event)"
+             ondragend="dragEnd(event)"
+             data-vest-id="{{ vest.id }}"
+             data-vested="{{ vest.has_vested|lower }}"
+             data-grant-type="{{ vest.grant.grant_type }}"
+             data-shares="{{ vest.shares_received }}"
+             data-value="{{ vest.value_at_vest or 0 }}"
+             data-vest-date="{{ vest.vest_date.isoformat() }}">
+            <div class="vest-type">{{ vest.grant.grant_type }}{% if not vest.has_vested %} ⏳{% endif %
     <div class="control-group" style="border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 16px;">
         <div class="control-label">Zoom</div>
         <div style="text-align: center; font-size: 1.25rem; font-weight: 700; color: white;" id="zoomDisplay">100%</div>
@@ -431,7 +498,15 @@
         
         try {
             const response = await fetch('/grants/api/sale-planning/calculate-taxes', {
-                method: 'POST',
+       Toggle unvested vests
+    function toggleUnvested() {
+        const showUnvested = document.getElementById('showUnvested').checked;
+        document.querySelectorAll('.vest-tile[data-vested="false"]').forEach(vest => {
+            vest.classList.toggle('hidden', !showUnvested);
+        });
+    }
+    
+    //          method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': CSRF_TOKEN
