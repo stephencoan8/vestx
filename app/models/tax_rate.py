@@ -64,17 +64,22 @@ class UserTaxProfile(db.Model):
     def __repr__(self) -> str:
         return f'<UserTaxProfile user_id={self.user_id} {self.state} ${self.annual_income}>'
     
-    def get_tax_rates(self, tax_year: int = 2025, income_override: float = None) -> dict:
+    def get_tax_rates(self, tax_year: int = None, income_override: float = None) -> dict:
         """
         Calculate tax rates based on profile.
         
         Args:
-            tax_year: Year to use for tax brackets
+            tax_year: Year to use for tax brackets (defaults to current year)
             income_override: Optional income to use instead of self.annual_income (for historical calculations)
         
         Returns:
             dict: {'federal': float, 'state': float, 'ltcg': float}
         """
+        # Default to current year if not specified
+        if tax_year is None:
+            from datetime import date
+            tax_year = date.today().year
+        
         # If using manual rates, return those
         if self.use_manual_rates:
             return {

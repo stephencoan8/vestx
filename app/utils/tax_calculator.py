@@ -3,9 +3,9 @@ Comprehensive tax calculator for RSU/ISO vesting.
 Handles Federal, State, FICA (Social Security + Medicare), and Additional Medicare tax.
 """
 
-# 2025 Tax Constants
+# 2026 Tax Constants (updated annually)
 SOCIAL_SECURITY_RATE = 0.062  # 6.2%
-SOCIAL_SECURITY_WAGE_BASE = 168600  # 2025 wage base limit
+SOCIAL_SECURITY_WAGE_BASE = 176100  # 2026 wage base limit (increased from $168,600 in 2025)
 
 MEDICARE_RATE = 0.0145  # 1.45%
 ADDITIONAL_MEDICARE_RATE = 0.009  # 0.9% on income over threshold
