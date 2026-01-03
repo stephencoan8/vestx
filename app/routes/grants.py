@@ -799,9 +799,9 @@ def sale_planning():
         }
         vest_data.append(vest_info)
     
-    # Years to display (2027-2035)
+    # Years to display (2026-2035)
     current_year = date.today().year
-    years = list(range(current_year + 1, 2036))  # 2027-2035
+    years = list(range(current_year, 2036))  # 2026-2035
     
     return render_template('grants/sale_planning.html',
                          vest_data=vest_data,
