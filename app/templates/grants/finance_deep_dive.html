@@ -336,7 +336,7 @@
                                     </span>
                                 {% elif ve_data.has_vested %}
                                     {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
-                                        <span onclick="toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: var(--primary-color);" title="Click to view tax breakdown">
+                                        <span onclick="event.stopPropagation(); toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: var(--primary-color);" title="Click to view tax breakdown">
                                             ${{ "{:,.2f}".format(ve_data.tax_amount) }}
                                         </span>
                                     {% else %}
