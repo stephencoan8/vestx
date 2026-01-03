@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block title %}Vest Event Details - VestX{% endblock %}
+
+{% block content %}
+<div class="vest-detail-page">
+    <header class="page-header">
+        <div class="header-content">
+            <div>
+                <h1>🎯 Vest Event Details</h1>
+                <p class="subtitle">{{ vest_event.vest_date.strftime('%B %d, %Y') }}</p>
+            </div>
+            <a href="{{ url_for('grants.finance_deep_dive') }}" class="btn btn-secondary">← Back to Finance</a>
+        </div>
+    </header>
+
+    <div class="detail-container">
+        <!-- Grant Information -->
+        <section class="detail-section">
+            <h2>📊 Grant Information</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Grant Type:</label>
+                    <span class="grant-type-badge">{{ grant.share_type }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Grant Date:</label>
+                    <span>{{ grant.grant_date.strftime('%b %d, %Y') }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Vesting Schedule:</label>
+                    <span>{{ grant.vest_years }} years</span>
+                </div>
+                {% if grant.share_price_at_grant %}
+                <div class="info-item">
+                    <label>Strike Price:</label>
+                    <span>${{ "%.2f"|format(grant.share_price_at_grant) }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Vest Event Details -->
+        <section class="detail-section">
+            <h2>📈 Vest Event</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Vest Date:</label>
+                    <span class="{% if vest_event.has_vested %}vested{% else %}unvested{% endif %}">
+                        {{ vest_event.vest_date.strftime('%B %d, %Y') }}
+                        {% if vest_event.has_vested %}
+                            <span class="badge badge-success">Vested</span>
+                        {% else %}
+                            <span class="badge badge-warning">Unvested</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <label>Shares Vested:</label>
+                    <span class="highlight">{{ "%.4f"|format(vest_event.shares_vested) }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Price at Vest:</label>
+                    <span>${{ "%.2f"|format(vest_event.share_price_at_vest) }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Gross Value:</label>
+                    <span class="highlight">${{ "{:,.2f}".format(vest_event.value_at_vest) }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Shares Received:</label>
+                    <span>{{ "%.4f"|format(vest_event.shares_received) }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Net Value:</label>
+                    <span class="highlight">${{ "{:,.2f}".format(vest_event.net_value) }}</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tax Breakdown -->
+        {% if tax_breakdown and tax_breakdown.has_breakdown %}
+        <section class="detail-section">
+            <h2>💰 Comprehensive Tax Breakdown</h2>
+            
+            <div class="tax-summary">
+                <div class="tax-summary-row">
+                    <span>Gross Value:</span>
+                    <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
+                </div>
+                <div class="tax-summary-row tax-item">
+                    <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
+                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
+                </div>
+                <div class="tax-summary-row tax-item">
+                    <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
+                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
+                </div>
+                <div class="tax-summary-row tax-item">
+                    <span>Social Security ({{ "%.2f"|format(tax_breakdown.social_security_rate * 100) }}%):</span>
+                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.social_security_tax) }}</span>
+                </div>
+                <div class="tax-summary-row tax-item">
+                    <span>Medicare ({{ "%.2f"|format(tax_breakdown.medicare_rate * 100) }}%):</span>
+                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.medicare_tax) }}</span>
+                </div>
+                {% if tax_breakdown.additional_medicare_tax > 0 %}
+                <div class="tax-summary-row tax-item">
+                    <span>Additional Medicare ({{ "%.2f"|format(tax_breakdown.additional_medicare_rate * 100) }}%):</span>
+                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.additional_medicare_tax) }}</span>
+                </div>
+                {% endif %}
+                <div class="tax-summary-row total-row">
+                    <span><strong>Total Tax:</strong></span>
+                    <span class="amount"><strong>-${{ "{:,.2f}".format(tax_breakdown.total_tax) }}</strong></span>
+                </div>
+                <div class="tax-summary-row net-row">
+                    <span><strong>Net Amount:</strong></span>
+                    <span class="amount"><strong>${{ "{:,.2f}".format(tax_breakdown.net_amount) }}</strong></span>
+                </div>
+            </div>
+
+            <div class="effective-rate">
+                <strong>Effective Tax Rate:</strong> {{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Tax Payment Details -->
+        {% if vest_event.has_vested %}
+        <section class="detail-section">
+            <h2>💳 Tax Payment</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Cash Paid:</label>
+                    <span>${{ "{:,.2f}".format(vest_event.cash_paid) }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Shares Sold:</label>
+                    <span>{{ "%.4f"|format(vest_event.shares_sold) }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Total Tax Withheld:</label>
+                    <span class="highlight">${{ "{:,.2f}".format(vest_event.tax_withheld) }}</span>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Notes Section -->
+        <section class="detail-section notes-section">
+            <h2>📝 Notes</h2>
+            <form method="POST" class="notes-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <textarea 
+                    name="notes" 
+                    class="notes-textarea" 
+                    placeholder="Add notes about this vest event (e.g., special tax considerations, selling decisions, etc.)"
+                    rows="6">{{ vest_event.notes or '' }}</textarea>
+                <button type="submit" class="btn btn-primary">Save Notes</button>
+            </form>
+        </section>
+    </div>
+</div>
+
+<style>
+.vest-detail-page {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    color: var(--text-primary);
+}
+
+.subtitle {
+    margin: 0.5rem 0 0 0;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+}
+
+.detail-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.detail-section {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.detail-section h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.5rem;
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary-light);
+    padding-bottom: 0.5rem;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.info-item label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-item span {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.highlight {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 1.25rem !important;
+}
+
+.grant-type-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem !important;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+}
+
+.badge-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.tax-summary {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.tax-summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.tax-summary-row:last-child {
+    border-bottom: none;
+}
+
+.tax-item {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.total-row {
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    border-top: 2px solid #dee2e6 !important;
+}
+
+.net-row {
+    background: var(--primary-light);
+    margin: 0.5rem -1.5rem -1.5rem -1.5rem;
+    padding: 1rem 1.5rem !important;
+    border-radius: 0 0 8px 8px;
+    border-bottom: none !important;
+}
+
+.amount {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.effective-rate {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: #e3f2fd;
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+    font-size: 1.1rem;
+}
+
+.notes-section {
+    background: #f8f9fa;
+}
+
+.notes-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.notes-textarea {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 150px;
+}
+
+.notes-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.notes-textarea::placeholder {
+    color: #adb5bd;
+}
+
+@media (max-width: 768px) {
+    .vest-detail-page {
+        padding: 1rem;
+    }
+
+    .detail-section {
+        padding: 1.5rem;
+    }
+
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+</style>
+{% endblock %}

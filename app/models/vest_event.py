@@ -28,6 +28,7 @@ class VestEvent(db.Model):
     cash_covered_all = db.Column(db.Boolean, default=True)  # Did cash cover all taxes?
     shares_sold = db.Column(db.Float, default=0.0)  # Shares sold to cover remaining taxes
     tax_year = db.Column(db.Integer, nullable=True)  # Tax year for historical rate tracking
+    notes = db.Column(db.Text, nullable=True)  # User notes about this vest event
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     

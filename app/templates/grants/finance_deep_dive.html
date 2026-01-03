@@ -308,6 +308,8 @@
                         {% for ve_data in item.vest_events %}
                         {% set ve = ve_data.vest_event %}
                         <tr class="vest-event-row {% if not ve_data.has_vested %}data-unvested{% endif %}"
+                            onclick="window.location.href='{{ url_for('grants.vest_detail', vest_id=ve.id) }}'"
+                            style="cursor: pointer;"
                             data-shares-held="{{ ve_data.shares_held }}"
                             data-unrealized-gain="{{ ve_data.unrealized_gain }}"
                             data-is-long-term="{{ 'true' if ve_data.is_long_term else 'false' }}"
@@ -914,6 +916,15 @@
 
 .vest-events-table td.negative {
     color: var(--error);
+}
+
+.vest-event-row:hover {
+    background-color: rgba(59, 130, 246, 0.05);
+    transition: background-color 0.2s ease;
+}
+
+.vest-event-row {
+    transition: background-color 0.2s ease;
 }
 
 .badge {
