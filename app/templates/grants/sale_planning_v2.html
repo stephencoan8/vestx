@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* Full-screen canvas */
+    body {
+        overflow: hidden;
+    }
+    
+    #saleCanvas {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        cursor: grab;
+        overflow: hidden;
+    }
+    
+    #saleCanvas.panning {
+        cursor: grabbing;
+    }
+    
+    #canvasContent {
+        position: absolute;
+        transform-origin: 0 0;
+        width: 6000px;
+        height: 4000px;
+    }
+    
+    /* Floating UI controls */
+    .floating-panel {
+        position: fixed;
+        background: rgba(30, 41, 59, 0.95);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        z-index: 100;
+    }
+    
+    #controlPanel {
+        top: 80px;
+        right: 24px;
+        width: 200px;
+    }
+    
+    #titlePanel {
+        top: 80px;
+        left: 24px;
+    }
+    
+    #unplacedPanel {
+        bottom: 24px;
+        left: 24px;
+        right: 24px;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    
+    /* Year tiles */
+    .year-tile {
+        position: absolute;
+        width: 360px;
+        min-height: 450px;
+        background: rgba(30, 41, 59, 0.85);
+        backdrop-filter: blur(10px);
+        border: 2px solid rgba(148, 163, 184, 0.15);
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .year-tile:hover {
+        border-color: rgba(96, 165, 250, 0.4);
+        box-shadow: 0 12px 48px rgba(59, 130, 246, 0.3);
+        transform: translateY(-4px);
+    }
+    
+    .year-tile.drag-over {
+        border-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.15);
+        transform: scale(1.03);
+    }
+    
+    .year-header {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #60a5fa, #3b82f6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    .year-stats {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-box {
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: 12px;
+        padding: 16px;
+    }
+    
+    .stat-label {
+        display: block;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(148, 163, 184, 0.8);
+        margin-bottom: 6px;
+    }
+    
+    .stat-value {
+        display: block;
+        font-size: 1.75rem;
+        font-weight: 700;
+    }
+    
+    .stat-value.net {
+        color: #34d399;
+    }
+    
+    .stat-value.tax {
+        color: #f87171;
+    }
+    
+    /* Vest tiles */
+    .vest-tile {
+        background: rgba(51, 65, 85, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 8px;
+        cursor: move;
+        transition: all 0.15s ease;
+    }
+    
+    .vest-tile:hover {
+        background: rgba(71, 85, 105, 0.95);
+        border-color: rgba(148, 163, 184, 0.4);
+        transform: translateX(6px);
+    }
+    
+    .vest-tile.dragging {
+        opacity: 0.4;
+        transform: rotate(3deg) scale(0.95);
+    }
+    
+    .vest-type {
+        font-weight: 700;
+        font-size: 0.875rem;
+        color: #60a5fa;
+        margin-bottom: 4px;
+    }
+    
+    .vest-info {
+        font-size: 0.75rem;
+        color: rgba(203, 213, 225, 0.8);
+    }
+    
+    /* Controls */
+    .control-group {
+        margin-bottom: 16px;
+    }
+    
+    .control-label {
+        display: block;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(148, 163, 184, 0.8);
+        margin-bottom: 8px;
+    }
+    
+    .btn {
+        width: 100%;
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: none;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    
+    .btn-secondary {
+        background: rgba(71, 85, 105, 0.8);
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background: rgba(100, 116, 139, 0.9);
+    }
+    
+    .hint-text {
+        font-size: 0.7rem;
+        color: rgba(148, 163, 184, 0.6);
+        margin-top: 4px;
+    }
+    
+    /* Grid background effect */
+    #canvasContent::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+            linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+        background-size: 50px 50px;
+        pointer-events: none;
+    }
+</style>
+
+<div id="titlePanel" class="floating-panel">
+    <h1 style="font-size: 1.5rem; font-weight: 800; color: white; margin: 0;">💡 Sale Planning</h1>
+    <p style="font-size: 0.75rem; color: rgba(148, 163, 184, 0.8); margin: 8px 0 0 0;">Optimize your tax strategy</p>
+</div>
+
+<div id="controlPanel" class="floating-panel">
+    <div class="control-group">
+        <button class="btn btn-primary" onclick="savePlan()">💾 Save Plan</button>
+    </div>
+    <div class="control-group">
+        <button class="btn btn-secondary" onclick="resetPlan()">🔄 Reset</button>
+    </div>
+    <div class="control-group" style="border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 16px;">
+        <div class="control-label">Zoom</div>
+        <div style="text-align: center; font-size: 1.25rem; font-weight: 700; color: white;" id="zoomDisplay">100%</div>
+        <div class="hint-text">Mouse wheel to zoom</div>
+    </div>
+    <div class="control-group">
+        <div class="control-label">Navigation</div>
+        <div class="hint-text">Drag canvas to pan<br>Click vest to view details</div>
+    </div>
+</div>
+
+<div id="saleCanvas">
+    <div id="canvasContent">
+        <!-- Year tiles positioned in 2D space -->
+        {% for year in range(2026, 2036) %}
+        {% set col = (year - 2026) % 5 %}
+        {% set row = (year - 2026) // 5 %}
+        <div class="year-tile"
+             data-year="{{ year }}"
+             style="left: {{ col * 450 + 200 }}px; top: {{ row * 550 + 150 }}px;"
+             ondrop="drop(event)" 
+             ondragover="allowDrop(event)"
+             ondragleave="dragLeave(event)">
+            <div class="year-header">{{ year }}</div>
+            <div class="year-stats">
+                <div class="stat-box">
+                    <span class="stat-label">Net Proceeds</span>
+                    <span class="stat-value net" data-metric="net">$0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Total Taxes</span>
+                    <span class="stat-value tax" data-metric="tax">$0</span>
+                </div>
+            </div>
+            <div class="vests-container"></div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div id="unplacedPanel" class="floating-panel">
+    <h3 style="font-size: 0.875rem; font-weight: 700; color: rgba(148, 163, 184, 0.9); margin: 0 0 16px 0; text-transform: uppercase; letter-spacing: 0.05em;">
+        📦 Unplaced Vests ({{ vests|length }})
+    </h3>
+    <div id="unplacedVests" 
+         style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;"
+         ondrop="drop(event)" 
+         ondragover="allowDrop(event)">
+        {% for vest in vests %}
+        <div class="vest-tile"
+             draggable="true"
+             ondragstart="drag(event)"
+             ondragend="dragEnd(event)"
+             data-vest-id="{{ vest.id }}"
+             data-grant-type="{{ vest.grant.grant_type }}"
+             data-shares="{{ vest.shares_received }}"
+             data-value="{{ vest.value_at_vest or 0 }}"
+             data-vest-date="{{ vest.vest_date.isoformat() }}">
+            <div class="vest-type">{{ vest.grant.grant_type }}</div>
+            <div class="vest-info">{{ vest.shares_received }} shares</div>
+            <div class="vest-info">${{ '{:,.0f}'.format(vest.value_at_vest or 0) }}</div>
+            <div class="vest-info" style="opacity: 0.6;">{{ vest.vest_date.strftime('%Y-%m-%d') }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    const CSRF_TOKEN = '{{ csrf_token() }}';
+    
+    // State
+    let vestPlacements = {};
+    let zoomLevel = 1.0;
+    let panOffset = {x: 0, y: 0};
+    let isPanning = false;
+    let lastMouse = {x: 0, y: 0};
+    
+    const canvas = document.getElementById('saleCanvas');
+    const content = document.getElementById('canvasContent');
+    
+    // Pan with drag
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.target === canvas || e.target === content) {
+            isPanning = true;
+            canvas.classList.add('panning');
+            lastMouse = {x: e.clientX, y: e.clientY};
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            const dx = e.clientX - lastMouse.x;
+            const dy = e.clientY - lastMouse.y;
+            panOffset.x += dx;
+            panOffset.y += dy;
+            lastMouse = {x: e.clientX, y: e.clientY};
+            updateTransform();
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isPanning = false;
+        canvas.classList.remove('panning');
+    });
+    
+    // Zoom with wheel
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        const oldZoom = zoomLevel;
+        zoomLevel = Math.max(0.3, Math.min(2.5, zoomLevel + delta));
+        
+        // Zoom toward mouse
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const ratio = zoomLevel / oldZoom;
+        
+        panOffset.x = mouseX - (mouseX - panOffset.x) * ratio;
+        panOffset.y = mouseY - (mouseY - panOffset.y) * ratio;
+        
+        updateTransform();
+        document.getElementById('zoomDisplay').textContent = Math.round(zoomLevel * 100) + '%';
+    });
+    
+    function updateTransform() {
+        content.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`;
+    }
+    
+    // Drag & Drop
+    let draggedVest = null;
+    
+    function drag(e) {
+        draggedVest = e.target;
+        e.target.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', e.target.innerHTML);
+    }
+    
+    function dragEnd(e) {
+        e.target.classList.remove('dragging');
+    }
+    
+    function allowDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.add('drag-over');
+    }
+    
+    function dragLeave(e) {
+        e.currentTarget.classList.remove('drag-over');
+    }
+    
+    function drop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        
+        if (!draggedVest) return;
+        
+        const target = e.currentTarget;
+        const vestId = draggedVest.dataset.vestId;
+        
+        // Moving to year tile
+        if (target.classList.contains('year-tile')) {
+            const year = parseInt(target.dataset.year);
+            vestPlacements[vestId] = year;
+            target.querySelector('.vests-container').appendChild(draggedVest);
+            recalculateYearTaxes(year);
+        } 
+        // Moving back to unplaced
+        else if (target.id === 'unplacedVests') {
+            const oldYear = vestPlacements[vestId];
+            delete vestPlacements[vestId];
+            target.appendChild(draggedVest);
+            if (oldYear) recalculateYearTaxes(oldYear);
+        }
+        
+        draggedVest = null;
+    }
+    
+    // Tax calculation
+    async function recalculateYearTaxes(year) {
+        const vestIds = Object.keys(vestPlacements)
+            .filter(id => vestPlacements[id] === year)
+            .map(id => parseInt(id));
+        
+        try {
+            const response = await fetch('/grants/api/sale-planning/calculate-taxes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CSRF_TOKEN
+                },
+                body: JSON.stringify({year, vest_ids: vestIds})
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const yearTile = document.querySelector(`.year-tile[data-year="${year}"]`);
+                yearTile.querySelector('[data-metric="net"]').textContent = 
+                    '$' + Math.round(data.net_proceeds).toLocaleString();
+                yearTile.querySelector('[data-metric="tax"]').textContent = 
+                    '$' + Math.round(data.total_tax).toLocaleString();
+            }
+        } catch (error) {
+            console.error('Tax calculation error:', error);
+        }
+    }
+    
+    // Save/Reset
+    async function savePlan() {
+        const plans = Object.entries(vestPlacements).map(([vest_id, year]) => ({
+            vest_event_id: parseInt(vest_id),
+            planned_sale_year: year
+        }));
+        
+        try {
+            const response = await fetch('/grants/api/sale-planning/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CSRF_TOKEN
+                },
+                body: JSON.stringify({plans})
+            });
+            
+            const data = await response.json();
+            alert(data.success ? '✅ Plan saved!' : '❌ Error: ' + data.error);
+        } catch (error) {
+            alert('❌ Save failed: ' + error.message);
+        }
+    }
+    
+    function resetPlan() {
+        if (!confirm('Reset all vest placements?')) return;
+        
+        const unplacedContainer = document.getElementById('unplacedVests');
+        document.querySelectorAll('.vest-tile').forEach(vest => {
+            unplacedContainer.appendChild(vest);
+        });
+        
+        vestPlacements = {};
+        document.querySelectorAll('[data-metric="net"], [data-metric="tax"]').forEach(el => {
+            el.textContent = '$0';
+        });
+    }
+    
+    // Load existing plan
+    async function loadExistingPlan() {
+        try {
+            const response = await fetch('/grants/sale-planning');
+            const html = await response.text();
+            // Parse saved placements if any
+        } catch (error) {
+            console.log('No existing plan');
+        }
+    }
+</script>
+{% endblock %}
