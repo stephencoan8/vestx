@@ -231,14 +231,24 @@ class VestEvent(db.Model):
                 state=tax_profile.state
             )
             
-            # For past years, use effective SS rate based on total annual income
-            # For current/future years, use progressive YTD calculation
+            # For past years, use effective rates based on total annual income
+            # For current/future years, use marginal rates with progressive calculation
             if tax_year < date.today().year:
-                # Past year: calculate effective SS rate for the whole year
+                # Past year: calculate effective rates for ALL taxes based on total income
                 year_total_income = _year_income if _year_income is not None else annual_income
-                calculator.set_effective_ss_rate(year_total_income)
+                
+                # Get effective rates from tax profile
+                effective_rates = tax_profile.get_effective_tax_rates(year_total_income, tax_year)
+                
+                # Set effective rates in calculator
+                calculator.set_effective_rates(
+                    effective_federal=effective_rates['federal'],
+                    effective_state=effective_rates['state'],
+                    effective_medicare=effective_rates['medicare'],
+                    effective_ss=effective_rates['social_security']
+                )
             else:
-                # Current/future year: use actual YTD wages from profile
+                # Current/future year: use actual YTD wages from profile for progressive SS calc
                 calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
             
             # Calculate comprehensive taxes

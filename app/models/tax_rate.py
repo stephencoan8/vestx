@@ -120,6 +120,122 @@ class UserTaxProfile(db.Model):
             'ltcg': ltcg_rate
         }
     
+    def get_effective_tax_rates(self, total_annual_income: float, tax_year: int) -> dict:
+        """
+        Calculate EFFECTIVE tax rates (actual total tax / income) for a past year.
+        This accounts for progressive brackets and caps.
+        
+        Args:
+            total_annual_income: Total income earned in the year
+            tax_year: Year to calculate for
+            
+        Returns:
+            dict with effective rates for federal, state, medicare, and SS
+        """
+        from app.utils.tax_calculator import (
+            SOCIAL_SECURITY_RATE, SOCIAL_SECURITY_WAGE_BASE,
+            MEDICARE_RATE, ADDITIONAL_MEDICARE_RATE,
+            ADDITIONAL_MEDICARE_THRESHOLD_SINGLE, ADDITIONAL_MEDICARE_THRESHOLD_MARRIED
+        )
+        
+        if not total_annual_income or total_annual_income <= 0:
+            return {'federal': 0.0, 'state': 0.0, 'medicare': 0.0, 'social_security': 0.0}
+        
+        # Calculate effective federal tax (sum across all brackets)
+        federal_tax = self._calculate_progressive_tax('federal', 'ordinary', tax_year, total_annual_income)
+        effective_federal = federal_tax / total_annual_income
+        
+        # Calculate effective state tax (sum across all brackets)
+        state_tax = 0.0
+        if self.state:
+            state_tax = self._calculate_progressive_tax(self.state, 'ordinary', tax_year, total_annual_income)
+        effective_state = state_tax / total_annual_income
+        
+        # Medicare: always 1.45% on all income
+        medicare_base_rate = MEDICARE_RATE
+        
+        # Additional Medicare: 0.9% on income over threshold
+        threshold = (ADDITIONAL_MEDICARE_THRESHOLD_MARRIED 
+                    if self.filing_status == 'married_joint' 
+                    else ADDITIONAL_MEDICARE_THRESHOLD_SINGLE)
+        
+        if total_annual_income > threshold:
+            additional_medicare_tax = (total_annual_income - threshold) * ADDITIONAL_MEDICARE_RATE
+            effective_additional_medicare = additional_medicare_tax / total_annual_income
+        else:
+            effective_additional_medicare = 0.0
+        
+        effective_medicare = medicare_base_rate + effective_additional_medicare
+        
+        # Social Security: 6.2% up to wage base cap
+        if total_annual_income <= SOCIAL_SECURITY_WAGE_BASE:
+            effective_ss = SOCIAL_SECURITY_RATE
+        else:
+            ss_tax = SOCIAL_SECURITY_WAGE_BASE * SOCIAL_SECURITY_RATE
+            effective_ss = ss_tax / total_annual_income
+        
+        return {
+            'federal': effective_federal,
+            'state': effective_state,
+            'medicare': effective_medicare,
+            'social_security': effective_ss
+        }
+    
+    def _calculate_progressive_tax(self, jurisdiction: str, tax_type: str, tax_year: int, income: float) -> float:
+        """Calculate total tax by applying progressive brackets."""
+        # Get all brackets for this jurisdiction/year/status
+        brackets = TaxBracket.query.filter_by(
+            jurisdiction=jurisdiction,
+            tax_year=tax_year,
+            filing_status=self.filing_status or 'single',
+            tax_type=tax_type
+        ).order_by(TaxBracket.income_min).all()
+        
+        if not brackets:
+            # Try closest year if exact year not found
+            available_year = TaxBracket.query.filter_by(
+                jurisdiction=jurisdiction,
+                filing_status=self.filing_status or 'single',
+                tax_type=tax_type
+            ).order_by(
+                db.func.abs(TaxBracket.tax_year - tax_year)
+            ).first()
+            
+            if available_year:
+                brackets = TaxBracket.query.filter_by(
+                    jurisdiction=jurisdiction,
+                    tax_year=available_year.tax_year,
+                    filing_status=self.filing_status or 'single',
+                    tax_type=tax_type
+                ).order_by(TaxBracket.income_min).all()
+        
+        if not brackets:
+            return 0.0
+        
+        total_tax = 0.0
+        remaining_income = income
+        
+        for bracket in brackets:
+            if remaining_income <= 0:
+                break
+            
+            # Determine the range for this bracket
+            bracket_min = bracket.income_min
+            bracket_max = bracket.income_max if bracket.income_max else float('inf')
+            
+            # Calculate taxable amount in this bracket
+            if income <= bracket_min:
+                continue
+            
+            amount_in_bracket = min(remaining_income, bracket_max - bracket_min)
+            if income < bracket_max:
+                amount_in_bracket = income - bracket_min
+            
+            total_tax += amount_in_bracket * bracket.rate
+            remaining_income -= amount_in_bracket
+        
+        return total_tax
+    
     def _get_rate_for_income(self, jurisdiction: str, tax_type: str, tax_year: int) -> float:
         """Find the tax rate for the given income level."""
         # Safety check - if no filing status or income, return 0

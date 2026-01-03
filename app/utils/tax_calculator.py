@@ -29,29 +29,29 @@ class TaxCalculator:
         self.filing_status = filing_status
         self.state = state
         self.ytd_wages = 0  # Year-to-date wages for SS calculation
-        self.effective_ss_rate = None  # Effective SS rate for past years (when we know total income)
+        self.effective_rates = None  # Effective rates for all taxes (for past years with known total income)
         
     def set_ytd_wages(self, ytd_wages: float):
         """Set year-to-date wages for accurate Social Security calculation."""
         self.ytd_wages = ytd_wages
     
-    def set_effective_ss_rate(self, total_annual_income: float):
+    def set_effective_rates(self, effective_federal: float, effective_state: float, 
+                           effective_medicare: float, effective_ss: float):
         """
-        Calculate and set effective Social Security rate for the entire year.
-        Use this for past years where we know total income but not progressive YTD.
+        Set effective tax rates for all taxes (use for past years with known total income).
         
-        Example: If total income is $200k and SS cap is $168,600:
-        - First $168,600 pays 6.2% SS = $10,453.20
-        - Remaining $31,400 pays 0% = $0
-        - Effective rate = $10,453.20 / $200,000 = 5.227%
+        Args:
+            effective_federal: Effective federal tax rate (total fed tax / total income)
+            effective_state: Effective state tax rate (total state tax / total income)
+            effective_medicare: Effective medicare rate (includes base + additional)
+            effective_ss: Effective social security rate (accounts for wage base cap)
         """
-        if total_annual_income <= SOCIAL_SECURITY_WAGE_BASE:
-            # All income is under the cap
-            self.effective_ss_rate = SOCIAL_SECURITY_RATE
-        else:
-            # Calculate what portion of income pays SS tax
-            taxable_portion = SOCIAL_SECURITY_WAGE_BASE / total_annual_income
-            self.effective_ss_rate = taxable_portion * SOCIAL_SECURITY_RATE
+        self.effective_rates = {
+            'federal': effective_federal,
+            'state': effective_state,
+            'medicare': effective_medicare,
+            'social_security': effective_ss
+        }
         
     def calculate_vest_taxes(self, vest_value: float, federal_rate: float, state_rate: float) -> dict:
         """
@@ -59,34 +59,46 @@ class TaxCalculator:
         
         Args:
             vest_value: Gross value of vested shares
-            federal_rate: Federal marginal tax rate (as decimal, e.g., 0.24)
-            state_rate: State marginal tax rate (as decimal, e.g., 0.093)
+            federal_rate: Federal marginal tax rate (as decimal, e.g., 0.24) - ignored if effective_rates set
+            state_rate: State marginal tax rate (as decimal, e.g., 0.093) - ignored if effective_rates set
             
         Returns:
             dict with detailed tax breakdown
         """
-        # Federal Income Tax
-        federal_tax = vest_value * federal_rate
-        
-        # State Income Tax
-        state_tax = vest_value * state_rate if state_rate else 0.0
-        
-        # Social Security Tax
-        if self.effective_ss_rate is not None:
-            # Use effective rate (for past years with known total income)
-            social_security_tax = vest_value * self.effective_ss_rate
-            displayed_ss_rate = self.effective_ss_rate
+        # Use effective rates if set (for past years), otherwise use marginal rates
+        if self.effective_rates:
+            # Past year with known total income - use effective rates
+            federal_tax = vest_value * self.effective_rates['federal']
+            state_tax = vest_value * self.effective_rates['state']
+            medicare_tax = vest_value * self.effective_rates['medicare']
+            social_security_tax = vest_value * self.effective_rates['social_security']
+            
+            # For display purposes
+            displayed_federal_rate = self.effective_rates['federal']
+            displayed_state_rate = self.effective_rates['state']
+            displayed_medicare_rate = self.effective_rates['medicare']
+            displayed_ss_rate = self.effective_rates['social_security']
+            additional_medicare_tax = 0.0  # Already included in medicare rate
+            displayed_additional_medicare_rate = 0.0
         else:
-            # Use progressive calculation (6.2% up to wage base)
+            # Current/future year or no effective rates - use marginal rates with progressive calculation
+            federal_tax = vest_value * federal_rate
+            state_tax = vest_value * state_rate if state_rate else 0.0
+            
+            # Social Security Tax (6.2% up to wage base)
             social_security_tax = self._calculate_social_security(vest_value)
-            # Calculate the effective rate for this specific vest
             displayed_ss_rate = (social_security_tax / vest_value) if vest_value > 0 else 0.0
-        
-        # Medicare Tax (1.45% on all wages)
-        medicare_tax = vest_value * MEDICARE_RATE
-        
-        # Additional Medicare Tax (0.9% over threshold)
-        additional_medicare_tax = self._calculate_additional_medicare(vest_value)
+            
+            # Medicare Tax (1.45% on all wages)
+            medicare_tax = vest_value * MEDICARE_RATE
+            displayed_medicare_rate = MEDICARE_RATE
+            
+            # Additional Medicare Tax (0.9% over threshold)
+            additional_medicare_tax = self._calculate_additional_medicare(vest_value)
+            displayed_additional_medicare_rate = ADDITIONAL_MEDICARE_RATE if additional_medicare_tax > 0 else 0.0
+            
+            displayed_federal_rate = federal_rate
+            displayed_state_rate = state_rate
         
         # Total FICA (Social Security + Medicare + Additional Medicare)
         total_fica = social_security_tax + medicare_tax + additional_medicare_tax
@@ -103,15 +115,15 @@ class TaxCalculator:
         return {
             'gross_value': vest_value,
             'federal_tax': federal_tax,
-            'federal_rate': federal_rate,
+            'federal_rate': displayed_federal_rate,
             'state_tax': state_tax,
-            'state_rate': state_rate,
+            'state_rate': displayed_state_rate,
             'social_security_tax': social_security_tax,
             'social_security_rate': displayed_ss_rate,
             'medicare_tax': medicare_tax,
-            'medicare_rate': MEDICARE_RATE,
+            'medicare_rate': displayed_medicare_rate,
             'additional_medicare_tax': additional_medicare_tax,
-            'additional_medicare_rate': ADDITIONAL_MEDICARE_RATE if additional_medicare_tax > 0 else 0.0,
+            'additional_medicare_rate': displayed_additional_medicare_rate,
             'total_fica': total_fica,
             'total_tax': total_tax,
             'net_amount': net_amount,
