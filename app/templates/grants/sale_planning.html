@@ -134,6 +134,13 @@ function createVestTile(vest) {
     tile.addEventListener('dragstart', handleDragStart);
     tile.addEventListener('dragend', handleDragEnd);
     
+    // Click to view vest details
+    tile.addEventListener('click', (e) => {
+        if (!isDragging) {
+            window.location.href = `/grants/vest/${vest.id}`;
+        }
+    });
+    
     return tile;
 }
 
@@ -248,6 +255,8 @@ async function recalculateYearTaxes(year) {
     // Collect vest IDs
     const vestIds = Array.from(vestTiles).map(tile => parseInt(tile.dataset.vestId));
     
+    console.log('Calculating taxes for year', year, 'with vests:', vestIds);
+    
     // Call API to calculate taxes
     try {
         const response = await fetch('/grants/api/sale-planning/calculate-taxes', {
@@ -262,7 +271,12 @@ async function recalculateYearTaxes(year) {
             })
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const data = await response.json();
+        console.log('Tax calculation response:', data);
         
         if (data.success) {
             // Update year stats
@@ -270,6 +284,8 @@ async function recalculateYearTaxes(year) {
                 '$' + data.net_proceeds.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
             yearTile.querySelector('[data-metric="tax"]').textContent = 
                 '$' + data.total_tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        } else {
+            console.error('Tax calculation failed:', data.error);
         }
     } catch (error) {
         console.error('Error calculating taxes:', error);
