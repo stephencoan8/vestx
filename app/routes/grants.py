@@ -441,9 +441,10 @@ def finance_deep_dive():
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
-    # Get user's tax profile and calculate rates
+    # Get user's tax profile and calculate rates ONCE (avoid N+1 queries)
     tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
     if tax_profile:
+        # Calculate tax rates once and cache them
         tax_rates = tax_profile.get_tax_rates()
         use_manual_rates = tax_profile.use_manual_rates
     else:
@@ -454,6 +455,13 @@ def finance_deep_dive():
     federal_rate_default = tax_rates.get('federal', 0.24)
     state_rate_default = tax_rates.get('state', 0.093)
     ltcg_rate_default = tax_rates.get('ltcg', 0.15)
+    
+    # Pre-calculate rates for all possible years to avoid repeated queries
+    years_with_vests = set(ve.vest_date.year for ve in all_vest_events)
+    cached_rates_by_year = {}
+    if tax_profile:
+        for year in years_with_vests:
+            cached_rates_by_year[year] = tax_profile.get_tax_rates(tax_year=year)
 
     # Get latest stock price from user's encrypted prices
     from app.utils.price_utils import get_latest_user_price
@@ -504,16 +512,29 @@ def finance_deep_dive():
         for ve in vest_events:
             has_vested = ve.vest_date <= today
             
-            # Calculate estimated or actual taxes (pass cached tax_profile)
+            # Get cached rates for this vest's year
+            vest_year = ve.vest_date.year
+            vest_year_rates = cached_rates_by_year.get(vest_year, tax_rates)
+            
+            # Calculate estimated or actual taxes (pass cached tax_profile and rates)
             if tax_profile:
-                tax_info = ve.estimate_tax_withholding(latest_stock_price, _tax_profile=tax_profile)
+                tax_info = ve.estimate_tax_withholding(
+                    latest_stock_price, 
+                    federal_rate=vest_year_rates['federal'],
+                    state_rate=vest_year_rates['state'],
+                    _tax_profile=tax_profile
+                )
             else:
                 tax_info = ve.estimate_tax_withholding(latest_stock_price)
             
             # Get comprehensive tax breakdown (pass cached data to avoid queries)
             if has_vested:
                 if tax_profile:
-                    tax_breakdown = ve.get_comprehensive_tax_breakdown(_tax_profile=tax_profile, _annual_incomes=annual_incomes_dict)
+                    tax_breakdown = ve.get_comprehensive_tax_breakdown(
+                        _tax_profile=tax_profile, 
+                        _annual_incomes=annual_incomes_dict,
+                        _cached_rates=vest_year_rates
+                    )
                 else:
                     tax_breakdown = ve.get_comprehensive_tax_breakdown()
             else:

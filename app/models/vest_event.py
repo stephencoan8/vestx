@@ -150,7 +150,7 @@ class VestEvent(db.Model):
         
         return total_tax
     
-    def get_comprehensive_tax_breakdown(self, _tax_profile=None, _annual_incomes=None) -> dict:
+    def get_comprehensive_tax_breakdown(self, _tax_profile=None, _annual_incomes=None, _cached_rates=None) -> dict:
         """
         Get detailed tax breakdown including FICA, Medicare, Social Security.
         Uses user's tax profile for accurate calculations.
@@ -159,6 +159,7 @@ class VestEvent(db.Model):
         Args:
             _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
             _annual_incomes: INTERNAL - dict of {year: income} to avoid N+1 queries
+            _cached_rates: INTERNAL - pre-calculated tax rates dict to avoid TaxBracket queries
         """
         try:
             from app.models.tax_rate import UserTaxProfile
@@ -204,15 +205,19 @@ class VestEvent(db.Model):
                 }
             
             # Get federal and state rates for the specific tax year using year-specific income
-            # Create temporary profile with year-specific income
-            temp_profile = UserTaxProfile(
-                user_id=tax_profile.user_id,
-                state=tax_profile.state,
-                filing_status=tax_profile.filing_status or 'single',
-                annual_income=annual_income,
-                use_manual_rates=False
-            )
-            rates = temp_profile.get_tax_rates(tax_year=tax_year)
+            # Use cached rates if provided (to avoid TaxBracket queries)
+            if _cached_rates:
+                rates = _cached_rates
+            else:
+                # Create temporary profile with year-specific income
+                temp_profile = UserTaxProfile(
+                    user_id=tax_profile.user_id,
+                    state=tax_profile.state,
+                    filing_status=tax_profile.filing_status or 'single',
+                    annual_income=annual_income,
+                    use_manual_rates=False
+                )
+                rates = temp_profile.get_tax_rates(tax_year=tax_year)
             
             # Ensure filing_status has a default value
             filing_status = tax_profile.filing_status or 'single'
@@ -309,8 +314,13 @@ class VestEvent(db.Model):
         # If we have a tax profile, use comprehensive calculator
         if tax_profile and tax_profile.annual_income:
             try:
-                # Get tax rates for this year
-                rates = tax_profile.get_tax_rates(tax_year=self.vest_date.year)
+                # Get tax rates for this year (use provided rates if available)
+                if federal_rate is None or state_rate is None:
+                    rates = tax_profile.get_tax_rates(tax_year=self.vest_date.year)
+                    if federal_rate is None:
+                        federal_rate = rates['federal']
+                    if state_rate is None:
+                        state_rate = rates['state']
                 
                 # Use TaxCalculator for accurate FICA calculation
                 calculator = TaxCalculator(
@@ -327,8 +337,8 @@ class VestEvent(db.Model):
                 # Calculate comprehensive taxes
                 breakdown = calculator.calculate_vest_taxes(
                     vest_value=vest_value,
-                    federal_rate=rates['federal'],
-                    state_rate=rates['state']
+                    federal_rate=federal_rate,
+                    state_rate=state_rate
                 )
                 
                 return {
