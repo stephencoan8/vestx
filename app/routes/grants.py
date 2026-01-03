@@ -8,6 +8,7 @@ from app import db
 from app.models.grant import Grant, GrantType, ShareType
 from app.models.vest_event import VestEvent
 from app.models.stock_price import StockPrice
+from app.models.sale_plan import SalePlan
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
 from app.models.tax_rate import UserTaxProfile
 from app.utils.price_utils import get_latest_user_price
@@ -754,3 +755,169 @@ def vest_detail(vest_id):
                          grant=vest_event.grant,
                          tax_breakdown=tax_breakdown,
                          latest_stock_price=latest_stock_price)
+
+
+@grants_bp.route('/sale-planning')
+@login_required
+def sale_planning():
+    """Sale planning interface - drag/drop vests into years to optimize taxes"""
+    # Get all vest events (vested and unvested)
+    vest_events = VestEvent.query.join(Grant).filter(
+        Grant.user_id == current_user.id
+    ).order_by(VestEvent.vest_date).all()
+    
+    # Get current stock price
+    latest_stock_price = get_latest_user_price(current_user.id) or 0.0
+    
+    # Get user's tax profile
+    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+    if not tax_profile:
+        flash('Please configure your tax settings first', 'warning')
+        return redirect(url_for('settings.tax_settings'))
+    
+    # Get existing sale plans
+    existing_plans = {}
+    for plan in SalePlan.query.filter_by(user_id=current_user.id).all():
+        existing_plans[plan.vest_event_id] = plan.planned_sale_year
+    
+    # Prepare vest data for frontend
+    vest_data = []
+    for vest in vest_events:
+        vest_info = {
+            'id': vest.id,
+            'grant_id': vest.grant_id,
+            'grant_type': vest.grant.grant_type,
+            'share_type': vest.grant.share_type,
+            'vest_date': vest.vest_date.isoformat(),
+            'shares_vested': vest.shares_vested,
+            'shares_received': vest.shares_received,
+            'has_vested': vest.has_vested,
+            'value_at_vest': float(vest.value_at_vest or 0),
+            'current_value': float(vest.shares_received * latest_stock_price),
+            'planned_year': existing_plans.get(vest.id),
+            'strike_price': float(vest.grant.share_price_at_grant or 0)
+        }
+        vest_data.append(vest_info)
+    
+    # Years to display (2027-2035)
+    current_year = date.today().year
+    years = list(range(current_year + 1, 2036))  # 2027-2035
+    
+    return render_template('grants/sale_planning.html',
+                         vest_data=vest_data,
+                         years=years,
+                         tax_profile=tax_profile,
+                         latest_stock_price=latest_stock_price)
+
+
+@grants_bp.route('/api/sale-planning/save', methods=['POST'])
+@login_required
+def save_sale_plan():
+    """Save user's sale plan (which vests to sell in which year)"""
+    try:
+        data = request.get_json()
+        plans = data.get('plans', {})  # {vest_event_id: year}
+        
+        # Delete existing plans
+        SalePlan.query.filter_by(user_id=current_user.id).delete()
+        
+        # Create new plans
+        for vest_id_str, year in plans.items():
+            vest_id = int(vest_id_str)
+            if year:  # Only save if assigned to a year
+                plan = SalePlan(
+                    user_id=current_user.id,
+                    vest_event_id=vest_id,
+                    planned_sale_year=int(year)
+                )
+                db.session.add(plan)
+        
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@grants_bp.route('/api/sale-planning/calculate-taxes', methods=['POST'])
+@login_required
+def calculate_sale_taxes():
+    """Calculate tax impact of selling specific vests in a given year"""
+    try:
+        data = request.get_json()
+        year = int(data.get('year'))
+        vest_ids = data.get('vest_ids', [])
+        
+        # Get tax profile
+        tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+        if not tax_profile:
+            return jsonify({'error': 'Tax profile not found'}), 400
+        
+        # Get vests
+        vests = VestEvent.query.filter(VestEvent.id.in_(vest_ids)).all()
+        
+        # Calculate taxes
+        total_ltcg = 0  # Long-term capital gains (held > 1 year)
+        total_stcg = 0  # Short-term capital gains (held <= 1 year)
+        total_proceeds = 0
+        
+        sale_date = date(year, 1, 1)  # Assume sale on Jan 1 of that year
+        
+        for vest in vests:
+            shares = vest.shares_received
+            cost_basis = vest.value_at_vest or 0
+            
+            # Get current price (simplified - use latest)
+            current_price = get_latest_user_price(current_user.id) or 0
+            proceeds = shares * current_price
+            gain = proceeds - cost_basis
+            
+            # Determine if LTCG or STCG (1 year holding period)
+            holding_period = (sale_date - vest.vest_date).days
+            if holding_period > 365:
+                total_ltcg += gain
+            else:
+                total_stcg += gain
+            
+            total_proceeds += proceeds
+        
+        # Calculate federal taxes
+        # LTCG rates: 0%, 15%, 20% based on income
+        # STCG taxed as ordinary income
+        # Simplified calculation
+        ltcg_rate = 0.15  # Could be 0%, 15%, or 20% based on income
+        if tax_profile.base_salary > 500000:
+            ltcg_rate = 0.20
+        elif tax_profile.base_salary < 80000:
+            ltcg_rate = 0.0
+        
+        stcg_rate = tax_profile.federal_tax_rate / 100.0 if tax_profile.federal_tax_rate else 0.24
+        
+        federal_tax_ltcg = total_ltcg * ltcg_rate
+        federal_tax_stcg = total_stcg * stcg_rate
+        state_tax = (total_ltcg + total_stcg) * (tax_profile.state_tax_rate / 100.0 if tax_profile.state_tax_rate else 0)
+        
+        # NIIT (3.8% on investment income for high earners)
+        niit = 0
+        if tax_profile.base_salary > 200000:
+            niit = (total_ltcg + total_stcg) * 0.038
+        
+        total_tax = federal_tax_ltcg + federal_tax_stcg + state_tax + niit
+        net_proceeds = total_proceeds - total_tax
+        
+        return jsonify({
+            'success': True,
+            'total_proceeds': total_proceeds,
+            'total_ltcg': total_ltcg,
+            'total_stcg': total_stcg,
+            'federal_tax_ltcg': federal_tax_ltcg,
+            'federal_tax_stcg': federal_tax_stcg,
+            'state_tax': state_tax,
+            'niit': niit,
+            'total_tax': total_tax,
+            'net_proceeds': net_proceeds,
+            'ltcg_rate': ltcg_rate * 100,
+            'stcg_rate': stcg_rate * 100
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400

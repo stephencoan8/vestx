@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.grant import Grant, GrantType, ShareType, BonusType
 from app.models.vest_event import VestEvent
 from app.models.stock_price import StockPrice
+from app.models.sale_plan import SalePlan
 
 __all__ = [
     'User',
@@ -14,5 +15,6 @@ __all__ = [
     'ShareType',
     'BonusType',
     'VestEvent',
-    'StockPrice'
+    'StockPrice',
+    'SalePlan'
 ]

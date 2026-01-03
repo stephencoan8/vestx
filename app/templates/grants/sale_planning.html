@@ -1,0 +1,692 @@
+{% extends "base.html" %}
+
+{% block title %}Sale Planning - VestX{% endblock %}
+
+{% block content %}
+<div class="sale-planning-page">
+    <header class="page-header">
+        <div>
+            <h1>💰 Sale Planning</h1>
+            <p class="subtitle">Drag vests into years to optimize taxes • LTCG after 1 year hold</p>
+        </div>
+        <div class="header-controls">
+            <label class="toggle-unvested">
+                <input type="checkbox" id="show-unvested" checked>
+                <span>Show Unvested</span>
+            </label>
+            <button id="save-plan-btn" class="btn btn-primary">💾 Save Plan</button>
+            <button id="reset-plan-btn" class="btn btn-secondary">🔄 Reset</button>
+        </div>
+    </header>
+
+    <div class="planning-controls">
+        <div class="zoom-controls">
+            <button id="zoom-out" class="btn btn-sm">−</button>
+            <span id="zoom-level">100%</span>
+            <button id="zoom-in" class="btn btn-sm">+</button>
+        </div>
+    </div>
+
+    <div class="planning-container" id="planning-canvas">
+        <!-- Year Tiles Container -->
+        <div class="year-tiles-container">
+            {% for year in years %}
+            <div class="year-tile" data-year="{{ year }}" id="year-{{ year }}">
+                <div class="year-header">
+                    <h2>{{ year }}</h2>
+                    <div class="year-stats">
+                        <div class="stat net-value">
+                            <span class="stat-label">Net $</span>
+                            <span class="stat-value" data-metric="net">$0</span>
+                        </div>
+                        <div class="stat tax-value">
+                            <span class="stat-label">Taxes</span>
+                            <span class="stat-value" data-metric="tax">$0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="year-dropzone" data-year="{{ year }}">
+                    <p class="empty-message">Drag vests here</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Unassigned Vests Pool -->
+        <div class="unassigned-pool">
+            <h3>📦 Unassigned Vests</h3>
+            <div class="vests-container" id="unassigned-vests">
+                <!-- Vest tiles will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Vest data from backend
+const VEST_DATA = {{ vest_data | tojson }};
+const STOCK_PRICE = {{ latest_stock_price }};
+const CSRF_TOKEN = '{{ csrf_token() }}';
+
+// State
+let vestPlacements = {}; // {vest_id: year}
+let zoomLevel = 1.0;
+let isDragging = false;
+let isPanning = false;
+let panStart = {x: 0, y: 0};
+let panOffset = {x: 0, y: 0};
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    initializeVests();
+    setupDragAndDrop();
+    setupZoomControls();
+    setupPanControls();
+    setupToggles();
+    loadExistingPlan();
+});
+
+function initializeVests() {
+    const container = document.getElementById('unassigned-vests');
+    
+    VEST_DATA.forEach(vest => {
+        const tile = createVestTile(vest);
+        container.appendChild(tile);
+    });
+    
+    updateVestVisibility();
+}
+
+function createVestTile(vest) {
+    const tile = document.createElement('div');
+    tile.className = 'vest-tile';
+    tile.draggable = true;
+    tile.dataset.vestId = vest.id;
+    tile.dataset.vestDate = vest.vest_date;
+    tile.dataset.hasVested = vest.has_vested;
+    tile.dataset.shares = vest.shares_received;
+    tile.dataset.strikePrice = vest.strike_price;
+    
+    const vestDate = new Date(vest.vest_date);
+    const statusBadge = vest.has_vested ? 
+        '<span class="vest-status vested">✓ Vested</span>' : 
+        '<span class="vest-status unvested">⏳ Unvested</span>';
+    
+    const shareTypeBadge = `<span class="share-type-badge">${vest.share_type.toUpperCase()}</span>`;
+    
+    tile.innerHTML = `
+        <div class="vest-tile-header">
+            ${shareTypeBadge}
+            ${statusBadge}
+        </div>
+        <div class="vest-tile-body">
+            <div class="vest-info">
+                <span class="vest-date">${vestDate.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}</span>
+                <span class="vest-shares">${vest.shares_received.toLocaleString()} shares</span>
+            </div>
+            <div class="vest-value">
+                <span class="current-value">$${vest.current_value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+        </div>
+    `;
+    
+    // Drag event listeners
+    tile.addEventListener('dragstart', handleDragStart);
+    tile.addEventListener('dragend', handleDragEnd);
+    
+    return tile;
+}
+
+function handleDragStart(e) {
+    isDragging = true;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', e.target.dataset.vestId);
+    e.target.classList.add('dragging');
+}
+
+function handleDragEnd(e) {
+    isDragging = false;
+    e.target.classList.remove('dragging');
+}
+
+function setupDragAndDrop() {
+    // Setup dropzones for years
+    document.querySelectorAll('.year-dropzone').forEach(dropzone => {
+        dropzone.addEventListener('dragover', handleDragOver);
+        dropzone.addEventListener('drop', handleDrop);
+        dropzone.addEventListener('dragleave', handleDragLeave);
+    });
+    
+    // Setup unassigned pool as dropzone
+    const unassignedPool = document.getElementById('unassigned-vests');
+    unassignedPool.addEventListener('dragover', handleDragOver);
+    unassignedPool.addEventListener('drop', handleDropUnassigned);
+    unassignedPool.addEventListener('dragleave', handleDragLeave);
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+    if (e.currentTarget === e.target) {
+        e.currentTarget.classList.remove('drag-over');
+    }
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    const vestId = e.dataTransfer.getData('text/plain');
+    const year = e.currentTarget.dataset.year;
+    const vestTile = document.querySelector(`[data-vest-id="${vestId}"]`);
+    
+    if (vestTile) {
+        // Remove from current location
+        vestTile.remove();
+        
+        // Add to year dropzone
+        e.currentTarget.appendChild(vestTile);
+        e.currentTarget.querySelector('.empty-message')?.remove();
+        
+        // Update state
+        vestPlacements[vestId] = parseInt(year);
+        
+        // Recalculate taxes for this year
+        recalculateYearTaxes(year);
+    }
+}
+
+function handleDropUnassigned(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    const vestId = e.dataTransfer.getData('text/plain');
+    const vestTile = document.querySelector(`[data-vest-id="${vestId}"]`);
+    
+    if (vestTile) {
+        // Remove from current location
+        const oldYear = vestPlacements[vestId];
+        vestTile.remove();
+        
+        // Add to unassigned pool
+        e.currentTarget.appendChild(vestTile);
+        
+        // Update state
+        delete vestPlacements[vestId];
+        
+        // Recalculate taxes for old year if it had one
+        if (oldYear) {
+            recalculateYearTaxes(oldYear);
+        }
+    }
+}
+
+async function recalculateYearTaxes(year) {
+    const yearTile = document.getElementById(`year-${year}`);
+    const dropzone = yearTile.querySelector('.year-dropzone');
+    const vestTiles = dropzone.querySelectorAll('.vest-tile');
+    
+    if (vestTiles.length === 0) {
+        // No vests in this year
+        yearTile.querySelector('[data-metric="net"]').textContent = '$0';
+        yearTile.querySelector('[data-metric="tax"]').textContent = '$0';
+        
+        // Show empty message
+        if (!dropzone.querySelector('.empty-message')) {
+            const emptyMsg = document.createElement('p');
+            emptyMsg.className = 'empty-message';
+            emptyMsg.textContent = 'Drag vests here';
+            dropzone.appendChild(emptyMsg);
+        }
+        return;
+    }
+    
+    // Collect vest IDs
+    const vestIds = Array.from(vestTiles).map(tile => parseInt(tile.dataset.vestId));
+    
+    // Call API to calculate taxes
+    try {
+        const response = await fetch('/grants/api/sale-planning/calculate-taxes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify({
+                year: parseInt(year),
+                vest_ids: vestIds
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update year stats
+            yearTile.querySelector('[data-metric="net"]').textContent = 
+                '$' + data.net_proceeds.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            yearTile.querySelector('[data-metric="tax"]').textContent = 
+                '$' + data.total_tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    } catch (error) {
+        console.error('Error calculating taxes:', error);
+    }
+}
+
+function setupZoomControls() {
+    document.getElementById('zoom-in').addEventListener('click', () => {
+        zoomLevel = Math.min(zoomLevel + 0.1, 2.0);
+        applyZoom();
+    });
+    
+    document.getElementById('zoom-out').addEventListener('click', () => {
+        zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
+        applyZoom();
+    });
+}
+
+function applyZoom() {
+    const canvas = document.getElementById('planning-canvas');
+    canvas.style.transform = `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`;
+    document.getElementById('zoom-level').textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+function setupPanControls() {
+    const canvas = document.getElementById('planning-canvas');
+    
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0 && !isDragging && e.target === canvas) {
+            isPanning = true;
+            panStart = {x: e.clientX - panOffset.x, y: e.clientY - panOffset.y};
+            canvas.style.cursor = 'grabbing';
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            panOffset = {
+                x: e.clientX - panStart.x,
+                y: e.clientY - panStart.y
+            };
+            applyZoom();
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            canvas.style.cursor = 'grab';
+        }
+    });
+}
+
+function setupToggles() {
+    document.getElementById('show-unvested').addEventListener('change', updateVestVisibility);
+    
+    document.getElementById('save-plan-btn').addEventListener('click', savePlan);
+    document.getElementById('reset-plan-btn').addEventListener('click', resetPlan);
+}
+
+function updateVestVisibility() {
+    const showUnvested = document.getElementById('show-unvested').checked;
+    document.querySelectorAll('.vest-tile').forEach(tile => {
+        if (tile.dataset.hasVested === 'false') {
+            tile.style.display = showUnvested ? 'block' : 'none';
+        }
+    });
+}
+
+async function savePlan() {
+    try {
+        const response = await fetch('/grants/api/sale-planning/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify({
+                plans: vestPlacements
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show success message
+            const btn = document.getElementById('save-plan-btn');
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Saved!';
+            btn.classList.add('btn-success');
+            
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('btn-success');
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Error saving plan:', error);
+        alert('Error saving plan');
+    }
+}
+
+function resetPlan() {
+    if (!confirm('Reset all vests to unassigned?')) return;
+    
+    // Move all vests back to unassigned pool
+    document.querySelectorAll('.vest-tile').forEach(tile => {
+        const vestId = tile.dataset.vestId;
+        if (vestPlacements[vestId]) {
+            tile.remove();
+            document.getElementById('unassigned-vests').appendChild(tile);
+            delete vestPlacements[vestId];
+        }
+    });
+    
+    // Reset all year stats
+    document.querySelectorAll('.year-tile').forEach(yearTile => {
+        const year = yearTile.dataset.year;
+        yearTile.querySelector('[data-metric="net"]').textContent = '$0';
+        yearTile.querySelector('[data-metric="tax"]').textContent = '$0';
+        
+        // Add empty message
+        const dropzone = yearTile.querySelector('.year-dropzone');
+        if (!dropzone.querySelector('.empty-message')) {
+            const emptyMsg = document.createElement('p');
+            emptyMsg.className = 'empty-message';
+            emptyMsg.textContent = 'Drag vests here';
+            dropzone.appendChild(emptyMsg);
+        }
+    });
+}
+
+function loadExistingPlan() {
+    // Load saved plan from vest data
+    VEST_DATA.forEach(vest => {
+        if (vest.planned_year) {
+            const vestTile = document.querySelector(`[data-vest-id="${vest.id}"]`);
+            const yearDropzone = document.querySelector(`.year-dropzone[data-year="${vest.planned_year}"]`);
+            
+            if (vestTile && yearDropzone) {
+                vestTile.remove();
+                yearDropzone.appendChild(vestTile);
+                yearDropzone.querySelector('.empty-message')?.remove();
+                vestPlacements[vest.id] = vest.planned_year;
+                
+                // Recalculate taxes
+                recalculateYearTaxes(vest.planned_year);
+            }
+        }
+    });
+}
+</script>
+
+<style>
+.sale-planning-page {
+    padding: 2rem;
+    height: calc(100vh - 80px);
+    overflow: hidden;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 2rem;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    margin: 0.5rem 0 0 0;
+}
+
+.header-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.toggle-unvested {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.planning-controls {
+    margin-bottom: 1rem;
+}
+
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.zoom-controls button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+#zoom-level {
+    min-width: 50px;
+    text-align: center;
+    font-weight: 600;
+}
+
+.planning-container {
+    position: relative;
+    height: calc(100% - 150px);
+    overflow: auto;
+    cursor: grab;
+    background: #1a202c;
+    border-radius: 12px;
+    padding: 2rem;
+    transform-origin: top left;
+    transition: transform 0.1s ease-out;
+}
+
+.year-tiles-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+    margin-bottom: 3rem;
+}
+
+.year-tile {
+    background: #2d3748;
+    border-radius: 12px;
+    padding: 1.5rem;
+    min-height: 400px;
+}
+
+.year-header {
+    margin-bottom: 1rem;
+}
+
+.year-header h2 {
+    margin: 0 0 1rem 0;
+    font-size: 1.75rem;
+    color: var(--primary);
+}
+
+.year-stats {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.stat {
+    flex: 1;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.net-value .stat-value {
+    color: #10b981;
+}
+
+.tax-value .stat-value {
+    color: #f59e0b;
+}
+
+.year-dropzone {
+    min-height: 300px;
+    border: 2px dashed #4a5568;
+    border-radius: 8px;
+    padding: 1rem;
+    background: #1a202c;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.year-dropzone.drag-over {
+    border-color: var(--primary);
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.empty-message {
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin: auto;
+}
+
+.unassigned-pool {
+    background: #2d3748;
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.unassigned-pool h3 {
+    margin: 0 0 1rem 0;
+}
+
+.vests-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.vest-tile {
+    background: #374151;
+    border: 2px solid #4b5563;
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: grab;
+    transition: all 0.2s;
+}
+
+.vest-tile:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.vest-tile.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.vest-tile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.share-type-badge {
+    background: var(--primary);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.vest-status {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.vest-status.vested {
+    background: #d4edda;
+    color: #155724;
+}
+
+.vest-status.unvested {
+    background: #4a5568;
+    color: #cbd5e0;
+}
+
+.vest-tile-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.vest-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.vest-date {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.vest-shares {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.vest-value {
+    padding-top: 0.5rem;
+    border-top: 1px solid #4b5563;
+}
+
+.current-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #10b981;
+}
+
+@media (max-width: 1200px) {
+    .year-tiles-container {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .year-tiles-container {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}

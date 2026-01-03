@@ -20,6 +20,7 @@
                 <a href="{{ url_for('prices.list_prices') }}" class="nav-link">My Prices</a>
                 <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link">Vest Schedule</a>
                 <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link">💰 Finance</a>
+                <a href="{{ url_for('grants.sale_planning') }}" class="nav-link">💡 Sale Planning</a>
                 <a href="{{ url_for('grants.rules') }}" class="nav-link">📋 Rules</a>
                 {% if current_user.is_admin %}
                 <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link">Admin</a>
