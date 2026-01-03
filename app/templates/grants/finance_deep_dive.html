@@ -1254,11 +1254,19 @@ const applyColumnsBtn = document.getElementById('applyColumns');
 const resetColumnsBtn = document.getElementById('resetColumns');
 
 // Toggle customizer visibility
-toggleCustomizer.addEventListener('click', () => {
-    const isHidden = columnCustomizer.style.display === 'none';
-    columnCustomizer.style.display = isHidden ? 'block' : 'none';
-    customizerToggleIcon.textContent = isHidden ? '▲' : '▼';
-});
+if (toggleCustomizer && columnCustomizer && customizerToggleIcon) {
+    toggleCustomizer.addEventListener('click', () => {
+        const isHidden = columnCustomizer.style.display === 'none';
+        columnCustomizer.style.display = isHidden ? 'block' : 'none';
+        customizerToggleIcon.textContent = isHidden ? '▲' : '▼';
+    });
+} else {
+    console.error('Column customizer elements not found:', {
+        toggleCustomizer: !!toggleCustomizer,
+        columnCustomizer: !!columnCustomizer,
+        customizerToggleIcon: !!customizerToggleIcon
+    });
+}
 
 // Default column order
 const defaultColumns = [
