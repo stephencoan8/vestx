@@ -352,97 +352,97 @@
                         
                         <!-- Tax Breakdown Row (Hidden by default) -->
                         {% if ve_data.has_vested and ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
-                        <tr class="tax-breakdown-row" style="display: none;">
-                            <td colspan="9" style="background: #e8e8e8; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
+                        <tr class="tax-breakdown-row" style="display: none !important;">
+                            <td colspan="9" style="background: #3a3a3a; color: #ffffff; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
                                 <div style="max-width: 800px;">
-                                    <h4 style="margin-top: 0; color: #1976d2; display: flex; align-items: center; gap: 0.5rem;">
+                                    <h4 style="margin-top: 0; color: #5dade2; display: flex; align-items: center; gap: 0.5rem;">
                                         💰 Detailed Tax Breakdown for {{ ve.vest_date.strftime('%b %d, %Y') }}
-                                        <span style="font-size: 0.75em; font-weight: normal; color: #333;">({{ ve_data.tax_breakdown.tax_year }} Tax Rates)</span>
+                                        <span style="font-size: 0.75em; font-weight: normal; color: #cccccc;">({{ ve_data.tax_breakdown.tax_year }} Tax Rates)</span>
                                     </h4>
                                     
                                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
                                         <div class="tax-breakdown-item">
-                                            <div style="font-size: 0.85em; color: #333; margin-bottom: 0.25rem; font-weight: 500;">Gross Value</div>
-                                            <div style="font-size: 1.2em; font-weight: bold; color: #000;">${{ "{:,.2f}".format(ve_data.tax_breakdown.gross_value) }}</div>
+                                            <div style="font-size: 0.85em; color: #cccccc; margin-bottom: 0.25rem; font-weight: 500;">Gross Value</div>
+                                            <div style="font-size: 1.2em; font-weight: bold; color: #ffffff;">${{ "{:,.2f}".format(ve_data.tax_breakdown.gross_value) }}</div>
                                         </div>
                                         
                                         <div class="tax-breakdown-item">
-                                            <div style="font-size: 0.85em; color: #333; margin-bottom: 0.25rem; font-weight: 500;">Federal Income Tax</div>
-                                            <div style="font-size: 1.1em; font-weight: 600; color: #c62828;">
+                                            <div style="font-size: 0.85em; color: #cccccc; margin-bottom: 0.25rem; font-weight: 500;">Federal Income Tax</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #ef5350;">
                                                 ${{ "{:,.2f}".format(ve_data.tax_breakdown.federal_tax) }}
-                                                <span style="font-size: 0.8em; color: #555;">({{ "%.1f"|format(ve_data.tax_breakdown.federal_rate * 100) }}%)</span>
+                                                <span style="font-size: 0.8em; color: #aaaaaa;">({{ "%.1f"|format(ve_data.tax_breakdown.federal_rate * 100) }}%)</span>
                                             </div>
                                         </div>
                                         
                                         <div class="tax-breakdown-item">
-                                            <div style="font-size: 0.85em; color: #333; margin-bottom: 0.25rem; font-weight: 500;">State Income Tax</div>
-                                            <div style="font-size: 1.1em; font-weight: 600; color: #c62828;">
+                                            <div style="font-size: 0.85em; color: #cccccc; margin-bottom: 0.25rem; font-weight: 500;">State Income Tax</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #ef5350;">
                                                 ${{ "{:,.2f}".format(ve_data.tax_breakdown.state_tax) }}
-                                                <span style="font-size: 0.8em; color: #555;">({{ "%.1f"|format(ve_data.tax_breakdown.state_rate * 100) }}%)</span>
+                                                <span style="font-size: 0.8em; color: #aaaaaa;">({{ "%.1f"|format(ve_data.tax_breakdown.state_rate * 100) }}%)</span>
                                             </div>
                                         </div>
                                         
                                         <div class="tax-breakdown-item">
-                                            <div style="font-size: 0.85em; color: #333; margin-bottom: 0.25rem; font-weight: 500;">Social Security</div>
-                                            <div style="font-size: 1.1em; font-weight: 600; color: #0d47a1;">
+                                            <div style="font-size: 0.85em; color: #cccccc; margin-bottom: 0.25rem; font-weight: 500;">Social Security</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #64b5f6;">
                                                 ${{ "{:,.2f}".format(ve_data.tax_breakdown.social_security_tax) }}
-                                                <span style="font-size: 0.8em; color: #555;">({{ "%.2f"|format(ve_data.tax_breakdown.social_security_rate * 100) }}%)</span>
+                                                <span style="font-size: 0.8em; color: #aaaaaa;">({{ "%.2f"|format(ve_data.tax_breakdown.social_security_rate * 100) }}%)</span>
                                             </div>
                                         </div>
                                         
                                         <div class="tax-breakdown-item">
-                                            <div style="font-size: 0.85em; color: #333; margin-bottom: 0.25rem; font-weight: 500;">Medicare</div>
-                                            <div style="font-size: 1.1em; font-weight: 600; color: #0d47a1;">
+                                            <div style="font-size: 0.85em; color: #cccccc; margin-bottom: 0.25rem; font-weight: 500;">Medicare</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #64b5f6;">
                                                 ${{ "{:,.2f}".format(ve_data.tax_breakdown.medicare_tax) }}
-                                                <span style="font-size: 0.8em; color: #555;">({{ "%.2f"|format(ve_data.tax_breakdown.medicare_rate * 100) }}%)</span>
+                                                <span style="font-size: 0.8em; color: #aaaaaa;">({{ "%.2f"|format(ve_data.tax_breakdown.medicare_rate * 100) }}%)</span>
                                             </div>
                                         </div>
                                         
                                         {% if ve_data.tax_breakdown.additional_medicare_tax > 0 %}
                                         <div class="tax-breakdown-item">
-                                            <div style="font-size: 0.85em; color: #333; margin-bottom: 0.25rem; font-weight: 500;">Additional Medicare</div>
-                                            <div style="font-size: 1.1em; font-weight: 600; color: #0d47a1;">
+                                            <div style="font-size: 0.85em; color: #cccccc; margin-bottom: 0.25rem; font-weight: 500;">Additional Medicare</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: #64b5f6;">
                                                 ${{ "{:,.2f}".format(ve_data.tax_breakdown.additional_medicare_tax) }}
-                                                <span style="font-size: 0.8em; color: #555;">({{ "%.2f"|format(ve_data.tax_breakdown.additional_medicare_rate * 100) }}%)</span>
+                                                <span style="font-size: 0.8em; color: #aaaaaa;">({{ "%.2f"|format(ve_data.tax_breakdown.additional_medicare_rate * 100) }}%)</span>
                                             </div>
                                         </div>
                                         {% endif %}
                                     </div>
                                     
-                                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 2px solid #ccc;">
+                                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 2px solid #666;">
                                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                                             <div>
-                                                <div style="font-size: 0.85em; color: #333; font-weight: 500;">Total FICA (SS + Medicare)</div>
-                                                <div style="font-size: 1.2em; font-weight: bold; color: #0d47a1;">
+                                                <div style="font-size: 0.85em; color: #cccccc; font-weight: 500;">Total FICA (SS + Medicare)</div>
+                                                <div style="font-size: 1.2em; font-weight: bold; color: #64b5f6;">
                                                     ${{ "{:,.2f}".format(ve_data.tax_breakdown.total_fica) }}
                                                 </div>
                                             </div>
                                             
                                             <div>
-                                                <div style="font-size: 0.85em; color: #333; font-weight: 500;">Total Tax Withheld</div>
-                                                <div style="font-size: 1.3em; font-weight: bold; color: #c62828;">
+                                                <div style="font-size: 0.85em; color: #cccccc; font-weight: 500;">Total Tax Withheld</div>
+                                                <div style="font-size: 1.3em; font-weight: bold; color: #ef5350;">
                                                     ${{ "{:,.2f}".format(ve_data.tax_breakdown.total_tax) }}
                                                 </div>
                                             </div>
                                             
                                             <div>
-                                                <div style="font-size: 0.85em; color: #333; font-weight: 500;">Net Amount Received</div>
-                                                <div style="font-size: 1.3em; font-weight: bold; color: #1b5e20;">
+                                                <div style="font-size: 0.85em; color: #cccccc; font-weight: 500;">Net Amount Received</div>
+                                                <div style="font-size: 1.3em; font-weight: bold; color: #66bb6a;">
                                                     ${{ "{:,.2f}".format(ve_data.tax_breakdown.net_amount) }}
                                                 </div>
                                             </div>
                                             
                                             <div>
-                                                <div style="font-size: 0.85em; color: #333; font-weight: 500;">Effective Tax Rate</div>
-                                                <div style="font-size: 1.2em; font-weight: bold; color: #000;">
+                                                <div style="font-size: 0.85em; color: #cccccc; font-weight: 500;">Effective Tax Rate</div>
+                                                <div style="font-size: 1.2em; font-weight: bold; color: #ffffff;">
                                                     {{ "%.1f"|format(ve_data.tax_breakdown.effective_rate * 100) }}%
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <div style="margin-top: 1rem; padding: 0.75rem; background: #fff; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; color: #333;">
-                                        <strong style="color: #000;">📝 Note:</strong> This breakdown shows actual paycheck taxes including FICA (Social Security 6.2% up to $168,600 wage base + Medicare 1.45%). 
+                                    <div style="margin-top: 1rem; padding: 0.75rem; background: #4a4a4a; border: 1px solid #666; border-radius: 4px; font-size: 0.9em; color: #dddddd;">
+                                        <strong style="color: #ffffff;">📝 Note:</strong> This breakdown shows actual paycheck taxes including FICA (Social Security 6.2% up to $168,600 wage base + Medicare 1.45%). 
                                         Additional Medicare (0.9%) applies to income over $200k (single) or $250k (married).
                                     </div>
                                 </div>
