@@ -112,7 +112,7 @@ async function testAPIConnection() {
         const data = await response.json();
         console.log('API test response data:', data);
         if (!data.success) {
-            console.error('API test error:', data.error);
+            console.error('API test error message:', data.error);
         }
     } catch (error) {
         console.error('API test failed:', error);
@@ -318,7 +318,8 @@ async function recalculateYearTaxes(year) {
             yearTile.querySelector('[data-metric="tax"]').textContent = 
                 '$' + data.total_tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         } else {
-            console.error('Tax calculation failed:', data.error);
+            console.error('Tax calculation failed - Error message:', data.error);
+            console.error('Full error response:', data);
         }
     } catch (error) {
         console.error('Error calculating taxes:', error);
