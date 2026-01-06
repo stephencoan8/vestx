@@ -27,19 +27,9 @@ def dashboard():
     grants = Grant.query.filter_by(user_id=current_user.id).all()
     
     # Get current stock price from user's encrypted prices
-    current_price = 0.0
-    try:
-        from app.models.user_price import UserPrice
-        from app.utils.encryption import decrypt_for_user
-        user_key = current_user.get_decrypted_user_key()
-        price_entry = UserPrice.query.filter_by(user_id=current_user.id).order_by(
-            UserPrice.valuation_date.desc()
-        ).first()
-        if price_entry:
-            price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-            current_price = float(price_str)
-    except Exception:
-        current_price = 0.0
+    # Get current stock price (exclude future prices)
+    from app.utils.price_utils import get_latest_user_price
+    current_price = get_latest_user_price(current_user.id) or 0.0
     
     # Calculate totals - use grant.current_value which handles ISOs correctly
     total_grants = len(grants)
