@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def get_latest_user_price(user_id: int, as_of_date: Optional[date] = None) -> Optional[float]:
     """Return the latest decrypted user price for ``user_id`` on or before
-    ``as_of_date``. If ``as_of_date`` is None, returns the latest price.
+    ``as_of_date``. If ``as_of_date`` is None, returns the latest price on or before today.
 
     Returns a float price on success or None when no price is found or
     decryption fails. This intentionally requires the requesting user to be
@@ -32,14 +32,22 @@ def get_latest_user_price(user_id: int, as_of_date: Optional[date] = None) -> Op
     the existing model properties that decrypt prices.
     """
     try:
+        from datetime import date as date_class
+        
         # Find the appropriate price entry
         query = UserPrice.query.filter_by(user_id=user_id)
+        
+        # Always filter to on or before a specific date
+        # If no as_of_date provided, use today to exclude future prices
         if as_of_date is not None:
             query = query.filter(UserPrice.valuation_date <= as_of_date)
+        else:
+            query = query.filter(UserPrice.valuation_date <= date_class.today())
+            
         price_entry = query.order_by(UserPrice.valuation_date.desc()).first()
 
         if not price_entry:
-            logger.debug("No UserPrice entry found for user %s on or before %s", user_id, as_of_date)
+            logger.debug("No UserPrice entry found for user %s on or before %s", user_id, as_of_date or "today")
             return None
 
         if not current_user.is_authenticated or current_user.id != user_id:
