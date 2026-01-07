@@ -311,6 +311,11 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
     margin-bottom: 1rem;
 }
 
+.vest-schedule-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
 .vest-schedule-table input[type="number"],
 .vest-schedule-table select {
     padding: 0.4rem;
@@ -319,11 +324,20 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
     background: var(--bg-primary);
     color: var(--text-primary);
     font-size: 0.85rem;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-.vest-schedule-table .cash-paid-input { width: 80px; }
-.vest-schedule-table .cash-covered-select { width: 60px; }
-.vest-schedule-table .shares-sold-input { width: 60px; }
+.vest-schedule-table .cash-paid-input { max-width: 100px; }
+.vest-schedule-table .cash-covered-select { max-width: 80px; }
+.vest-schedule-table .shares-sold-input { max-width: 80px; }
+
+.vest-schedule-table td span {
+    display: inline-block;
+    padding: 0.4rem;
+    min-height: 1.2em;
+    line-height: 1.2em;
+}
 
 .vest-schedule-table input[type="number"]:disabled {
     opacity: 0.4;
@@ -346,8 +360,16 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 }
 
 .shares-received { font-weight: bold; color: var(--success) !important; }
-.vest-schedule-table th { font-size: 0.8rem; white-space: nowrap; }
-.vest-schedule-table td { font-size: 0.85rem; }
+.vest-schedule-table th { 
+    font-size: 0.8rem; 
+    white-space: nowrap;
+    padding: 0.75rem 0.5rem;
+}
+.vest-schedule-table td { 
+    font-size: 0.85rem;
+    padding: 0.75rem 0.5rem;
+    vertical-align: middle;
+}
 
 .badge-warning {
     background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
