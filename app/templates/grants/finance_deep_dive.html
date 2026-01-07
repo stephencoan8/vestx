@@ -1106,7 +1106,7 @@ showAllToggle.addEventListener('change', (e) => {
     toggleLabel.textContent = showAll ? 'All Shares (Including Future)' : 'Vested Only';
     document.querySelectorAll('.data-unvested').forEach(el => {
         if (showAll) {
-            el.style.display = 'flex';  // Use flex to maintain column layout
+            el.style.display = 'table-row';
         } else {
             el.style.display = 'none';
         }
@@ -1360,9 +1360,6 @@ function applyColumnSettings() {
         });
     });
     
-    // Use flexbox for reordering
-    headerRow.style.display = 'flex';
-    
     // Batch DOM reads and writes for better performance
     const showAll = showAllToggle.checked;
     const rowsToProcess = [];
@@ -1385,13 +1382,10 @@ function applyColumnSettings() {
     // Apply styles in batch
     requestAnimationFrame(() => {
         rowsToProcess.forEach(row => {
-            row.style.display = 'flex';
-            const cells = row.querySelectorAll('td');
-            cells.forEach(cell => {
-                cell.style.flex = '1';
-                cell.style.minWidth = '100px';
-            });
+            row.style.display = 'table-row';
         });
+        
+        headerRow.style.display = 'table-row';
         
         headerRow.querySelectorAll('th').forEach(th => {
             th.style.flex = '1';
