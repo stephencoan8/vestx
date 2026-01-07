@@ -312,7 +312,6 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 }
 
 .vest-schedule-table {
-    table-layout: fixed;
     width: 100%;
 }
 
@@ -324,19 +323,6 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
     background: var(--bg-primary);
     color: var(--text-primary);
     font-size: 0.85rem;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.vest-schedule-table .cash-paid-input { max-width: 100px; }
-.vest-schedule-table .cash-covered-select { max-width: 80px; }
-.vest-schedule-table .shares-sold-input { max-width: 80px; }
-
-.vest-schedule-table td span {
-    display: inline-block;
-    padding: 0.4rem;
-    min-height: 1.2em;
-    line-height: 1.2em;
 }
 
 .vest-schedule-table input[type="number"]:disabled {
@@ -363,11 +349,11 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 .vest-schedule-table th { 
     font-size: 0.8rem; 
     white-space: nowrap;
-    padding: 0.75rem 0.5rem;
+    padding: 0.75rem;
 }
 .vest-schedule-table td { 
     font-size: 0.85rem;
-    padding: 0.75rem 0.5rem;
+    padding: 0.75rem;
     vertical-align: middle;
 }
 
