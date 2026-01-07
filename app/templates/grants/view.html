@@ -103,21 +103,33 @@
                             <td class="vest-value">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
                             {% if grant.grant_type not in ['espp', 'nqespp'] %}
                             <td>
+                                {% if vest.has_vested %}
                                 <input type="number" class="cash-paid-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
                                        step="0.01" min="0" placeholder="$0.00" onclick="event.stopPropagation();">
+                                {% else %}
+                                <span style="color: #999;">—</span>
+                                {% endif %}
                             </td>
                             <td>
+                                {% if vest.has_vested %}
                                 <select class="cash-covered-select" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">
                                     <option value="yes" {% if vest.cash_covered_all %}selected{% endif %}>Yes</option>
                                     <option value="no" {% if not vest.cash_covered_all %}selected{% endif %}>No</option>
                                 </select>
+                                {% else %}
+                                <span style="color: #999;">—</span>
+                                {% endif %}
                             </td>
                             <td>
+                                {% if vest.has_vested %}
                                 <input type="number" class="shares-sold-input" data-vest-id="{{ vest.id }}"
                                        value="{{ '{:.0f}'.format(vest.shares_sold) if vest.shares_sold else '' }}" 
                                        step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
                                        {% if vest.cash_covered_all %}disabled{% endif %} onclick="event.stopPropagation();">
+                                {% else %}
+                                <span style="color: #999;">—</span>
+                                {% endif %}
                             </td>
                             {% endif %}
                             <td class="shares-received highlight">{{ "{:,.0f}".format(vest.shares_received) }}</td>
