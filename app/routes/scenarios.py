@@ -180,36 +180,48 @@ def get_scenario_projection(scenario_id):
         ).first_or_404()
         
         # Get all unvested events
+        from sqlalchemy import and_
         unvested_events = VestEvent.query.join(Grant).filter(
-            Grant.user_id == current_user.id,
-            VestEvent.vest_date > date.today()
+            and_(
+                Grant.user_id == current_user.id,
+                VestEvent.vest_date > date.today()
+            )
         ).all()
+        
+        logger.info(f"Found {len(unvested_events)} unvested events")
+        logger.info(f"Scenario has {len(scenario.price_points)} price points")
         
         projections = []
         total_value = 0
         
         for vest in unvested_events:
-            projected_price = scenario.get_price_at_date(vest.vest_date)
-            
-            if projected_price:
-                # For ISOs, use spread (price - strike)
-                grant = vest.grant
-                if grant.share_type in ['iso_5y', 'iso_6y']:
-                    value_per_share = max(0, projected_price - grant.share_price_at_grant)
-                else:
-                    value_per_share = projected_price
+            try:
+                projected_price = scenario.get_price_at_date(vest.vest_date)
                 
-                projected_value = vest.shares_vested * value_per_share
-                total_value += projected_value
+                logger.info(f"Vest {vest.id} on {vest.vest_date}: projected price = {projected_price}")
                 
-                projections.append({
-                    'vest_date': vest.vest_date.isoformat(),
-                    'shares': vest.shares_vested,
-                    'projected_price': projected_price,
-                    'projected_value': projected_value,
-                    'grant_type': grant.grant_type,
-                    'share_type': grant.share_type
-                })
+                if projected_price is not None:
+                    # For ISOs, use spread (price - strike)
+                    grant = vest.grant
+                    if grant.share_type in ['iso_5y', 'iso_6y']:
+                        value_per_share = max(0, projected_price - grant.share_price_at_grant)
+                    else:
+                        value_per_share = projected_price
+                    
+                    projected_value = vest.shares_vested * value_per_share
+                    total_value += projected_value
+                    
+                    projections.append({
+                        'vest_date': vest.vest_date.isoformat(),
+                        'shares': vest.shares_vested,
+                        'projected_price': projected_price,
+                        'projected_value': projected_value,
+                        'grant_type': grant.grant_type,
+                        'share_type': grant.share_type
+                    })
+            except Exception as vest_error:
+                logger.error(f"Error processing vest {vest.id}: {str(vest_error)}", exc_info=True)
+                continue
         
         return jsonify({
             'scenario_name': scenario.scenario_name,
@@ -219,7 +231,7 @@ def get_scenario_projection(scenario_id):
         
     except Exception as e:
         logger.error(f"Error getting projection: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e)}), 500
 
 
 @scenarios_bp.route('/api/scenarios/compare', methods=['POST'])

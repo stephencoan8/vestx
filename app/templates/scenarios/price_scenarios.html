@@ -276,6 +276,7 @@
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
 <script>
 const CSRF_TOKEN = '{{ csrf_token() }}';
@@ -466,7 +467,22 @@ async function viewScenario(id) {
     
     try {
         const response = await fetch(`/scenarios/api/scenarios/${id}/projection`);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Server error:', errorData);
+            alert('Error loading projection: ' + (errorData.error || 'Unknown error'));
+            return;
+        }
+        
         const data = await response.json();
+        
+        console.log('Projection data:', data);
+        
+        if (!data.projections || data.projections.length === 0) {
+            alert('No future vests found to project. Add unvested grants first.');
+            return;
+        }
         
         projectionDiv.style.display = 'block';
         
@@ -487,18 +503,21 @@ async function viewScenario(id) {
         `;
     } catch (error) {
         console.error('Error loading projection:', error);
-        alert('Error loading projection');
+        alert('Error loading projection: ' + error.message);
     }
 }
 
 function renderScenarioChart(id, data) {
-    const ctx = document.getElementById(`chart-${id}`).getContext('2d');
+    const canvas = document.getElementById(`chart-${id}`);
+    const ctx = canvas.getContext('2d');
     
-    // Destroy existing chart
+    // Destroy existing chart if it exists
     if (charts[id]) {
         charts[id].destroy();
+        delete charts[id];
     }
     
+    // Prepare data
     const vestData = data.projections.map(p => ({
         x: p.vest_date,
         y: p.projected_price
@@ -512,36 +531,50 @@ function renderScenarioChart(id, data) {
                 data: vestData,
                 borderColor: 'rgb(93, 173, 226)',
                 backgroundColor: 'rgba(93, 173, 226, 0.1)',
+                borderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7,
                 tension: 0.4
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: true,
             plugins: {
                 title: {
                     display: true,
-                    text: `${data.scenario_name} - Future Price Projection`
+                    text: `${data.scenario_name} - Future Price Projection`,
+                    font: {
+                        size: 16
+                    }
                 },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `$${context.parsed.y.toFixed(2)}`;
+                            return `Price: $${context.parsed.y.toFixed(2)}`;
                         }
                     }
+                },
+                legend: {
+                    display: true
                 }
             },
             scales: {
                 x: {
                     type: 'time',
                     time: {
-                        unit: 'month'
+                        unit: 'month',
+                        displayFormats: {
+                            month: 'MMM yyyy'
+                        }
                     },
                     title: {
                         display: true,
-                        text: 'Date'
+                        text: 'Vest Date'
                     }
                 },
                 y: {
+                    beginAtZero: false,
                     title: {
                         display: true,
                         text: 'Stock Price ($)'
@@ -583,32 +616,51 @@ async function openCompareScenarios() {
                 'X-CSRFToken': CSRF_TOKEN
             },
             body: JSON.stringify({ scenario_ids: scenarioIds })
-        });
-        
-        const comparison = await compareResponse.json();
-        
-        renderComparisonChart(comparison);
-        document.getElementById('compareModal').style.display = 'block';
-    } catch (error) {
-        console.error('Error comparing scenarios:', error);
-        alert('Error comparing scenarios');
+        });anvas = document.getElementById('comparisonCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (window.comparisonChart) {
+        window.comparisonChart.destroy();
     }
-}
-
-function closeCompareModal() {
-    document.getElementById('compareModal').style.display = 'none';
-}
-
-function renderComparisonChart(comparison) {
-    const ctx = document.getElementById('comparisonCanvas').getContext('2d');
     
     const labels = comparison.map(c => c.scenario_name);
     const values = comparison.map(c => c.total_projected_value);
     
-    new Chart(ctx, {
+    window.comparisonChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels,
+            datasets: [{
+                label: 'Total Future Value',
+                data: values,
+                backgroundColor: [
+                    'rgba(93, 173, 226, 0.8)',
+                    'rgba(39, 174, 96, 0.8)',
+                    'rgba(230, 126, 34, 0.8)',
+                    'rgba(142, 68, 173, 0.8)'
+                ],
+                borderColor: [
+                    'rgb(93, 173, 226)',
+                    'rgb(39, 174, 96)',
+                    'rgb(230, 126, 34)',
+                    'rgb(142, 68, 173)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Scenario Comparison - Total Future Value',
+                    font: {
+                        size: 16
+                    }
+                },
+                legend: {
+                    display: false
             datasets: [{
                 label: 'Total Future Value',
                 data: values,
