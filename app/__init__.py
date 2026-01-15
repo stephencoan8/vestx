@@ -71,6 +71,7 @@ def create_app():
     from app.routes.admin import admin_bp
     from app.routes.settings import settings_bp
     from app.routes.prices import prices_bp
+    from app.routes.scenarios import scenarios_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -78,6 +79,7 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(prices_bp)
+    app.register_blueprint(scenarios_bp, url_prefix='/scenarios')
     
     # Register error handlers
     register_error_handlers(app)

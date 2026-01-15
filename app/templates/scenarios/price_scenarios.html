@@ -1,0 +1,673 @@
+{% extends "base.html" %}
+
+{% block title %}Future Price Scenarios{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>📈 Future Price Scenarios</h1>
+        <p class="subtitle">Model different stock price paths to understand future value and tax impact</p>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <div class="stat-label">Active Scenarios</div>
+                <div class="stat-value">{{ scenarios|selectattr('is_active')|list|length }}</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">📅</div>
+            <div class="stat-content">
+                <div class="stat-label">Unvested Shares</div>
+                <div class="stat-value">{{ "{:,.0f}".format(total_unvested_shares) }}</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">🔮</div>
+            <div class="stat-content">
+                <div class="stat-label">Future Vest Dates</div>
+                <div class="stat-value">{{ unvested_events|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="margin: 2rem 0; display: flex; gap: 1rem;">
+        <button class="btn btn-primary" onclick="openCreateScenario()">
+            ➕ Create New Scenario
+        </button>
+        <button class="btn btn-secondary" onclick="openCompareScenarios()" id="compareBtn" disabled>
+            📊 Compare Scenarios
+        </button>
+    </div>
+
+    <!-- Scenarios List -->
+    <div class="card">
+        <h2>Your Price Scenarios</h2>
+        
+        {% if scenarios %}
+        <div id="scenariosList">
+            {% for scenario in scenarios %}
+            <div class="scenario-item" data-scenario-id="{{ scenario.id }}">
+                <div class="scenario-header">
+                    <div>
+                        <h3>
+                            {{ scenario.scenario_name }}
+                            {% if scenario.is_active %}
+                            <span class="badge badge-success">Active</span>
+                            {% else %}
+                            <span class="badge">Inactive</span>
+                            {% endif %}
+                        </h3>
+                        <p class="scenario-description">{{ scenario.description or 'No description' }}</p>
+                        <p class="scenario-meta">
+                            {{ scenario.price_points|length }} price points
+                            {% if scenario.price_points %}
+                            · From {{ scenario.price_points|map(attribute='price_date')|min }} to {{ scenario.price_points|map(attribute='price_date')|max }}
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="scenario-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="viewScenario({{ scenario.id }})">
+                            📊 View Chart
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="editScenario({{ scenario.id }})">
+                            ✏️ Edit
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteScenario({{ scenario.id }}, '{{ scenario.scenario_name }}')">
+                            🗑️ Delete
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="projection-{{ scenario.id }}" class="scenario-projection" style="display: none;">
+                    <canvas id="chart-{{ scenario.id }}"></canvas>
+                    <div id="stats-{{ scenario.id }}" class="projection-stats"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📈</div>
+            <h3>No Price Scenarios Yet</h3>
+            <p>Create your first scenario to start modeling future stock prices and their impact on your unvested equity.</p>
+            <button class="btn btn-primary" onclick="openCreateScenario()">Create First Scenario</button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Create/Edit Scenario Modal -->
+<div id="scenarioModal" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h2 id="modalTitle">Create Price Scenario</h2>
+            <span class="close" onclick="closeScenarioModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="scenarioForm">
+                <input type="hidden" id="scenarioId">
+                
+                <div class="form-group">
+                    <label for="scenarioName">Scenario Name *</label>
+                    <input type="text" id="scenarioName" class="form-control" required placeholder="e.g., Base Case, Bull Market, Conservative">
+                </div>
+                
+                <div class="form-group">
+                    <label for="scenarioDescription">Description</label>
+                    <textarea id="scenarioDescription" class="form-control" rows="2" placeholder="Optional notes about this scenario's assumptions"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="scenarioActive" checked>
+                        Active (use in projections)
+                    </label>
+                </div>
+                
+                <hr>
+                
+                <h3>Price Points</h3>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+                    Add at least 2 price points. The system will interpolate prices between your points.
+                </p>
+                
+                <div id="pricePointsContainer">
+                    <!-- Price points will be added here -->
+                </div>
+                
+                <button type="button" class="btn btn-secondary" onclick="addPricePoint()">
+                    ➕ Add Price Point
+                </button>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeScenarioModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Scenario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison Modal -->
+<div id="compareModal" class="modal">
+    <div class="modal-content" style="max-width: 1000px;">
+        <div class="modal-header">
+            <h2>Compare Scenarios</h2>
+            <span class="close" onclick="closeCompareModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="comparisonChart">
+                <canvas id="comparisonCanvas"></canvas>
+            </div>
+            <div id="comparisonStats"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+.scenario-item {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    background: var(--bg-secondary);
+}
+
+.scenario-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+}
+
+.scenario-header h3 {
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.scenario-description {
+    color: var(--text-secondary);
+    margin: 0.5rem 0;
+}
+
+.scenario-meta {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0.5rem 0 0 0;
+}
+
+.scenario-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.scenario-projection {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.projection-stats {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.projection-stat {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.projection-stat-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.projection-stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.price-point-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    align-items: flex-start;
+}
+
+.price-point-row .form-group {
+    margin-bottom: 0;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+    margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+const CSRF_TOKEN = '{{ csrf_token() }}';
+let currentScenarioId = null;
+let pricePointCounter = 0;
+let charts = {};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    updateCompareButton();
+});
+
+function openCreateScenario() {
+    currentScenarioId = null;
+    document.getElementById('modalTitle').textContent = 'Create Price Scenario';
+    document.getElementById('scenarioForm').reset();
+    document.getElementById('scenarioId').value = '';
+    document.getElementById('pricePointsContainer').innerHTML = '';
+    pricePointCounter = 0;
+    
+    // Add 2 initial price points
+    addPricePoint();
+    addPricePoint();
+    
+    document.getElementById('scenarioModal').style.display = 'block';
+}
+
+function closeScenarioModal() {
+    document.getElementById('scenarioModal').style.display = 'none';
+}
+
+function addPricePoint(date = '', price = '') {
+    const container = document.getElementById('pricePointsContainer');
+    const id = pricePointCounter++;
+    
+    const row = document.createElement('div');
+    row.className = 'price-point-row';
+    row.id = `pricePoint-${id}`;
+    row.innerHTML = `
+        <div class="form-group">
+            <label>Date</label>
+            <input type="date" class="form-control price-point-date" value="${date}" required>
+        </div>
+        <div class="form-group">
+            <label>Price ($)</label>
+            <input type="number" class="form-control price-point-price" step="0.01" min="0" value="${price}" required placeholder="0.00">
+        </div>
+        <button type="button" class="btn btn-sm btn-danger" onclick="removePricePoint(${id})" style="margin-top: 1.7rem;">
+            🗑️
+        </button>
+    `;
+    
+    container.appendChild(row);
+}
+
+function removePricePoint(id) {
+    const row = document.getElementById(`pricePoint-${id}`);
+    if (row) {
+        row.remove();
+    }
+}
+
+document.getElementById('scenarioForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('scenarioName').value;
+    const description = document.getElementById('scenarioDescription').value;
+    const isActive = document.getElementById('scenarioActive').checked;
+    
+    // Collect price points
+    const pricePoints = [];
+    document.querySelectorAll('.price-point-row').forEach(row => {
+        const date = row.querySelector('.price-point-date').value;
+        const price = parseFloat(row.querySelector('.price-point-price').value);
+        if (date && price) {
+            pricePoints.push({ date, price });
+        }
+    });
+    
+    if (pricePoints.length < 2) {
+        alert('Please add at least 2 price points');
+        return;
+    }
+    
+    // Sort by date
+    pricePoints.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    const data = {
+        name,
+        description,
+        is_active: isActive,
+        price_points: pricePoints
+    };
+    
+    try {
+        const scenarioId = document.getElementById('scenarioId').value;
+        const url = scenarioId ? `/scenarios/api/scenarios/${scenarioId}` : '/scenarios/api/scenarios';
+        const method = scenarioId ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            alert(result.message || 'Scenario saved successfully');
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert('Error: ' + (error.error || 'Failed to save scenario'));
+        }
+    } catch (error) {
+        console.error('Error saving scenario:', error);
+        alert('Error saving scenario');
+    }
+});
+
+async function editScenario(id) {
+    try {
+        const response = await fetch('/scenarios/api/scenarios');
+        const scenarios = await response.json();
+        const scenario = scenarios.find(s => s.id === id);
+        
+        if (!scenario) {
+            alert('Scenario not found');
+            return;
+        }
+        
+        currentScenarioId = id;
+        document.getElementById('modalTitle').textContent = 'Edit Price Scenario';
+        document.getElementById('scenarioId').value = id;
+        document.getElementById('scenarioName').value = scenario.name;
+        document.getElementById('scenarioDescription').value = scenario.description || '';
+        document.getElementById('scenarioActive').checked = scenario.is_active;
+        
+        // Clear and add price points
+        document.getElementById('pricePointsContainer').innerHTML = '';
+        pricePointCounter = 0;
+        
+        scenario.price_points.forEach(point => {
+            addPricePoint(point.date, point.price);
+        });
+        
+        document.getElementById('scenarioModal').style.display = 'block';
+    } catch (error) {
+        console.error('Error loading scenario:', error);
+        alert('Error loading scenario');
+    }
+}
+
+async function deleteScenario(id, name) {
+    if (!confirm(`Delete scenario "${name}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/scenarios/api/scenarios/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN
+            }
+        });
+        
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert('Error: ' + (error.error || 'Failed to delete scenario'));
+        }
+    } catch (error) {
+        console.error('Error deleting scenario:', error);
+        alert('Error deleting scenario');
+    }
+}
+
+async function viewScenario(id) {
+    const projectionDiv = document.getElementById(`projection-${id}`);
+    
+    if (projectionDiv.style.display === 'block') {
+        projectionDiv.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/scenarios/api/scenarios/${id}/projection`);
+        const data = await response.json();
+        
+        projectionDiv.style.display = 'block';
+        
+        // Render chart
+        renderScenarioChart(id, data);
+        
+        // Show stats
+        const statsDiv = document.getElementById(`stats-${id}`);
+        statsDiv.innerHTML = `
+            <div class="projection-stat">
+                <div class="projection-stat-label">Total Future Value</div>
+                <div class="projection-stat-value">$${data.total_projected_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            </div>
+            <div class="projection-stat">
+                <div class="projection-stat-label">Vest Events</div>
+                <div class="projection-stat-value">${data.projections.length}</div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading projection:', error);
+        alert('Error loading projection');
+    }
+}
+
+function renderScenarioChart(id, data) {
+    const ctx = document.getElementById(`chart-${id}`).getContext('2d');
+    
+    // Destroy existing chart
+    if (charts[id]) {
+        charts[id].destroy();
+    }
+    
+    const vestData = data.projections.map(p => ({
+        x: p.vest_date,
+        y: p.projected_price
+    }));
+    
+    charts[id] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: 'Projected Stock Price',
+                data: vestData,
+                borderColor: 'rgb(93, 173, 226)',
+                backgroundColor: 'rgba(93, 173, 226, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: `${data.scenario_name} - Future Price Projection`
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `$${context.parsed.y.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'month'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Stock Price ($)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateCompareButton() {
+    const activeCount = document.querySelectorAll('.scenario-item').length;
+    const compareBtn = document.getElementById('compareBtn');
+    compareBtn.disabled = activeCount < 2;
+}
+
+async function openCompareScenarios() {
+    try {
+        const response = await fetch('/scenarios/api/scenarios');
+        const scenarios = await response.json();
+        const activeScenarios = scenarios.filter(s => s.is_active);
+        
+        if (activeScenarios.length < 2) {
+            alert('Please create and activate at least 2 scenarios to compare');
+            return;
+        }
+        
+        const scenarioIds = activeScenarios.map(s => s.id);
+        
+        const compareResponse = await fetch('/scenarios/api/scenarios/compare', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify({ scenario_ids: scenarioIds })
+        });
+        
+        const comparison = await compareResponse.json();
+        
+        renderComparisonChart(comparison);
+        document.getElementById('compareModal').style.display = 'block';
+    } catch (error) {
+        console.error('Error comparing scenarios:', error);
+        alert('Error comparing scenarios');
+    }
+}
+
+function closeCompareModal() {
+    document.getElementById('compareModal').style.display = 'none';
+}
+
+function renderComparisonChart(comparison) {
+    const ctx = document.getElementById('comparisonCanvas').getContext('2d');
+    
+    const labels = comparison.map(c => c.scenario_name);
+    const values = comparison.map(c => c.total_projected_value);
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Total Future Value',
+                data: values,
+                backgroundColor: [
+                    'rgba(93, 173, 226, 0.8)',
+                    'rgba(39, 174, 96, 0.8)',
+                    'rgba(230, 126, 34, 0.8)',
+                    'rgba(142, 68, 173, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Scenario Comparison - Total Future Value'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Show stats table
+    const statsDiv = document.getElementById('comparisonStats');
+    let statsHTML = '<h3 style="margin-top: 2rem;">Detailed Comparison</h3><table class="data-table"><thead><tr><th>Scenario</th><th>Total Value</th><th>Difference from Lowest</th></tr></thead><tbody>';
+    
+    const minValue = Math.min(...values);
+    
+    comparison.forEach(c => {
+        const diff = c.total_projected_value - minValue;
+        const diffPercent = minValue > 0 ? (diff / minValue * 100) : 0;
+        statsHTML += `
+            <tr>
+                <td><strong>${c.scenario_name}</strong></td>
+                <td>$${c.total_projected_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td>+$${diff.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${diffPercent.toFixed(1)}%)</td>
+            </tr>
+        `;
+    });
+    
+    statsHTML += '</tbody></table>';
+    statsDiv.innerHTML = statsHTML;
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}
