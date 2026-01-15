@@ -279,6 +279,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
 <script>
+console.log('Price Scenarios page loaded');
+
 const CSRF_TOKEN = '{{ csrf_token() }}';
 let currentScenarioId = null;
 let pricePointCounter = 0;
@@ -286,10 +288,12 @@ let charts = {};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM Content Loaded');
     updateCompareButton();
 });
 
 function openCreateScenario() {
+    console.log('openCreateScenario called');
     currentScenarioId = null;
     document.getElementById('modalTitle').textContent = 'Create Price Scenario';
     document.getElementById('scenarioForm').reset();
@@ -305,6 +309,7 @@ function openCreateScenario() {
 }
 
 function closeScenarioModal() {
+    console.log('closeScenarioModal called');
     document.getElementById('scenarioModal').style.display = 'none';
 }
 
