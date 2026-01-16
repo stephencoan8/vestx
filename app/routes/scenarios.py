@@ -235,30 +235,33 @@ def get_scenario_projection(scenario_id):
         logger.info(f"Found {len(vested_events)} vested events, {len(unvested_events)} unvested events")
         logger.info(f"Scenario has {len(scenario.price_points)} price points")
         
-        # Calculate current portfolio value
-        current_price = scenario.get_price_at_date(date.today())
+        # Get ACTUAL current stock price (not from scenario, from user's current price)
+        from app.utils.price_utils import get_latest_user_price
+        actual_current_price = get_latest_user_price(current_user.id)
+        
+        # Calculate current portfolio value using ACTUAL current price
         current_portfolio_value = 0
         
-        if current_price:
+        if actual_current_price:
             for grant_id, shares in vested_shares_by_grant.items():
                 grant = Grant.query.get(grant_id)
                 if grant.share_type in ['iso_5y', 'iso_6y']:
-                    value_per_share = max(0, current_price - grant.share_price_at_grant)
+                    value_per_share = max(0, actual_current_price - grant.share_price_at_grant)
                 else:
-                    value_per_share = current_price
+                    value_per_share = actual_current_price
                 current_portfolio_value += shares * value_per_share
         
-        logger.info(f"Current portfolio value at ${current_price}: ${current_portfolio_value}")
+        logger.info(f"Current portfolio value at ${actual_current_price}: ${current_portfolio_value}")
         
         projections = []
         cumulative_value = current_portfolio_value
         total_new_value = 0
         
-        # Add today as first projection point (starting position)
+        # Add today as first projection point (starting position) using ACTUAL current price
         projections.append({
             'vest_date': date.today().isoformat(),
             'shares': 0,
-            'projected_price': current_price if current_price else 0,
+            'projected_price': actual_current_price if actual_current_price else 0,
             'projected_value': 0,
             'cumulative_value': current_portfolio_value,
             'grant_type': 'current',
@@ -302,7 +305,7 @@ def get_scenario_projection(scenario_id):
         return jsonify({
             'scenario_name': scenario.scenario_name,
             'current_portfolio_value': current_portfolio_value,
-            'current_price': current_price,
+            'current_price': actual_current_price,
             'total_projected_value': cumulative_value,
             'new_vests_value': total_new_value,
             'projections': projections
