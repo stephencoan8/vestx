@@ -72,6 +72,7 @@ def create_app():
     from app.routes.settings import settings_bp
     from app.routes.prices import prices_bp
     from app.routes.scenarios import scenarios_bp
+    from app.routes.transactions import transactions_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -80,6 +81,7 @@ def create_app():
     app.register_blueprint(settings_bp)
     app.register_blueprint(prices_bp)
     app.register_blueprint(scenarios_bp, url_prefix='/scenarios')
+    app.register_blueprint(transactions_bp, url_prefix='/transactions')
     
     # Register error handlers
     register_error_handlers(app)
