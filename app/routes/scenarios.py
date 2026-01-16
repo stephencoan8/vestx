@@ -174,6 +174,8 @@ def delete_scenario(scenario_id):
 def get_scenario_projection(scenario_id):
     """Get future value projection for a scenario."""
     try:
+        from sqlalchemy import and_
+        
         scenario = StockPriceScenario.query.filter_by(
             id=scenario_id,
             user_id=current_user.id
