@@ -179,7 +179,23 @@ def get_scenario_projection(scenario_id):
             user_id=current_user.id
         ).first_or_404()
         
-        # Get all unvested events
+        # Get current vested shares (already owned)
+        vested_events = VestEvent.query.join(Grant).filter(
+            and_(
+                Grant.user_id == current_user.id,
+                VestEvent.vest_date <= date.today()
+            )
+        ).all()
+        
+        # Calculate current vested shares by grant
+        vested_shares_by_grant = {}
+        for vest in vested_events:
+            grant_id = vest.grant_id
+            if grant_id not in vested_shares_by_grant:
+                vested_shares_by_grant[grant_id] = 0
+            vested_shares_by_grant[grant_id] += vest.shares_vested
+        
+        # Get all unvested events (future)
         from sqlalchemy import and_
         unvested_events = VestEvent.query.join(Grant).filter(
             and_(
@@ -188,12 +204,27 @@ def get_scenario_projection(scenario_id):
             )
         ).all()
         
-        logger.info(f"Found {len(unvested_events)} unvested events")
+        logger.info(f"Found {len(vested_events)} vested events, {len(unvested_events)} unvested events")
         logger.info(f"Scenario has {len(scenario.price_points)} price points")
         
+        # Calculate current portfolio value
+        current_price = scenario.get_price_at_date(date.today())
+        current_portfolio_value = 0
+        
+        if current_price:
+            for grant_id, shares in vested_shares_by_grant.items():
+                grant = Grant.query.get(grant_id)
+                if grant.share_type in ['iso_5y', 'iso_6y']:
+                    value_per_share = max(0, current_price - grant.share_price_at_grant)
+                else:
+                    value_per_share = current_price
+                current_portfolio_value += shares * value_per_share
+        
+        logger.info(f"Current portfolio value at ${current_price}: ${current_portfolio_value}")
+        
         projections = []
-        total_value = 0
-        cumulative_value = 0
+        cumulative_value = current_portfolio_value
+        total_new_value = 0
         
         # Sort vests by date to calculate cumulative properly
         unvested_events_sorted = sorted(unvested_events, key=lambda v: v.vest_date)
@@ -213,7 +244,7 @@ def get_scenario_projection(scenario_id):
                         value_per_share = projected_price
                     
                     projected_value = vest.shares_vested * value_per_share
-                    total_value += projected_value
+                    total_new_value += projected_value
                     cumulative_value += projected_value
                     
                     projections.append({
@@ -231,7 +262,9 @@ def get_scenario_projection(scenario_id):
         
         return jsonify({
             'scenario_name': scenario.scenario_name,
-            'total_projected_value': total_value,
+            'current_portfolio_value': current_portfolio_value,
+            'total_projected_value': cumulative_value,
+            'new_vests_value': total_new_value,
             'projections': projections
         })
         

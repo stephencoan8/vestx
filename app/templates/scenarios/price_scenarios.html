@@ -522,17 +522,24 @@ function renderScenarioChart(id, data) {
         delete charts[id];
     }
     
-    // Prepare data - show cumulative value over time
+    // Prepare data - show cumulative value over time (including current vested shares)
     const cumulativeData = data.projections.map(p => ({
         x: p.vest_date,
         y: p.cumulative_value
     }));
     
+    // Add starting point showing current portfolio value
+    const today = new Date().toISOString().split('T')[0];
+    cumulativeData.unshift({
+        x: today,
+        y: data.current_portfolio_value || 0
+    });
+    
     charts[id] = new Chart(ctx, {
         type: 'line',
         data: {
             datasets: [{
-                label: 'Cumulative Value (Pre-Tax)',
+                label: 'Total Portfolio Value (Pre-Tax)',
                 data: cumulativeData,
                 borderColor: 'rgb(39, 174, 96)',
                 backgroundColor: 'rgba(39, 174, 96, 0.1)',
@@ -549,7 +556,7 @@ function renderScenarioChart(id, data) {
             plugins: {
                 title: {
                     display: true,
-                    text: `${data.scenario_name} - Cumulative Wealth Projection`,
+                    text: `${data.scenario_name} - Total Portfolio Value Over Time`,
                     font: {
                         size: 16
                     }
@@ -557,11 +564,14 @@ function renderScenarioChart(id, data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            const dataPoint = data.projections[context.dataIndex];
+                            if (context.dataIndex === 0) {
+                                return `Current Portfolio: $${context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                            }
+                            const dataPoint = data.projections[context.dataIndex - 1];
                             return [
-                                `Cumulative: $${context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2})}`,
+                                `Total Value: $${context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2})}`,
                                 `This vest: ${dataPoint.shares} shares @ $${dataPoint.projected_price.toFixed(2)}`,
-                                `Vest value: $${dataPoint.projected_value.toLocaleString('en-US', {minimumFractionDigits: 2})}`
+                                `Vest adds: $${dataPoint.projected_value.toLocaleString('en-US', {minimumFractionDigits: 2})}`
                             ];
                         }
                     }
@@ -581,14 +591,14 @@ function renderScenarioChart(id, data) {
                     },
                     title: {
                         display: true,
-                        text: 'Vest Date'
+                        text: 'Date'
                     }
                 },
                 y: {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: 'Cumulative Value ($)'
+                        text: 'Total Portfolio Value ($)'
                     },
                     ticks: {
                         callback: function(value) {
