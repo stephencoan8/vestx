@@ -65,6 +65,8 @@ def get_scenarios():
 def create_scenario():
     """Create a new price scenario."""
     try:
+        from app.utils.price_utils import get_latest_user_price
+        
         data = request.get_json()
         
         scenario = StockPriceScenario(
@@ -77,7 +79,17 @@ def create_scenario():
         db.session.add(scenario)
         db.session.flush()  # Get scenario ID
         
-        # Add price points
+        # Always add today's price as the first point (baseline)
+        today_price = get_latest_user_price(current_user.id)
+        if today_price:
+            baseline_point = ScenarioPricePoint(
+                scenario_id=scenario.id,
+                price_date=date.today(),
+                price=today_price
+            )
+            db.session.add(baseline_point)
+        
+        # Add user-specified price points
         for point in data.get('price_points', []):
             price_point = ScenarioPricePoint(
                 scenario_id=scenario.id,
@@ -105,6 +117,8 @@ def create_scenario():
 def update_scenario(scenario_id):
     """Update an existing scenario."""
     try:
+        from app.utils.price_utils import get_latest_user_price
+        
         scenario = StockPriceScenario.query.filter_by(
             id=scenario_id,
             user_id=current_user.id
@@ -121,6 +135,16 @@ def update_scenario(scenario_id):
         if 'price_points' in data:
             # Delete existing points
             ScenarioPricePoint.query.filter_by(scenario_id=scenario.id).delete()
+            
+            # Always add today's price as the first point (baseline)
+            today_price = get_latest_user_price(current_user.id)
+            if today_price:
+                baseline_point = ScenarioPricePoint(
+                    scenario_id=scenario.id,
+                    price_date=date.today(),
+                    price=today_price
+                )
+                db.session.add(baseline_point)
             
             # Add new points
             for point in data['price_points']:
