@@ -622,14 +622,14 @@ function renderScenarioChart(id, data) {
             },
             scales: {
                 x: {
-                    type:new Date()e',
+                    type: 'time',
                     time: {
                         unit: 'month',
                         displayFormats: {
                             month: 'MMM yyyy'
                         }
                     },
-                    min: today,
+                    min: new Date(),
                     title: {
                         display: true,
                         text: 'Date'
