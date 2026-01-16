@@ -254,6 +254,17 @@ def get_scenario_projection(scenario_id):
         cumulative_value = current_portfolio_value
         total_new_value = 0
         
+        # Add today as first projection point (starting position)
+        projections.append({
+            'vest_date': date.today().isoformat(),
+            'shares': 0,
+            'projected_price': current_price if current_price else 0,
+            'projected_value': 0,
+            'cumulative_value': current_portfolio_value,
+            'grant_type': 'current',
+            'share_type': 'current'
+        })
+        
         # Sort vests by date to calculate cumulative properly
         unvested_events_sorted = sorted(unvested_events, key=lambda v: v.vest_date)
         
