@@ -513,6 +513,8 @@ async function viewScenario(id) {
 }
 
 function renderScenarioChart(id, data) {
+    console.log('Rendering chart for scenario', id, 'with data:', data);
+    
     const canvas = document.getElementById(`chart-${id}`);
     const ctx = canvas.getContext('2d');
     
@@ -524,20 +526,22 @@ function renderScenarioChart(id, data) {
     
     // Prepare data - show cumulative value over time (including current vested shares)
     const cumulativeData = data.projections.map(p => ({
-        x: p.vest_date,
+        x: new Date(p.vest_date),
         y: p.cumulative_value
     }));
     
     // Add starting point showing current portfolio value
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date();
     cumulativeData.unshift({
         x: today,
         y: data.current_portfolio_value || 0
     });
     
+    console.log('Cumulative data points:', cumulativeData);
+    
     // Prepare stock price data for second y-axis
     const priceData = data.projections.map(p => ({
-        x: p.vest_date,
+        x: new Date(p.vest_date),
         y: p.projected_price
     }));
     
@@ -548,6 +552,9 @@ function renderScenarioChart(id, data) {
             y: data.current_price
         });
     }
+    
+    console.log('Price data points:', priceData);
+    console.log('X-axis min will be:', today);
     
     charts[id] = new Chart(ctx, {
         type: 'line',
@@ -615,7 +622,7 @@ function renderScenarioChart(id, data) {
             },
             scales: {
                 x: {
-                    type: 'time',
+                    type:new Date()e',
                     time: {
                         unit: 'month',
                         displayFormats: {
