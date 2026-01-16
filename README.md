@@ -1,6 +1,6 @@
 # 🚀 VestX - Stock Compensation Tracker
 
-A comprehensive web application for tracking VestX stock compensation packages, including RSUs, ISOs, ESPP, and various grant types with automatic vesting schedule calculations and tax management.
+A comprehensive web application for tracking stock compensation packages, including RSUs, ISOs, ESPP, and various grant types with automatic vesting schedule calculations, tax management, and future price scenario modeling.
 
 ## ✨ Features
 
