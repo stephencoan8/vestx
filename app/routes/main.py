@@ -55,6 +55,9 @@ def dashboard():
     vested_value_gross = vested_shares_gross * current_price
     vested_value_net = vested_shares_net * current_price
     
+    # Count vests that need tax info
+    needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
+    
     # Build comprehensive timeline with ALL state changes (stock price updates + vest events)
     from app.models.user_price import UserPrice
     from app.utils.encryption import decrypt_for_user
@@ -182,7 +185,8 @@ def dashboard():
                          vested_value_net=vested_value_net,
                          upcoming_vests=upcoming_vests,
                          current_price=current_price,
-                         vesting_timeline=vesting_timeline)
+                         vesting_timeline=vesting_timeline,
+                         needs_info_count=needs_info_count)
 
 
 @main_bp.route('/stock-price-chart-data')

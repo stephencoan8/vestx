@@ -376,6 +376,28 @@ body {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent);
 }
 
+.stat-card.warning {
+    border-color: #e67e22;
+    background: linear-gradient(135deg, rgba(230, 126, 34, 0.1), transparent);
+}
+
+.stat-card.warning:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(230, 126, 34, 0.2);
+}
+
+.stat-card.clickable {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card.clickable:hover {
+    transform: translateY(-2px);
+}
+
+.stat-card.clickable:active {
+    transform: translateY(0);
+}
+
 .stat-icon {
     font-size: 2.5rem;
 }

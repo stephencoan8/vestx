@@ -424,6 +424,24 @@ def vest_schedule():
     return render_template('grants/schedule.html', vest_events=enriched_events)
 
 
+@grants_bp.route('/needs-tax-info')
+@login_required
+def needs_tax_info():
+    """Show vests that need tax information."""
+    from sqlalchemy.orm import joinedload
+    
+    # Get all vested events that need tax info
+    all_vest_events = VestEvent.query.options(
+        joinedload(VestEvent.grant)
+    ).join(Grant).filter(
+        Grant.user_id == current_user.id
+    ).order_by(VestEvent.vest_date.desc()).all()
+    
+    # Filter to only vested events that need info
+    vests_needing_info = [v for v in all_vest_events if v.has_vested and v.needs_tax_info]
+    
+    return render_template('grants/needs_tax_info.html', vest_events=vests_needing_info)
+
 
 @grants_bp.route('/rules')
 @login_required

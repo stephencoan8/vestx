@@ -55,6 +55,19 @@
                 </small>
             </div>
         </div>
+        
+        {% if needs_info_count > 0 %}
+        <div class="stat-card warning clickable" onclick="window.location.href='{{ url_for('grants.needs_tax_info') }}';" style="cursor: pointer;">
+            <div class="stat-icon">⚠️</div>
+            <div class="stat-content">
+                <div class="stat-label">Needs Tax Info</div>
+                <div class="stat-value">{{ needs_info_count }}</div>
+                <small style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                    Click to update vested events
+                </small>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Vesting Timeline Chart -->

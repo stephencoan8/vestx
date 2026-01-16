@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Vests Needing Tax Info - VestX{% endblock %}
+
+{% block content %}
+<div class="page">
+    <header class="page-header">
+        <h1>⚠️ Vests Needing Tax Information</h1>
+        <p class="subtitle">These vested events are missing tax payment details. Click to update.</p>
+    </header>
+
+    {% if vest_events %}
+    <div class="alert alert-info" style="margin-bottom: 2rem;">
+        <strong>📋 What to do:</strong> For each vest below, click on it to open the details page where you can enter:
+        <ul style="margin: 0.5rem 0 0 1.5rem;">
+            <li>Cash paid for taxes</li>
+            <li>Whether cash fully covered taxes</li>
+            <li>Shares sold for taxes (if cash didn't cover all)</li>
+        </ul>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table sortable-table">
+            <thead>
+                <tr>
+                    <th data-sort="date">Vest Date</th>
+                    <th data-sort="text">Grant Type</th>
+                    <th data-sort="text">Share Type</th>
+                    <th data-sort="number">Shares Vested</th>
+                    <th data-sort="number">Value at Vest</th>
+                    <th data-sort="text">Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vest in vest_events %}
+                <tr class="vested-row clickable-row" onclick="window.location.href='{{ url_for('grants.vest_detail', vest_id=vest.id) }}';" style="cursor: pointer;" title="Click to update tax info">
+                    <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
+                    <td><span class="badge badge-{{ vest.grant.grant_type }}">{{ vest.grant.grant_type.replace('_', ' ').title() }}</span></td>
+                    <td><span class="badge badge-share">{{ vest.grant.share_type.upper() }}</span></td>
+                    <td>{{ "{:,.2f}".format(vest.shares_vested) }}</td>
+                    <td>${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
+                    <td>
+                        <span class="badge badge-warning">⚠️ Needs Info</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); window.location.href='{{ url_for('grants.vest_detail', vest_id=vest.id) }}';">
+                            Update Info
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent);">
+        <strong>💡 Tip:</strong> Once you've updated all vests, this page will be empty and the warning tile will disappear from your dashboard.
+    </div>
+    {% else %}
+    <div class="empty-state-large">
+        <div class="empty-icon">✅</div>
+        <h2>All caught up!</h2>
+        <p>All your vested events have complete tax information.</p>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">← Back to Dashboard</a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.clickable-row {
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.clickable-row:hover {
+    background-color: rgba(230, 126, 34, 0.1) !important;
+    transform: scale(1.002);
+}
+
+.clickable-row:active {
+    transform: scale(0.998);
+}
+
+.badge-warning {
+    background: rgba(230, 126, 34, 0.1);
+    color: #e67e22;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.alert-info {
+    background: rgba(52, 152, 219, 0.1);
+    border-left: 4px solid #3498db;
+    padding: 1rem;
+    border-radius: 4px;
+    color: var(--text-primary);
+}
+
+.alert-info ul {
+    color: var(--text-secondary);
+}
+</style>
+{% endblock %}
