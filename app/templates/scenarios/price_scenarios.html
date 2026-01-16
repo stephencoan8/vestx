@@ -86,6 +86,19 @@
                 </div>
                 
                 <div id="projection-{{ scenario.id }}" class="scenario-projection" style="display: none;">
+                    <div class="chart-controls">
+                        <div class="control-group">
+                            <label for="xZoom-{{ scenario.id }}">📅 Time Range</label>
+                            <input type="range" id="xZoom-{{ scenario.id }}" min="0.1" max="1" step="0.05" value="1">
+                            <span id="xZoomLabel-{{ scenario.id }}">100%</span>
+                        </div>
+                        <div class="control-group">
+                            <label for="yZoom-{{ scenario.id }}">💰 Value Range</label>
+                            <input type="range" id="yZoom-{{ scenario.id }}" min="0.1" max="1" step="0.05" value="1">
+                            <span id="yZoomLabel-{{ scenario.id }}">100%</span>
+                        </div>
+                        <button class="btn btn-sm btn-secondary" onclick="resetChartZoom({{ scenario.id }})">Reset View</button>
+                    </div>
                     <canvas id="chart-{{ scenario.id }}"></canvas>
                     <div id="stats-{{ scenario.id }}" class="projection-stats"></div>
                 </div>
@@ -272,6 +285,49 @@
 .empty-state p {
     color: var(--text-secondary);
     margin-bottom: 1.5rem;
+}
+
+.chart-controls {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.control-group label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+.control-group input[type="range"] {
+    width: 150px;
+    cursor: pointer;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb {
+    background: var(--accent-color);
+}
+
+.control-group input[type="range"]::-moz-range-thumb {
+    background: var(--accent-color);
+}
+
+.control-group span {
+    color: var(--text-primary);
+    font-weight: 600;
+    min-width: 50px;
+    font-size: 0.9rem;
 }
 </style>
 
@@ -674,6 +730,81 @@ function renderScenarioChart(id, data) {
             }
         }
     });
+    
+    // Setup zoom controls for this chart
+    setupChartZoomControls(id);
+}
+
+function setupChartZoomControls(scenarioId) {
+    const xZoomSlider = document.getElementById(`xZoom-${scenarioId}`);
+    const yZoomSlider = document.getElementById(`yZoom-${scenarioId}`);
+    const xZoomLabel = document.getElementById(`xZoomLabel-${scenarioId}`);
+    const yZoomLabel = document.getElementById(`yZoomLabel-${scenarioId}`);
+    
+    if (!xZoomSlider || !yZoomSlider) return;
+    
+    // Remove existing listeners
+    const newXSlider = xZoomSlider.cloneNode(true);
+    const newYSlider = yZoomSlider.cloneNode(true);
+    xZoomSlider.parentNode.replaceChild(newXSlider, xZoomSlider);
+    yZoomSlider.parentNode.replaceChild(newYSlider, yZoomSlider);
+    
+    newXSlider.addEventListener('input', function(e) {
+        const zoomValue = parseFloat(e.target.value);
+        xZoomLabel.textContent = Math.round(zoomValue * 100) + '%';
+        updateChartZoom(scenarioId);
+    });
+    
+    newYSlider.addEventListener('input', function(e) {
+        const zoomValue = parseFloat(e.target.value);
+        yZoomLabel.textContent = Math.round(zoomValue * 100) + '%';
+        updateChartZoom(scenarioId);
+    });
+}
+
+function updateChartZoom(scenarioId) {
+    const chart = charts[scenarioId];
+    if (!chart) return;
+    
+    const xZoomValue = parseFloat(document.getElementById(`xZoom-${scenarioId}`).value);
+    const yZoomValue = parseFloat(document.getElementById(`yZoom-${scenarioId}`).value);
+    
+    // Get original data ranges
+    const xData = chart.data.datasets[0].data.map(d => d.x);
+    const yData = chart.data.datasets[0].data.map(d => d.y);
+    
+    const minDate = new Date(Math.min(...xData));
+    const maxDate = new Date(Math.max(...xData));
+    const dateRange = maxDate - minDate;
+    const zoomedDateRange = dateRange * xZoomValue;
+    const newMaxDate = new Date(minDate.getTime() + zoomedDateRange);
+    
+    const maxValue = Math.max(...yData);
+    const zoomedMaxValue = maxValue * yZoomValue;
+    
+    // Update chart scales
+    chart.options.scales.x.max = newMaxDate;
+    chart.options.scales.y.max = zoomedMaxValue;
+    chart.update();
+}
+
+function resetChartZoom(scenarioId) {
+    const xZoomSlider = document.getElementById(`xZoom-${scenarioId}`);
+    const yZoomSlider = document.getElementById(`yZoom-${scenarioId}`);
+    const xZoomLabel = document.getElementById(`xZoomLabel-${scenarioId}`);
+    const yZoomLabel = document.getElementById(`yZoomLabel-${scenarioId}`);
+    
+    xZoomSlider.value = 1;
+    yZoomSlider.value = 1;
+    xZoomLabel.textContent = '100%';
+    yZoomLabel.textContent = '100%';
+    
+    const chart = charts[scenarioId];
+    if (chart) {
+        delete chart.options.scales.x.max;
+        delete chart.options.scales.y.max;
+        chart.update();
+    }
 }
 
 function updateCompareButton() {
