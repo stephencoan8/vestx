@@ -524,18 +524,11 @@ function renderScenarioChart(id, data) {
         delete charts[id];
     }
     
-    // Prepare data - show cumulative value over time (including current vested shares)
+    // Prepare data - projections already include today's starting point from backend
     const cumulativeData = data.projections.map(p => ({
         x: new Date(p.vest_date),
         y: p.cumulative_value
     }));
-    
-    // Add starting point showing current portfolio value
-    const today = new Date();
-    cumulativeData.unshift({
-        x: today,
-        y: data.current_portfolio_value || 0
-    });
     
     console.log('Cumulative data points:', cumulativeData);
     
@@ -545,15 +538,9 @@ function renderScenarioChart(id, data) {
         y: p.projected_price
     }));
     
-    // Add current price point at today's date
-    if (data.current_price) {
-        priceData.unshift({
-            x: today,
-            y: data.current_price
-        });
-    }
-    
     console.log('Price data points:', priceData);
+    
+    const today = new Date();
     console.log('X-axis min will be:', today);
     console.log('First cumulative point:', cumulativeData[0]);
     console.log('First price point:', priceData[0]);
