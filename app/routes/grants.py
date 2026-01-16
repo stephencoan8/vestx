@@ -703,6 +703,7 @@ def finance_deep_dive():
 def vest_detail(vest_id):
     """View and edit details for a specific vest event."""
     from app.models.annual_income import AnnualIncome
+    from app.models.stock_sale import StockSale, ISOExercise
     from datetime import date
     
     # Get vest event with grant relationship
@@ -750,11 +751,30 @@ def vest_detail(vest_id):
     # Get current stock price
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     
+    # Get sales and exercises for this vest
+    sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
+        StockSale.sale_date.desc()
+    ).all()
+    
+    exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
+        ISOExercise.exercise_date.desc()
+    ).all()
+    
+    # Calculate remaining shares
+    total_sold = sum(s.shares_sold for s in sales)
+    total_exercised = sum(e.shares_exercised for e in exercises)
+    remaining_shares = vest_event.shares_received - total_sold - total_exercised
+    
     return render_template('grants/vest_detail.html',
                          vest_event=vest_event,
                          grant=vest_event.grant,
                          tax_breakdown=tax_breakdown,
-                         latest_stock_price=latest_stock_price)
+                         latest_stock_price=latest_stock_price,
+                         sales=sales,
+                         exercises=exercises,
+                         total_sold=total_sold,
+                         total_exercised=total_exercised,
+                         remaining_shares=remaining_shares)
 
 
 @grants_bp.route('/sale-planning')

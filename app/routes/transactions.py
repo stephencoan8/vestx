@@ -54,10 +54,16 @@ def create_sale():
         sale_date = datetime.fromisoformat(data['sale_date']).date()
         shares_sold = float(data['shares_sold'])
         sale_price = float(data['sale_price'])
-        vest_event_id = data.get('vest_event_id')
+        vest_event_id = int(data['vest_event_id'])  # Required
         
-        # Get cost basis from vest event if provided
-        cost_basis_per_share = float(data['cost_basis_per_share'])
+        # Get vest event to verify ownership and get cost basis
+        vest = VestEvent.query.join(Grant).filter(
+            VestEvent.id == vest_event_id,
+            Grant.user_id == current_user.id
+        ).first_or_404()
+        
+        # Use vest's share price as cost basis
+        cost_basis_per_share = vest.share_price_at_vest
         
         total_proceeds = shares_sold * sale_price
         total_cost_basis = shares_sold * cost_basis_per_share
@@ -130,20 +136,22 @@ def create_exercise():
         
         exercise_date = datetime.fromisoformat(data['exercise_date']).date()
         shares_exercised = float(data['shares_exercised'])
-        strike_price = float(data['strike_price'])
         fmv_at_exercise = float(data['fmv_at_exercise'])
-        vest_event_id = data.get('vest_event_id')
+        vest_event_id = int(data['vest_event_id'])  # Required
+        
+        # Get vest event to verify ownership and get strike price
+        vest = VestEvent.query.join(Grant).filter(
+            VestEvent.id == vest_event_id,
+            Grant.user_id == current_user.id
+        ).first_or_404()
+        
+        # Get strike price and grant date from vest
+        strike_price = vest.grant.share_price_at_grant
+        grant_date = vest.grant.grant_date
         
         # Calculate bargain element
         bargain_element_per_share = fmv_at_exercise - strike_price
         total_bargain_element = shares_exercised * bargain_element_per_share
-        
-        # Get grant date from vest event
-        grant_date = None
-        if vest_event_id:
-            vest = VestEvent.query.get(vest_event_id)
-            if vest and vest.grant:
-                grant_date = vest.grant.grant_date
         
         exercise = ISOExercise(
             user_id=current_user.id,
