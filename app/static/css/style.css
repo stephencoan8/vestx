@@ -386,6 +386,16 @@ body {
     box-shadow: 0 4px 12px rgba(230, 126, 34, 0.2);
 }
 
+.stat-card.info {
+    border-color: #3b82f6;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent);
+}
+
+.stat-card.info:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
 .stat-card.clickable {
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
