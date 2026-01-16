@@ -535,6 +535,21 @@ function renderScenarioChart(id, data) {
         y: data.current_portfolio_value || 0
     });
     
+    // Prepare stock price data for second y-axis
+    const priceData = data.projections.map(p => ({
+        x: p.vest_date,
+        y: p.projected_price
+    }));
+    
+    // Add current price point
+    if (data.projections.length > 0) {
+        const currentPrice = data.current_portfolio_value > 0 ? data.projections[0].projected_price : 0;
+        priceData.unshift({
+            x: today,
+            y: currentPrice
+        });
+    }
+    
     charts[id] = new Chart(ctx, {
         type: 'line',
         data: {
@@ -547,16 +562,32 @@ function renderScenarioChart(id, data) {
                 pointRadius: 5,
                 pointHoverRadius: 7,
                 tension: 0.1,
-                fill: true
+                fill: true,
+                yAxisID: 'y'
+            }, {
+                label: 'Stock Price',
+                data: priceData,
+                borderColor: 'rgb(52, 152, 219)',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                tension: 0.3,
+                fill: false,
+                yAxisID: 'y1'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             plugins: {
                 title: {
                     display: true,
-                    text: `${data.scenario_name} - Total Portfolio Value Over Time`,
+                    text: `${data.scenario_name} - Portfolio Value & Stock Price`,
                     font: {
                         size: 16
                     }
@@ -564,6 +595,9 @@ function renderScenarioChart(id, data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
+                            if (context.dataset.label === 'Stock Price') {
+                                return `Stock Price: $${context.parsed.y.toFixed(2)}`;
+                            }
                             if (context.dataIndex === 0) {
                                 return `Current Portfolio: $${context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
                             }
@@ -595,15 +629,40 @@ function renderScenarioChart(id, data) {
                     }
                 },
                 y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: 'Total Portfolio Value ($)'
+                        text: 'Portfolio Value ($)',
+                        color: 'rgb(39, 174, 96)'
                     },
                     ticks: {
+                        color: 'rgb(39, 174, 96)',
                         callback: function(value) {
                             return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
                         }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    beginAtZero: false,
+                    title: {
+                        display: true,
+                        text: 'Stock Price ($)',
+                        color: 'rgb(52, 152, 219)'
+                    },
+                    ticks: {
+                        color: 'rgb(52, 152, 219)',
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false
                     }
                 }
             }
