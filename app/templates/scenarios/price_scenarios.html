@@ -541,12 +541,11 @@ function renderScenarioChart(id, data) {
         y: p.projected_price
     }));
     
-    // Add current price point
-    if (data.projections.length > 0) {
-        const currentPrice = data.current_portfolio_value > 0 ? data.projections[0].projected_price : 0;
+    // Add current price point at today's date
+    if (data.current_price) {
         priceData.unshift({
             x: today,
-            y: currentPrice
+            y: data.current_price
         });
     }
     

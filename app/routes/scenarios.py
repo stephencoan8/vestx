@@ -267,6 +267,7 @@ def get_scenario_projection(scenario_id):
         return jsonify({
             'scenario_name': scenario.scenario_name,
             'current_portfolio_value': current_portfolio_value,
+            'current_price': current_price,
             'total_projected_value': cumulative_value,
             'new_vests_value': total_new_value,
             'projections': projections
