@@ -555,6 +555,15 @@ function renderScenarioChart(id, data) {
     
     console.log('Price data points:', priceData);
     console.log('X-axis min will be:', today);
+    console.log('First cumulative point:', cumulativeData[0]);
+    console.log('First price point:', priceData[0]);
+    
+    // Get date range for explicit bounds
+    const allDates = [...cumulativeData.map(p => p.x), ...priceData.map(p => p.x)];
+    const minDate = new Date(Math.min(...allDates));
+    const maxDate = new Date(Math.max(...allDates));
+    
+    console.log('Date range:', minDate, 'to', maxDate);
     
     charts[id] = new Chart(ctx, {
         type: 'line',
@@ -629,7 +638,10 @@ function renderScenarioChart(id, data) {
                             month: 'MMM yyyy'
                         }
                     },
-                    min: new Date(),
+                    min: today,
+                    adapters: {
+                        date: {}
+                    },
                     title: {
                         display: true,
                         text: 'Date'
