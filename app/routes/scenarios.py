@@ -193,8 +193,12 @@ def get_scenario_projection(scenario_id):
         
         projections = []
         total_value = 0
+        cumulative_value = 0
         
-        for vest in unvested_events:
+        # Sort vests by date to calculate cumulative properly
+        unvested_events_sorted = sorted(unvested_events, key=lambda v: v.vest_date)
+        
+        for vest in unvested_events_sorted:
             try:
                 projected_price = scenario.get_price_at_date(vest.vest_date)
                 
@@ -210,12 +214,14 @@ def get_scenario_projection(scenario_id):
                     
                     projected_value = vest.shares_vested * value_per_share
                     total_value += projected_value
+                    cumulative_value += projected_value
                     
                     projections.append({
                         'vest_date': vest.vest_date.isoformat(),
                         'shares': vest.shares_vested,
                         'projected_price': projected_price,
                         'projected_value': projected_value,
+                        'cumulative_value': cumulative_value,
                         'grant_type': grant.grant_type,
                         'share_type': grant.share_type
                     })

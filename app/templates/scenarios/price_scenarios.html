@@ -522,24 +522,25 @@ function renderScenarioChart(id, data) {
         delete charts[id];
     }
     
-    // Prepare data
-    const vestData = data.projections.map(p => ({
+    // Prepare data - show cumulative value over time
+    const cumulativeData = data.projections.map(p => ({
         x: p.vest_date,
-        y: p.projected_price
+        y: p.cumulative_value
     }));
     
     charts[id] = new Chart(ctx, {
         type: 'line',
         data: {
             datasets: [{
-                label: 'Projected Stock Price',
-                data: vestData,
-                borderColor: 'rgb(93, 173, 226)',
-                backgroundColor: 'rgba(93, 173, 226, 0.1)',
-                borderWidth: 2,
+                label: 'Cumulative Value (Pre-Tax)',
+                data: cumulativeData,
+                borderColor: 'rgb(39, 174, 96)',
+                backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                borderWidth: 3,
                 pointRadius: 5,
                 pointHoverRadius: 7,
-                tension: 0.4
+                tension: 0.1,
+                fill: true
             }]
         },
         options: {
@@ -548,7 +549,7 @@ function renderScenarioChart(id, data) {
             plugins: {
                 title: {
                     display: true,
-                    text: `${data.scenario_name} - Future Price Projection`,
+                    text: `${data.scenario_name} - Cumulative Wealth Projection`,
                     font: {
                         size: 16
                     }
@@ -556,7 +557,12 @@ function renderScenarioChart(id, data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `Price: $${context.parsed.y.toFixed(2)}`;
+                            const dataPoint = data.projections[context.dataIndex];
+                            return [
+                                `Cumulative: $${context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2})}`,
+                                `This vest: ${dataPoint.shares} shares @ $${dataPoint.projected_price.toFixed(2)}`,
+                                `Vest value: $${dataPoint.projected_value.toLocaleString('en-US', {minimumFractionDigits: 2})}`
+                            ];
                         }
                     }
                 },
@@ -579,14 +585,14 @@ function renderScenarioChart(id, data) {
                     }
                 },
                 y: {
-                    beginAtZero: false,
+                    beginAtZero: true,
                     title: {
                         display: true,
-                        text: 'Stock Price ($)'
+                        text: 'Cumulative Value ($)'
                     },
                     ticks: {
                         callback: function(value) {
-                            return '$' + value.toFixed(0);
+                            return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
                         }
                     }
                 }
