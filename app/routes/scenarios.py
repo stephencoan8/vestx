@@ -195,7 +195,9 @@ def get_scenario_projection(scenario_id):
             grant_id = vest.grant_id
             if grant_id not in vested_shares_by_grant:
                 vested_shares_by_grant[grant_id] = 0
-            vested_shares_by_grant[grant_id] += vest.shares_vested
+            # Net shares = vested - sold for taxes
+            net_shares = vest.shares_vested - (vest.shares_sold or 0)
+            vested_shares_by_grant[grant_id] += net_shares
         
         # Get all unvested events (future)
         from sqlalchemy import and_
