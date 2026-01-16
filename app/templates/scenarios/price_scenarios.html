@@ -621,7 +621,25 @@ async function openCompareScenarios() {
                 'X-CSRFToken': CSRF_TOKEN
             },
             body: JSON.stringify({ scenario_ids: scenarioIds })
-        });anvas = document.getElementById('comparisonCanvas');
+        });
+        
+        if (!compareResponse.ok) {
+            throw new Error(`HTTP error! status: ${compareResponse.status}`);
+        }
+        
+        const comparison = await compareResponse.json();
+        renderComparisonChart(comparison);
+        
+        const modal = document.getElementById('comparisonModal');
+        modal.style.display = 'block';
+    } catch (error) {
+        console.error('Error comparing scenarios:', error);
+        alert('Error comparing scenarios: ' + error.message);
+    }
+}
+
+function renderComparisonChart(comparison) {
+    const canvas = document.getElementById('comparisonCanvas');
     const ctx = canvas.getContext('2d');
     
     // Destroy existing chart if it exists
@@ -666,23 +684,6 @@ async function openCompareScenarios() {
                 },
                 legend: {
                     display: false
-            datasets: [{
-                label: 'Total Future Value',
-                data: values,
-                backgroundColor: [
-                    'rgba(93, 173, 226, 0.8)',
-                    'rgba(39, 174, 96, 0.8)',
-                    'rgba(230, 126, 34, 0.8)',
-                    'rgba(142, 68, 173, 0.8)'
-                ]
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                title: {
-                    display: true,
-                    text: 'Scenario Comparison - Total Future Value'
                 }
             },
             scales: {
