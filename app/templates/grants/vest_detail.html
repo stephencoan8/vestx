@@ -424,11 +424,24 @@
                             <td style="color: {{ 'var(--success)' if sale.capital_gain > 0 else 'var(--danger)' }}">
                                 ${{ "{:,.2f}".format(sale.capital_gain) }}
                             </td>
-                            <td style="color: var(--text-secondary); font-style: italic;">
-                                {% if sale.capital_gain > 0 %}
-                                    {% set est_rate = 0.15 if sale.is_long_term else 0.22 %}
-                                    ~${{ "{:,.2f}".format(sale.capital_gain * est_rate) }}
-                                    <br><small>({{ (est_rate * 100)|int }}%)</small>
+                            <td>
+                                {% if sale.estimated_tax and sale.capital_gain > 0 %}
+                                    ${{ "{:,.2f}".format(sale.estimated_tax['estimated_total']) }}
+                                    <br><small style="color: var(--text-secondary);">
+                                        ({{ sale.estimated_tax['is_long_term'] and 'LT' or 'ST' }}: 
+                                        Fed {{ "%.1f"|format(sale.estimated_tax['federal_rate'] * 100) }}%
+                                        {% if sale.estimated_tax['niit_rate'] > 0 %}
+                                            + NIIT {{ "%.1f"|format(sale.estimated_tax['niit_rate'] * 100) }}%
+                                        {% endif %}
+                                        {% if sale.estimated_tax['state_rate'] > 0 %}
+                                            + State {{ "%.1f"|format(sale.estimated_tax['state_rate'] * 100) }}%
+                                        {% endif %}
+                                        )
+                                    </small>
+                                {% elif sale.capital_gain > 0 %}
+                                    <span style="color: var(--text-secondary); font-style: italic;">
+                                        Tax profile needed
+                                    </span>
                                 {% else %}
                                     $0
                                 {% endif %}

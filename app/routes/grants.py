@@ -811,6 +811,13 @@ def vest_detail(vest_id):
             ).all()
             logger.info(f"DEBUG: Found {len(sales)} sales")
             
+            # Add estimated tax calculations to each sale
+            for sale in sales:
+                if sale.capital_gain > 0:
+                    sale.estimated_tax = sale.get_estimated_tax()
+                else:
+                    sale.estimated_tax = None
+            
             logger.info("DEBUG: Querying exercises...")
             exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
                 ISOExercise.exercise_date.desc()

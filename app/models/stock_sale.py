@@ -83,6 +83,82 @@ class StockSale(db.Model):
             if self.capital_gain < 0:
                 return 0.0
         return self.capital_gain
+    
+    def get_estimated_tax(self) -> dict:
+        """
+        Calculate estimated capital gains tax using professional-grade methodology.
+        
+        Uses total annual income to determine bracket (not incremental stacking).
+        Includes federal, NIIT, and state taxes.
+        
+        Returns:
+            dict with estimated tax breakdown
+        """
+        from app.utils.capital_gains_calculator import CapitalGainsCalculator
+        from app.models.tax_rate import UserTaxProfile
+        from app.models.annual_income import AnnualIncome
+        
+        # Get user's tax profile
+        tax_profile = UserTaxProfile.query.filter_by(user_id=self.user_id).first()
+        if not tax_profile:
+            # Fallback to simplified estimation if no profile
+            if self.is_long_term:
+                est_rate = 0.15  # Assume 15% bracket
+            else:
+                est_rate = 0.22  # Assume 22% marginal rate
+            
+            return {
+                'estimated_federal': self.capital_gain * est_rate if self.capital_gain > 0 else 0,
+                'estimated_niit': 0,
+                'estimated_state': 0,
+                'estimated_total': self.capital_gain * est_rate if self.capital_gain > 0 else 0,
+                'method': 'simplified'
+            }
+        
+        # Get total annual income for the sale year
+        sale_year = self.sale_date.year
+        year_income = AnnualIncome.query.filter_by(
+            user_id=self.user_id,
+            year=sale_year
+        ).first()
+        
+        total_annual_income = year_income.annual_income if year_income else tax_profile.annual_income
+        
+        # Initialize calculator with TOTAL annual income
+        calculator = CapitalGainsCalculator(
+            total_annual_income=total_annual_income,
+            filing_status=tax_profile.filing_status or 'single',
+            state=tax_profile.state,
+            tax_year=sale_year
+        )
+        
+        # Calculate taxes
+        if not self.vest_event:
+            # No vest event, can't determine holding period accurately
+            purchase_date = self.sale_date
+        else:
+            purchase_date = self.vest_event.vest_date
+        
+        tax_breakdown = calculator.calculate_sale_taxes(
+            capital_gain=self.capital_gain,
+            purchase_date=purchase_date,
+            sale_date=self.sale_date
+        )
+        
+        return {
+            'estimated_federal': tax_breakdown['federal_tax'],
+            'estimated_niit': tax_breakdown['niit_tax'],
+            'estimated_state': tax_breakdown['state_tax'],
+            'estimated_total': tax_breakdown['total_tax'],
+            'federal_rate': tax_breakdown['federal_rate'],
+            'niit_rate': tax_breakdown['niit_rate'],
+            'state_rate': tax_breakdown['state_rate'],
+            'effective_rate': tax_breakdown['effective_rate'],
+            'is_long_term': tax_breakdown['is_long_term'],
+            'holding_days': tax_breakdown['holding_days'],
+            'method': 'professional'
+        }
+
 
 
 class ISOExercise(db.Model):
