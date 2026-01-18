@@ -20,6 +20,18 @@ logging.basicConfig(level=logging.DEBUG)
 
 grants_bp = Blueprint('grants', __name__, url_prefix='/grants')
 
+logger = logging.getLogger(__name__)
+
+
+@grants_bp.route('/health')
+def health_check():
+    """Health check endpoint to verify routes are working."""
+    return jsonify({
+        'status': 'ok', 
+        'message': 'Grants blueprint is working',
+        'timestamp': datetime.utcnow().isoformat()
+    })
+
 
 @grants_bp.route('/')
 @login_required
