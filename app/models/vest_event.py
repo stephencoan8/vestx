@@ -250,7 +250,10 @@ class VestEvent(db.Model):
                 )
             else:
                 # Current/future year: use actual YTD wages from profile for progressive SS calc
-                calculator.set_ytd_wages(tax_profile.ytd_wages or 0.0)
+                # If YTD wages not configured, use annual_income as proxy (assumes even distribution)
+                # This prevents double-taxation (high federal + full SS) on high earners
+                ytd_wages = tax_profile.ytd_wages if tax_profile.ytd_wages else annual_income
+                calculator.set_ytd_wages(ytd_wages)
             
             # Calculate comprehensive taxes
             breakdown = calculator.calculate_vest_taxes(
@@ -466,7 +469,9 @@ class VestEvent(db.Model):
         if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
             cost_basis_per_share = self.grant.share_price_at_grant
         else:
-            cost_basis_per_share = self.share_price_at_vest
+            # For unvested shares, share_price_at_vest is 0 (unknown future price)
+            # Use current price as estimated cost basis for projection purposes
+            cost_basis_per_share = self.share_price_at_vest if self.has_vested else current_stock_price
         
         # Calculate values
         cost_basis = shares_held * cost_basis_per_share
