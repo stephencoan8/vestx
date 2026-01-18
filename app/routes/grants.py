@@ -2,7 +2,7 @@
 Grant management routes - view, add, edit, delete grants.
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app as app
 from flask_login import login_required, current_user
 from app import db
 from app.models.grant import Grant, GrantType, ShareType
@@ -14,6 +14,7 @@ from app.models.tax_rate import UserTaxProfile
 from app.utils.price_utils import get_latest_user_price
 from datetime import datetime, date, timedelta
 import logging
+import os
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -827,6 +828,20 @@ def vest_detail(vest_id):
         
     except Exception as e:
         logger.error(f"DEBUG ERROR in vest_detail: {type(e).__name__}: {str(e)}", exc_info=True)
+        
+        # Return JSON error for debugging
+        import traceback
+        error_data = {
+            'error': type(e).__name__,
+            'message': str(e),
+            'traceback': traceback.format_exc()
+        }
+        
+        # If this is an API request or we're in debug mode, return JSON
+        if request.accept_mimetypes.accept_json or os.getenv('FLASK_ENV') == 'development':
+            logger.error(f"Returning error as JSON: {error_data}")
+            return jsonify(error_data), 500
+        
         flash(f'Error loading vest details: {type(e).__name__}: {str(e)}', 'danger')
         return redirect(url_for('grants.list_grants'))
 
