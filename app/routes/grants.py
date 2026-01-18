@@ -769,18 +769,28 @@ def vest_detail(vest_id):
     # Get current stock price
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     
-    # Get sales and exercises for this vest
-    sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
-        StockSale.sale_date.desc()
-    ).all()
+    # Get sales and exercises for this vest (with safety check for missing tables)
+    sales = []
+    exercises = []
+    total_sold = 0
+    total_exercised = 0
     
-    exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
-        ISOExercise.exercise_date.desc()
-    ).all()
+    try:
+        sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
+            StockSale.sale_date.desc()
+        ).all()
+        
+        exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
+            ISOExercise.exercise_date.desc()
+        ).all()
+        
+        # Calculate remaining shares
+        total_sold = sum(s.shares_sold for s in sales)
+        total_exercised = sum(e.shares_exercised for e in exercises)
+    except Exception as e:
+        # Tables don't exist yet - just use empty lists
+        logger.warning(f"Could not load sales/exercises: {e}")
     
-    # Calculate remaining shares
-    total_sold = sum(s.shares_sold for s in sales)
-    total_exercised = sum(e.shares_exercised for e in exercises)
     remaining_shares = vest_event.shares_received - total_sold - total_exercised
     
     return render_template('grants/vest_detail.html',

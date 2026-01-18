@@ -89,6 +89,11 @@ def create_app():
     # Create database tables
     with app.app_context():
         db.create_all()
+        
+        # Run transaction migration
+        from app.utils.migrate_transactions import migrate_transactions
+        migrate_transactions(app)
+        
         from app.models.user import User
         from app.utils.init_db import init_admin_user
         init_admin_user()

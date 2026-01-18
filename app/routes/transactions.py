@@ -20,15 +20,20 @@ transactions_bp = Blueprint('transactions', __name__)
 @login_required
 def transactions_page():
     """Main transactions page showing sales and exercises."""
-    # Get all stock sales
-    sales = StockSale.query.filter_by(user_id=current_user.id).order_by(
-        StockSale.sale_date.desc()
-    ).all()
+    # Get all stock sales and exercises (with safety check for missing tables)
+    sales = []
+    exercises = []
     
-    # Get all ISO exercises
-    exercises = ISOExercise.query.filter_by(user_id=current_user.id).order_by(
-        ISOExercise.exercise_date.desc()
-    ).all()
+    try:
+        sales = StockSale.query.filter_by(user_id=current_user.id).order_by(
+            StockSale.sale_date.desc()
+        ).all()
+        
+        exercises = ISOExercise.query.filter_by(user_id=current_user.id).order_by(
+            ISOExercise.exercise_date.desc()
+        ).all()
+    except Exception as e:
+        logger.warning(f"Could not load transactions: {e}")
     
     # Get available vests for dropdowns
     vests = VestEvent.query.join(Grant).filter(
