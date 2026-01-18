@@ -771,16 +771,16 @@ def vest_detail(vest_id):
         annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
         logger.info(f"DEBUG: Found {len(annual_incomes_list)} annual incomes")
         
-        # Get tax breakdown if vested
+        # Get tax breakdown for all vests (vested and unvested)
         tax_breakdown = None
-        if vest_event.has_vested:
+        if tax_profile:  # Only need tax profile, not has_vested
             logger.info("DEBUG: Calculating tax breakdown...")
             vest_year = vest_event.tax_year or vest_event.vest_date.year
             year_income = annual_incomes_dict.get(vest_year, tax_profile.annual_income if tax_profile else None)
             
             # Get cached rates for this year
             cached_rates = None
-            if tax_profile and year_income:
+            if year_income:
                 cached_rates = tax_profile.get_tax_rates(tax_year=vest_year, income_override=year_income)
             
             tax_breakdown = vest_event.get_comprehensive_tax_breakdown(
@@ -790,6 +790,8 @@ def vest_detail(vest_id):
                 _year_income=year_income
             )
             logger.info(f"DEBUG: Tax breakdown calculated: {tax_breakdown is not None}")
+        else:
+            logger.info("DEBUG: No tax profile found, skipping tax breakdown")
         
         # Get current stock price
         logger.info("DEBUG: Getting latest stock price...")

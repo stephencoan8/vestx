@@ -78,19 +78,12 @@
             </div>
         </section>
 
-        <!-- DEBUG: Tax at Vest visibility check -->
-        <div style="background: yellow; color: black; padding: 1rem; margin: 1rem 0;">
-            DEBUG: has_vested={{ vest_event.has_vested }}, grant_type={{ grant.grant_type }}, 
-            tax_breakdown exists={{ tax_breakdown is not none }}, 
-            has_breakdown={{ tax_breakdown.has_breakdown if tax_breakdown else 'N/A' }}
-        </div>
-
         <!-- Tax at Vest Section -->
-        {% if vest_event.has_vested and grant.grant_type not in ['espp', 'nqespp'] %}
+        {% if grant.grant_type not in ['espp', 'nqespp'] %}
         <section class="detail-section">
             <h2>💰 Tax at Vest</h2>
             
-            <!-- Estimated Tax at Vest -->
+            <!-- Estimated Tax at Vest - Show for all vests -->
             {% if tax_breakdown and tax_breakdown.has_breakdown %}
             <div class="tax-subsection">
                 <h3 class="collapsible-header" onclick="toggleSection('estimatedTaxAtVest')">
@@ -101,6 +94,7 @@
                 <div id="estimatedTaxAtVest" class="collapsible-content" style="display: none;">
                     <div class="estimate-note">
                         <strong>ℹ️ Note:</strong> System-calculated estimates based on your tax profile.
+                        {% if not vest_event.has_vested %}<br><strong>⏰ This vest hasn't occurred yet - these are projected taxes.</strong>{% endif %}
                     </div>
                     
                     <div class="tax-summary">
@@ -141,9 +135,16 @@
                     </div>
                 </div>
             </div>
+            {% else %}
+            <div class="tax-subsection">
+                <p style="color: var(--text-secondary); font-style: italic;">
+                    ℹ️ Tax estimates will appear here once you configure your tax settings.
+                </p>
+            </div>
             {% endif %}
             
-            <!-- Actual Tax Paid at Vest -->
+            <!-- Actual Tax Paid at Vest - Only show for vested grants -->
+            {% if vest_event.has_vested %}
             <div class="tax-subsection" style="margin-top: 2rem;">
                 <h3>💳 Actual Tax Paid at Vest</h3>
                 <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
