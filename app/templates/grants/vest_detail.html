@@ -239,6 +239,59 @@
             
             {% if vest_event.has_vested %}
             <div id="saleDetails" class="collapsible-content" style="display: none;">
+                <!-- Estimated Tax at Sale (for remaining shares) -->
+                {% if remaining_shares > 0 and latest_stock_price > 0 %}
+                <div style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 8px;">
+                    <h3 style="margin-top: 0;">📊 Estimated Tax if Sold Today</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                        Estimated capital gains tax if you sold your {{ "%.4f"|format(remaining_shares) }} remaining shares at current price.
+                    </p>
+                    
+                    {% set current_gain = (latest_stock_price - vest_event.share_price_at_vest) * remaining_shares %}
+                    {% set holding_days = (vest_event.vest_date.today() - vest_event.vest_date).days %}
+                    {% set is_lt = holding_days > 365 %}
+                    
+                    <div class="tax-summary">
+                        <div class="tax-summary-row">
+                            <span>Remaining Shares:</span>
+                            <span class="amount">{{ "%.4f"|format(remaining_shares) }}</span>
+                        </div>
+                        <div class="tax-summary-row">
+                            <span>Current Price:</span>
+                            <span class="amount">${{ "%.2f"|format(latest_stock_price) }}</span>
+                        </div>
+                        <div class="tax-summary-row">
+                            <span>Cost Basis (per share):</span>
+                            <span class="amount">${{ "%.2f"|format(vest_event.share_price_at_vest) }}</span>
+                        </div>
+                        <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
+                            <span><strong>Potential Capital Gain:</strong></span>
+                            <span class="amount" style="color: {{ 'var(--success)' if current_gain > 0 else 'var(--danger)' }}">
+                                <strong>${{ "{:,.2f}".format(current_gain) }}</strong>
+                            </span>
+                        </div>
+                        <div class="tax-summary-row">
+                            <span>Holding Period:</span>
+                            <span class="amount">{{ holding_days }} days ({{ is_lt and "Long-term" or "Short-term" }})</span>
+                        </div>
+                        {% if current_gain > 0 %}
+                        <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
+                            <span><strong>Estimated Tax:</strong></span>
+                            <span class="amount" style="color: var(--warning);">
+                                <strong>Configure tax profile for estimate</strong>
+                            </span>
+                        </div>
+                        <div style="margin-top: 0.5rem;">
+                            <small style="color: var(--text-secondary);">
+                                💡 Professional-grade tax calculation uses your total annual income to determine accurate brackets.
+                                Actual tax shown in sales history below.
+                            </small>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Share Activity -->
                 <div style="margin-bottom: 2rem;">
                     <h3>📦 Share Activity</h3>
