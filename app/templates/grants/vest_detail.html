@@ -611,6 +611,9 @@
 }
 </style>
 
+<!-- Modals - Only show for vested grants -->
+{% if vest_event.has_vested %}
+
 <!-- Stock Sale Modal -->
 <div id="saleModal" class="modal">
     <div class="modal-content">
