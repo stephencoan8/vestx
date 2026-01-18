@@ -78,6 +78,13 @@
             </div>
         </section>
 
+        <!-- DEBUG: Tax at Vest visibility check -->
+        <div style="background: yellow; color: black; padding: 1rem; margin: 1rem 0;">
+            DEBUG: has_vested={{ vest_event.has_vested }}, grant_type={{ grant.grant_type }}, 
+            tax_breakdown exists={{ tax_breakdown is not none }}, 
+            has_breakdown={{ tax_breakdown.has_breakdown if tax_breakdown else 'N/A' }}
+        </div>
+
         <!-- Tax at Vest Section -->
         {% if vest_event.has_vested and grant.grant_type not in ['espp', 'nqespp'] %}
         <section class="detail-section">
