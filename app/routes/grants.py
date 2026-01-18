@@ -808,14 +808,21 @@ def vest_detail(vest_id):
         
         # Calculate estimated sale tax using centralized method
         # This is the SINGLE SOURCE OF TRUTH for sale tax calculations
-        estimated_sale_tax = vest_event.get_estimated_sale_tax(
-            current_stock_price=latest_stock_price,
-            total_sold=total_sold,
-            total_exercised=total_exercised,
-            _tax_profile=tax_profile,
-            _annual_incomes=annual_incomes_dict
-        )
-        logger.info(f"DEBUG: estimated_sale_tax calculated")
+        try:
+            estimated_sale_tax = vest_event.get_estimated_sale_tax(
+                current_stock_price=latest_stock_price,
+                total_sold=total_sold,
+                total_exercised=total_exercised,
+                _tax_profile=tax_profile,
+                _annual_incomes=annual_incomes_dict
+            )
+            logger.info(f"DEBUG: estimated_sale_tax calculated")
+        except Exception as e:
+            logger.error(f"DEBUG: Error calculating estimated_sale_tax: {e}", exc_info=True)
+            # Rollback the transaction if it failed
+            db.session.rollback()
+            # Set to None so template can handle gracefully
+            estimated_sale_tax = None
         
         logger.info("DEBUG: Rendering template...")
         return render_template('grants/vest_detail.html',

@@ -526,6 +526,19 @@ class VestEvent(db.Model):
         
         # Use professional capital gains calculator
         try:
+            # Get state rate safely before starting calculation
+            state_rate = 0.093  # Default CA rate
+            try:
+                if tax_profile.use_manual_rates and tax_profile.manual_state_rate:
+                    state_rate = tax_profile.manual_state_rate
+                elif tax_profile.state:
+                    # Try to get calculated state rate, but don't fail if it errors
+                    rates = tax_profile.get_tax_rates()
+                    state_rate = rates.get('state', 0.093)
+            except Exception:
+                # If getting tax rates fails, use default
+                state_rate = 0.093
+            
             calculator = CapitalGainsCalculator(
                 total_annual_income=total_annual_income,
                 filing_status=tax_profile.filing_status or 'single',
@@ -538,7 +551,7 @@ class VestEvent(db.Model):
                 capital_gain=unrealized_gain,
                 purchase_date=self.vest_date,
                 sale_date=today,
-                state_rate=tax_profile.get_tax_rates().get('state', 0.093)
+                state_rate=state_rate
             )
             
             return {
@@ -563,10 +576,21 @@ class VestEvent(db.Model):
             import logging
             logging.getLogger(__name__).error(f"Error in professional sale tax calc: {e}")
             
-            # Get tax rates
-            rates = tax_profile.get_tax_rates()
-            federal_rate = rates.get('ltcg', 0.15) if is_long_term else rates.get('federal', 0.24)
-            state_rate = rates.get('state', 0.093)
+            # Use hardcoded rates to avoid additional DB queries in failed transaction
+            federal_rate = 0.15 if is_long_term else 0.24
+            state_rate = 0.093
+            
+            # Try to get manual rates if available (no DB query needed)
+            try:
+                if tax_profile.use_manual_rates:
+                    if is_long_term and tax_profile.manual_ltcg_rate:
+                        federal_rate = tax_profile.manual_ltcg_rate
+                    elif not is_long_term and tax_profile.manual_federal_rate:
+                        federal_rate = tax_profile.manual_federal_rate
+                    if tax_profile.manual_state_rate:
+                        state_rate = tax_profile.manual_state_rate
+            except Exception:
+                pass  # Use defaults
             
             federal_tax = unrealized_gain * federal_rate
             state_tax = unrealized_gain * state_rate
