@@ -262,11 +262,131 @@
                     </div>
                     
                     <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-                        <button class="btn btn-primary" onclick="openSaleModal()">📤 Record Sale</button>
+                        <button class="btn btn-primary" onclick="toggleRecordSale()">📤 Record Sale</button>
                         {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
-                        <button class="btn btn-primary" onclick="openExerciseModal()">🏋️ Record Exercise</button>
+                        <button class="btn btn-primary" onclick="toggleRecordExercise()">🏋️ Record Exercise</button>
                         {% endif %}
                     </div>
+                    
+                    <!-- Record Stock Sale Form -->
+                    <div id="recordSaleForm" style="display: none; margin-top: 2rem; padding: 1.5rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+                        <h4 style="margin-bottom: 1rem;">📤 Record Stock Sale</h4>
+                        <form id="saleForm" onsubmit="submitSale(event)">
+                            <div class="form-group">
+                                <label for="sale_date">Sale Date *</label>
+                                <input type="date" id="sale_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="shares_sold">Shares Sold *</label>
+                                    <input type="number" id="shares_sold" step="0.0001" required max="{{ remaining_shares }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                    <small>Max available: {{ "%.4f"|format(remaining_shares) }}</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="sale_price">Sale Price (per share) *</label>
+                                    <input type="number" id="sale_price" step="0.01" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                </div>
+                            </div>
+                            
+                            <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
+                                <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_event.share_price_at_vest) }} per share
+                                <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
+                            </div>
+                            
+                            <div class="collapsible-section">
+                                <h4 class="section-toggle" onclick="toggleModalSection('actualTaxes')" style="cursor: pointer;">
+                                    💰 Actual Taxes Paid (Optional - Add After Filing)
+                                    <span class="expand-icon" id="actualTaxesIcon">▼</span>
+                                </h4>
+                                <div id="actualTaxes" class="collapsible-content" style="display: none;">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="actual_federal_tax">Federal Tax Paid</label>
+                                            <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="actual_state_tax">State Tax Paid</label>
+                                            <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="actual_total_tax">Total Tax Paid</label>
+                                        <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                        <small>Or leave blank to auto-calculate from federal + state</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="sale_notes">Notes</label>
+                                <textarea id="sale_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
+                            </div>
+                            
+                            <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                                <button type="button" class="btn btn-secondary" onclick="toggleRecordSale()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Record Sale</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Record ISO Exercise Form -->
+                    {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
+                    <div id="recordExerciseForm" style="display: none; margin-top: 2rem; padding: 1.5rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+                        <h4 style="margin-bottom: 1rem;">🏋️ Record ISO Exercise</h4>
+                        <form id="exerciseForm" onsubmit="submitExercise(event)">
+                            <div class="form-group">
+                                <label for="exercise_date">Exercise Date *</label>
+                                <input type="date" id="exercise_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="shares_exercised">Shares Exercised *</label>
+                                    <input type="number" id="shares_exercised" step="0.0001" required max="{{ remaining_shares }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                    <small>Max available: {{ "%.4f"|format(remaining_shares) }}</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="fmv_at_exercise">FMV at Exercise *</label>
+                                    <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ latest_stock_price }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                </div>
+                            </div>
+                            
+                            <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
+                                <strong>Strike Price:</strong> ${{ "%.2f"|format(grant.share_price_at_grant) }} per share
+                                <br><small>Grant date: {{ grant.grant_date.strftime('%Y-%m-%d') }}</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="amt_triggered" onchange="toggleAMTFields()">
+                                    AMT Triggered by this exercise
+                                </label>
+                            </div>
+                            
+                            <div class="form-row" id="amtFields" style="display: none;">
+                                <div class="form-group">
+                                    <label for="amt_paid">AMT Paid</label>
+                                    <input type="number" id="amt_paid" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                </div>
+                                <div class="form-group">
+                                    <label for="amt_credit_generated">AMT Credit Generated</label>
+                                    <input type="number" id="amt_credit_generated" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="exercise_notes">Notes</label>
+                                <textarea id="exercise_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
+                            </div>
+                            
+                            <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                                <button type="button" class="btn btn-secondary" onclick="toggleRecordExercise()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Record Exercise</button>
+                            </div>
+                        </form>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Stock Sales History -->
@@ -620,140 +740,6 @@
 }
 </style>
 
-<!-- Modals - Only show for vested grants -->
-{% if vest_event.has_vested %}
-
-<!-- Stock Sale Modal -->
-<div id="saleModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Record Stock Sale</h2>
-            <span class="close" onclick="closeSaleModal()">&times;</span>
-        </div>
-        <form id="saleForm" onsubmit="submitSale(event)">
-            <div class="form-group">
-                <label for="sale_date">Sale Date *</label>
-                <input type="date" id="sale_date" required>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="shares_sold">Shares Sold *</label>
-                    <input type="number" id="shares_sold" step="0.0001" required max="{{ remaining_shares }}">
-                    <small>Max available: {{ "%.4f"|format(remaining_shares) }}</small>
-                </div>
-                <div class="form-group">
-                    <label for="sale_price">Sale Price (per share) *</label>
-                    <input type="number" id="sale_price" step="0.01" required>
-                </div>
-            </div>
-            
-            <div class="info-box">
-                <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_event.share_price_at_vest) }} per share
-                <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
-            </div>
-            
-            <div class="collapsible-section">
-                <h3 class="section-toggle" onclick="toggleModalSection('actualTaxes')">
-                    💰 Actual Taxes Paid (Optional - Add After Filing)
-                    <span class="expand-icon" id="actualTaxesIcon">▼</span>
-                </h3>
-                <div id="actualTaxes" class="collapsible-content" style="display: none;">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="actual_federal_tax">Federal Tax Paid</label>
-                            <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00">
-                        </div>
-                        <div class="form-group">
-                            <label for="actual_state_tax">State Tax Paid</label>
-                            <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="actual_total_tax">Total Tax Paid</label>
-                        <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00">
-                        <small>Or leave blank to auto-calculate from federal + state</small>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="sale_notes">Notes</label>
-                <textarea id="sale_notes" rows="2"></textarea>
-            </div>
-            
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeSaleModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Record Sale</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- ISO Exercise Modal -->
-{% if grant.share_type in ['iso_5y', 'iso_6y'] %}
-<div id="exerciseModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Record ISO Exercise</h2>
-            <span class="close" onclick="closeExerciseModal()">&times;</span>
-        </div>
-        <form id="exerciseForm" onsubmit="submitExercise(event)">
-            <div class="form-group">
-                <label for="exercise_date">Exercise Date *</label>
-                <input type="date" id="exercise_date" required>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="shares_exercised">Shares Exercised *</label>
-                    <input type="number" id="shares_exercised" step="0.0001" required max="{{ remaining_shares }}">
-                    <small>Max available: {{ "%.4f"|format(remaining_shares) }}</small>
-                </div>
-                <div class="form-group">
-                    <label for="fmv_at_exercise">FMV at Exercise *</label>
-                    <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ latest_stock_price }}">
-                </div>
-            </div>
-            
-            <div class="info-box">
-                <strong>Strike Price:</strong> ${{ "%.2f"|format(grant.share_price_at_grant) }} per share
-                <br><small>Grant date: {{ grant.grant_date.strftime('%Y-%m-%d') }}</small>
-            </div>
-            
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" id="amt_triggered">
-                    AMT Triggered by this exercise
-                </label>
-            </div>
-            
-            <div class="form-row" id="amtFields" style="display: none;">
-                <div class="form-group">
-                    <label for="amt_paid">AMT Paid</label>
-                    <input type="number" id="amt_paid" step="0.01">
-                </div>
-                <div class="form-group">
-                    <label for="amt_credit_generated">AMT Credit Generated</label>
-                    <input type="number" id="amt_credit_generated" step="0.01">
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="exercise_notes">Notes</label>
-                <textarea id="exercise_notes" rows="2"></textarea>
-            </div>
-            
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeExerciseModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Record Exercise</button>
-            </div>
-        </form>
-    </div>
-</div>
-{% endif %}
-{% endif %}
-
 <style>
 .tax-subsection {
     margin: 1.5rem 0;
@@ -948,30 +934,33 @@ function toggleModalSection(sectionId) {
     }
 }
 
-function openSaleModal() {
-    document.getElementById('saleModal').style.display = 'block';
+function toggleRecordSale() {
+    const form = document.getElementById('recordSaleForm');
+    if (form.style.display === 'none') {
+        form.style.display = 'block';
+        // Scroll to form
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        form.style.display = 'none';
+        document.getElementById('saleForm').reset();
+    }
 }
 
-function closeSaleModal() {
-    document.getElementById('saleModal').style.display = 'none';
-    document.getElementById('saleForm').reset();
+function toggleRecordExercise() {
+    const form = document.getElementById('recordExerciseForm');
+    if (form.style.display === 'none') {
+        form.style.display = 'block';
+        // Scroll to form
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        form.style.display = 'none';
+        document.getElementById('exerciseForm').reset();
+    }
 }
 
-function openExerciseModal() {
-    document.getElementById('exerciseModal').style.display = 'block';
-}
-
-function closeExerciseModal() {
-    document.getElementById('exerciseModal').style.display = 'none';
-    document.getElementById('exerciseForm').reset();
-}
-
-// Show AMT fields when checkbox is checked
-const amtCheckbox = document.getElementById('amt_triggered');
-if (amtCheckbox) {
-    amtCheckbox.addEventListener('change', function(e) {
-        document.getElementById('amtFields').style.display = e.target.checked ? 'grid' : 'none';
-    });
+function toggleAMTFields() {
+    const checkbox = document.getElementById('amt_triggered');
+    document.getElementById('amtFields').style.display = checkbox.checked ? 'grid' : 'none';
 }
 
 async function submitSale(e) {
