@@ -389,3 +389,203 @@ class VestEvent(db.Model):
             'is_estimated': True,
             'tax_rate': estimated_rate
         }
+    
+    def get_estimated_sale_tax(self, current_stock_price: float = None, 
+                               total_sold: float = 0, 
+                               total_exercised: float = 0,
+                               _tax_profile=None,
+                               _annual_incomes=None) -> dict:
+        """
+        Calculate estimated capital gains tax on remaining shares if sold today.
+        
+        This is the SINGLE SOURCE OF TRUTH for sale tax calculations across the app.
+        Used by finance_deep_dive, vest_detail, and any other page showing sale tax estimates.
+        
+        Args:
+            current_stock_price: Current stock price (defaults to latest user price)
+            total_sold: Total shares already sold from this vest
+            total_exercised: Total shares already exercised (for ISOs)
+            _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
+            _annual_incomes: INTERNAL - dict of {year: income} to avoid N+1 queries
+            
+        Returns:
+            dict with:
+                - shares_held: Remaining shares
+                - cost_basis_per_share: Cost basis per share
+                - cost_basis: Total cost basis
+                - current_value: Current market value
+                - unrealized_gain: Capital gain if sold today
+                - days_held: Days since vest
+                - is_long_term: True if held > 365 days
+                - holding_period: Formatted string (e.g., "2y 45d" or "180d")
+                - estimated_tax: Total estimated tax
+                - federal_tax: Federal capital gains tax
+                - niit_tax: NIIT (3.8% surtax)
+                - state_tax: State capital gains tax
+                - federal_rate: Federal rate used
+                - state_rate: State rate used
+                - method: 'professional' or 'simplified'
+        """
+        from app.models.grant import ShareType
+        from app.models.tax_rate import UserTaxProfile
+        from app.models.annual_income import AnnualIncome
+        from app.utils.capital_gains_calculator import CapitalGainsCalculator
+        from datetime import date
+        
+        # Get current stock price if not provided
+        if current_stock_price is None:
+            from app.utils.price_utils import get_latest_user_price
+            current_stock_price = get_latest_user_price(self.grant.user_id) or 0.0
+        
+        # Calculate remaining shares
+        shares_held = self.shares_received - total_sold - total_exercised
+        
+        # For cash grants, no capital gains (cash doesn't appreciate)
+        if self.grant.share_type == ShareType.CASH.value:
+            return {
+                'shares_held': shares_held,
+                'cost_basis_per_share': 1.0,
+                'cost_basis': shares_held,
+                'current_value': shares_held,
+                'unrealized_gain': 0.0,
+                'days_held': 0,
+                'is_long_term': False,
+                'holding_period': '—',
+                'estimated_tax': 0.0,
+                'federal_tax': 0.0,
+                'niit_tax': 0.0,
+                'state_tax': 0.0,
+                'federal_rate': 0.0,
+                'state_rate': 0.0,
+                'method': 'n/a'
+            }
+        
+        # Determine cost basis based on grant type
+        # ISOs: cost basis is strike price (share_price_at_grant)
+        # RSUs/RSAs/ESPP: cost basis is FMV at vest (share_price_at_vest)
+        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
+            cost_basis_per_share = self.grant.share_price_at_grant
+        else:
+            cost_basis_per_share = self.share_price_at_vest
+        
+        # Calculate values
+        cost_basis = shares_held * cost_basis_per_share
+        current_value = shares_held * current_stock_price
+        unrealized_gain = current_value - cost_basis
+        
+        # Calculate holding period
+        today = date.today()
+        days_held = (today - self.vest_date).days if self.has_vested else 0
+        is_long_term = days_held >= 365
+        
+        if self.has_vested:
+            if days_held >= 365:
+                years = days_held // 365
+                holding_period = f"{years}y {days_held % 365}d"
+            else:
+                holding_period = f"{days_held}d"
+        else:
+            holding_period = "—"
+        
+        # Calculate estimated tax
+        # Get tax profile (use cached if available)
+        if _tax_profile is None:
+            tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+        else:
+            tax_profile = _tax_profile
+        
+        if not tax_profile or unrealized_gain <= 0:
+            # No tax profile or no gain = no tax
+            return {
+                'shares_held': shares_held,
+                'cost_basis_per_share': cost_basis_per_share,
+                'cost_basis': cost_basis,
+                'current_value': current_value,
+                'unrealized_gain': unrealized_gain,
+                'days_held': days_held,
+                'is_long_term': is_long_term,
+                'holding_period': holding_period,
+                'estimated_tax': 0.0,
+                'federal_tax': 0.0,
+                'niit_tax': 0.0,
+                'state_tax': 0.0,
+                'federal_rate': 0.0,
+                'state_rate': 0.0,
+                'method': 'none'
+            }
+        
+        # Get total annual income for current year (use cached if available)
+        if _annual_incomes is not None:
+            total_annual_income = _annual_incomes.get(today.year, tax_profile.annual_income)
+        else:
+            year_income = AnnualIncome.query.filter_by(
+                user_id=self.grant.user_id,
+                year=today.year
+            ).first()
+            total_annual_income = year_income.annual_income if year_income else tax_profile.annual_income
+        
+        # Use professional capital gains calculator
+        try:
+            calculator = CapitalGainsCalculator(
+                total_annual_income=total_annual_income,
+                filing_status=tax_profile.filing_status or 'single',
+                state=tax_profile.state,
+                tax_year=today.year
+            )
+            
+            # Calculate taxes on the unrealized gain
+            tax_result = calculator.calculate_sale_taxes(
+                capital_gain=unrealized_gain,
+                purchase_date=self.vest_date,
+                sale_date=today,
+                state_rate=tax_profile.get_tax_rates().get('state', 0.093)
+            )
+            
+            return {
+                'shares_held': shares_held,
+                'cost_basis_per_share': cost_basis_per_share,
+                'cost_basis': cost_basis,
+                'current_value': current_value,
+                'unrealized_gain': unrealized_gain,
+                'days_held': days_held,
+                'is_long_term': is_long_term,
+                'holding_period': holding_period,
+                'estimated_tax': tax_result.get('total_tax', 0),
+                'federal_tax': tax_result.get('federal_tax', 0),
+                'niit_tax': tax_result.get('niit_tax', 0),
+                'state_tax': tax_result.get('state_tax', 0),
+                'federal_rate': tax_result.get('federal_rate', 0),
+                'state_rate': tax_result.get('state_rate', 0),
+                'method': 'professional'
+            }
+        except Exception as e:
+            # Fallback to simplified calculation
+            import logging
+            logging.getLogger(__name__).error(f"Error in professional sale tax calc: {e}")
+            
+            # Get tax rates
+            rates = tax_profile.get_tax_rates()
+            federal_rate = rates.get('ltcg', 0.15) if is_long_term else rates.get('federal', 0.24)
+            state_rate = rates.get('state', 0.093)
+            
+            federal_tax = unrealized_gain * federal_rate
+            state_tax = unrealized_gain * state_rate
+            estimated_tax = federal_tax + state_tax
+            
+            return {
+                'shares_held': shares_held,
+                'cost_basis_per_share': cost_basis_per_share,
+                'cost_basis': cost_basis,
+                'current_value': current_value,
+                'unrealized_gain': unrealized_gain,
+                'days_held': days_held,
+                'is_long_term': is_long_term,
+                'holding_period': holding_period,
+                'estimated_tax': estimated_tax,
+                'federal_tax': federal_tax,
+                'niit_tax': 0.0,
+                'state_tax': state_tax,
+                'federal_rate': federal_rate,
+                'state_rate': state_rate,
+                'method': 'simplified'
+            }

@@ -589,56 +589,27 @@ def finance_deep_dive():
             else:
                 tax_breakdown = None
             
-            # For cash grants, shares_vested/shares_received represent USD amounts
-            if is_cash_grant:
-                shares_held = ve.shares_received if has_vested else ve.shares_vested
-                cost_basis_per_share = 1.0  # $1 per $1 for cash
-                cost_basis = shares_held  # USD amount
-                current_value = shares_held  # Cash value doesn't change
-                unrealized_gain = 0.0  # No gain/loss on cash
-            else:
-                # Stock grants
-                shares_held = ve.shares_received if has_vested else ve.shares_vested
-                
-                # Cost basis depends on grant type:
-                # - For ISOs: cost basis is the strike price (share_price_at_grant)
-                # - For RSUs/RSAs/ESPP: cost basis is the FMV at vest (share_price_at_vest)
-                if grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-                    # For ISOs, cost basis is the strike/exercise price
-                    cost_basis_per_share = grant.share_price_at_grant
-                else:
-                    # For RSUs/RSAs/ESPP, cost basis is the FMV at vest
-                    cost_basis_per_share = ve.share_price_at_vest
-                
-                cost_basis = shares_held * cost_basis_per_share
-                current_value = shares_held * latest_stock_price
-                unrealized_gain = current_value - cost_basis
+            # Use centralized method to calculate sale tax estimate
+            # This is the SINGLE SOURCE OF TRUTH for sale tax calculations
+            sale_tax_data = ve.get_estimated_sale_tax(
+                current_stock_price=latest_stock_price,
+                total_sold=0,  # Finance deep dive shows all shares (no sales tracked here)
+                total_exercised=0,
+                _tax_profile=tax_profile,
+                _annual_incomes=annual_incomes_dict
+            )
             
-            days_held = (today - ve.vest_date).days if has_vested else 0
-            is_long_term = days_held >= 365
+            # Extract values from centralized calculation
+            shares_held = sale_tax_data['shares_held']
+            cost_basis_per_share = sale_tax_data['cost_basis_per_share']
+            cost_basis = sale_tax_data['cost_basis']
+            current_value = sale_tax_data['current_value']
+            unrealized_gain = sale_tax_data['unrealized_gain']
+            days_held = sale_tax_data['days_held']
+            is_long_term = sale_tax_data['is_long_term']
+            holding_period = sale_tax_data['holding_period']
+            estimated_tax = sale_tax_data['estimated_tax']
 
-            # Server-side estimated tax on sale (capital gains)
-            if unrealized_gain > 0:
-                if is_long_term:
-                    estimated_sale_tax = unrealized_gain * (ltcg_rate_default + state_rate_default)
-                else:
-                    estimated_sale_tax = unrealized_gain * (federal_rate_default + state_rate_default)
-            else:
-                estimated_sale_tax = 0.0
-
-            # Calculate holding period display
-            if has_vested:
-                if days_held >= 365:
-                    years = days_held // 365
-                    holding_period = f"{years}y {days_held % 365}d"
-                else:
-                    holding_period = f"{days_held}d"
-            else:
-                holding_period = "—"
-            
-            # Calculate estimated tax on sale (capital gains)
-            # Keep the old JS placeholder behavior but populate server-side value now
-            estimated_tax = estimated_sale_tax
             
             ve_data = {
                 'vest_event': ve,
@@ -835,6 +806,17 @@ def vest_detail(vest_id):
         remaining_shares = vest_event.shares_received - total_sold - total_exercised
         logger.info(f"DEBUG: remaining_shares={remaining_shares}")
         
+        # Calculate estimated sale tax using centralized method
+        # This is the SINGLE SOURCE OF TRUTH for sale tax calculations
+        estimated_sale_tax = vest_event.get_estimated_sale_tax(
+            current_stock_price=latest_stock_price,
+            total_sold=total_sold,
+            total_exercised=total_exercised,
+            _tax_profile=tax_profile,
+            _annual_incomes=annual_incomes_dict
+        )
+        logger.info(f"DEBUG: estimated_sale_tax calculated")
+        
         logger.info("DEBUG: Rendering template...")
         return render_template('grants/vest_detail.html',
                              vest_event=vest_event,
@@ -845,7 +827,8 @@ def vest_detail(vest_id):
                              exercises=exercises,
                              total_sold=total_sold,
                              total_exercised=total_exercised,
-                             remaining_shares=remaining_shares)
+                             remaining_shares=remaining_shares,
+                             estimated_sale_tax=estimated_sale_tax)
         
     except Exception as e:
         logger.error(f"DEBUG ERROR in vest_detail: {type(e).__name__}: {str(e)}", exc_info=True)
