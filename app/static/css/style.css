@@ -736,6 +736,48 @@ body {
     margin-top: 2rem;
 }
 
+/* Collapsible Sections */
+.collapsible-header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: all 0.3s ease;
+}
+
+.collapsible-header:hover {
+    color: var(--accent);
+}
+
+.collapsible-header.disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.collapsible-header.disabled:hover {
+    color: inherit;
+}
+
+.collapsible-content {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.expand-icon {
+    font-size: 1.2rem;
+    transition: transform 0.3s ease;
+}
+
+.disabled-section {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.disabled-section .collapsible-header {
+    cursor: default;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .nav-menu {

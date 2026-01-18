@@ -222,53 +222,206 @@
         </section>
         {% endif %}
 
-        <!-- Stock Sales & Share Activity - Only for vested grants -->
-        {% if vest_event.has_vested %}
-        
-        <!-- DEBUG: This section should only show for vested -->
-        <div style="background: lime; color: black; padding: 0.5rem; margin: 0.5rem 0;">
-            ✓ VESTED - Share Activity section is showing because has_vested=True
-        </div>
-        
-        <!-- Shares Summary Section -->
+        <!-- Vest Details Section - Collapsible -->
+        {% if grant.grant_type not in ['espp', 'nqespp'] %}
         <section class="detail-section">
-            <h2>📦 Share Activity</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <label>Shares Received:</label>
-                    <span class="highlight">{{ "%.4f"|format(vest_event.shares_received) }}</span>
-                </div>
-                <div class="info-item">
-                    <label>Shares Sold:</label>
-                    <span>{{ "%.4f"|format(total_sold) }}</span>
-                </div>
-                {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
-                <div class="info-item">
-                    <label>Shares Exercised:</label>
-                    <span>{{ "%.4f"|format(total_exercised) }}</span>
-                </div>
-                {% endif %}
-                <div class="info-item">
-                    <label>Shares Remaining:</label>
-                    <span class="highlight">{{ "%.4f"|format(remaining_shares) }}</span>
-                </div>
-            </div>
+            <h2 class="collapsible-header" onclick="toggleSection('vestDetails')">
+                📊 Vest Details
+                <span class="expand-icon" id="vestDetailsIcon">▼</span>
+            </h2>
             
-            <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-                <button class="btn btn-primary" onclick="openSaleModal()">📤 Record Sale</button>
-                {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
-                <button class="btn btn-primary" onclick="openExerciseModal()">🏋️ Record Exercise</button>
-                {% endif %}
+            <div id="vestDetails" class="collapsible-content" style="display: none;">
+                <!-- Tax at Vest Info -->
+                <div class="subsection-wrapper">
+                    <h3 style="margin-top: 0;">💰 Tax at Vest</h3>
+                    
+                    <!-- Estimated Tax at Vest -->
+                    {% if tax_breakdown and tax_breakdown.has_breakdown %}
+                    <div class="tax-subsection">
+                        <h4>📊 Estimated Tax (System Calculated)</h4>
+                        {% if not vest_event.has_vested %}
+                        <p style="color: var(--warning); font-style: italic; margin-bottom: 1rem;">
+                            ⏰ This vest hasn't occurred yet - these are projected taxes.
+                        </p>
+                        {% endif %}
+                        
+                        <div class="tax-summary">
+                            <div class="tax-summary-row">
+                                <span>Gross Value:</span>
+                                <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
+                            </div>
+                            <div class="tax-summary-row tax-item">
+                                <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
+                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
+                            </div>
+                            <div class="tax-summary-row tax-item">
+                                <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
+                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
+                            </div>
+                            <div class="tax-summary-row tax-item">
+                                <span>Social Security ({{ "%.2f"|format(tax_breakdown.social_security_rate * 100) }}%):</span>
+                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.social_security_tax) }}</span>
+                            </div>
+                            <div class="tax-summary-row tax-item">
+                                <span>Medicare ({{ "%.2f"|format(tax_breakdown.medicare_rate * 100) }}%):</span>
+                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.medicare_tax) }}</span>
+                            </div>
+                            {% if tax_breakdown.additional_medicare_tax > 0 %}
+                            <div class="tax-summary-row tax-item">
+                                <span>Additional Medicare ({{ "%.2f"|format(tax_breakdown.additional_medicare_rate * 100) }}%):</span>
+                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.additional_medicare_tax) }}</span>
+                            </div>
+                            {% endif %}
+                            <div class="tax-summary-row total-row">
+                                <span><strong>Total Estimated Tax:</strong></span>
+                                <span class="amount"><strong>-${{ "{:,.2f}".format(tax_breakdown.total_tax) }}</strong></span>
+                            </div>
+                            <div class="tax-summary-row">
+                                <span><strong>Estimated Effective Rate:</strong></span>
+                                <span class="amount"><strong>{{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="tax-subsection">
+                        <p style="color: var(--text-secondary); font-style: italic;">
+                            ℹ️ Tax estimates will appear here once you configure your tax settings.
+                        </p>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Actual Tax Paid at Vest - Only show for vested grants -->
+                    {% if vest_event.has_vested %}
+                    <div class="tax-subsection" style="margin-top: 2rem;">
+                        <h4>💳 Actual Tax Paid (Your Entry)</h4>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                            Record how you actually paid taxes when this vest occurred.
+                        </p>
+                        
+                        <form id="taxPaymentForm" onsubmit="updateTaxPayment(event)">
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label for="cashPaid">Cash Paid for Taxes:</label>
+                                    <input type="number" 
+                                           id="cashPaid" 
+                                           name="cash_paid"
+                                           value="{{ '{:.2f}'.format(vest_event.cash_paid) if vest_event.cash_paid else '' }}" 
+                                           step="0.01" 
+                                           min="0" 
+                                           placeholder="$0.00"
+                                           style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+                                </div>
+                                
+                                <div class="info-item">
+                                    <label for="cashCoveredAll">Cash Fully Covered Taxes?</label>
+                                    <select id="cashCoveredAll" 
+                                            name="cash_covered_all"
+                                            onchange="toggleSharesSold()"
+                                            style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+                                        <option value="true" {% if vest_event.cash_covered_all %}selected{% endif %}>Yes</option>
+                                        <option value="false" {% if not vest_event.cash_covered_all %}selected{% endif %}>No</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="info-item">
+                                    <label for="sharesSold">Shares Sold for Taxes:</label>
+                                    <input type="number" 
+                                           id="sharesSold" 
+                                           name="shares_sold"
+                                           value="{{ '{:.0f}'.format(vest_event.shares_sold) if vest_event.shares_sold else '' }}" 
+                                           step="1" 
+                                           min="0" 
+                                           max="{{ vest_event.shares_vested }}"
+                                           placeholder="0"
+                                           {% if vest_event.cash_covered_all %}disabled{% endif %}
+                                           style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+                                    <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_event.shares_vested) }}</small>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 1.5rem;">
+                                <button type="submit" class="btn btn-primary">💾 Save Tax Payment Info</button>
+                            </div>
+                        </form>
+                        
+                        <!-- Summary of Tax Paid -->
+                        {% if vest_event.cash_paid > 0 or vest_event.shares_sold > 0 %}
+                        <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+                            <h4 style="margin-bottom: 0.5rem;">Tax Payment Summary:</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label>Cash Paid:</label>
+                                    <span>${{ "{:,.2f}".format(vest_event.cash_paid) }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Shares Sold:</label>
+                                    <span>{{ "%.4f"|format(vest_event.shares_sold) }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Total Tax Withheld:</label>
+                                    <span class="highlight">${{ "{:,.2f}".format(vest_event.tax_withheld) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </section>
+        {% endif %}
 
-        <!-- Stock Sales History -->
-        {% if sales %}
-        <section class="detail-section">
-            <h2>💰 Stock Sales & Tax at Sale</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                Shares sold from this vest. Each sale shows estimated capital gains tax and actual tax paid.
-            </p>
+        <!-- Sale Details Section - Collapsible -->
+        <section class="detail-section {{ 'disabled-section' if not vest_event.has_vested else '' }}">
+            <h2 class="collapsible-header {{ 'disabled' if not vest_event.has_vested else '' }}" onclick="{% if vest_event.has_vested %}toggleSection('saleDetails'){% endif %}">
+                💰 Sale Details
+                {% if not vest_event.has_vested %}
+                <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal;">(Available after vest date)</span>
+                {% endif %}
+                <span class="expand-icon" id="saleDetailsIcon">▼</span>
+            </h2>
+            
+            {% if vest_event.has_vested %}
+            <div id="saleDetails" class="collapsible-content" style="display: none;">
+                <!-- Share Activity -->
+                <div style="margin-bottom: 2rem;">
+                    <h3>📦 Share Activity</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>Shares Received:</label>
+                            <span class="highlight">{{ "%.4f"|format(vest_event.shares_received) }}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Shares Sold:</label>
+                            <span>{{ "%.4f"|format(total_sold) }}</span>
+                        </div>
+                        {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
+                        <div class="info-item">
+                            <label>Shares Exercised:</label>
+                            <span>{{ "%.4f"|format(total_exercised) }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="info-item">
+                            <label>Shares Remaining:</label>
+                            <span class="highlight">{{ "%.4f"|format(remaining_shares) }}</span>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                        <button class="btn btn-primary" onclick="openSaleModal()">📤 Record Sale</button>
+                        {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
+                        <button class="btn btn-primary" onclick="openExerciseModal()">🏋️ Record Exercise</button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Stock Sales History -->
+                {% if sales %}
+                <div style="margin-top: 2rem;">
+                    <h3>💰 Stock Sales & Tax at Sale</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                        Shares sold from this vest. Each sale shows estimated capital gains tax and actual tax paid.
+                    </p>
             
             <div class="table-container">
                 <table class="data-table">
@@ -339,47 +492,49 @@
         </section>
         {% endif %}
 
-        <!-- ISO Exercises History -->
-        {% if exercises and grant.share_type in ['iso_5y', 'iso_6y'] %}
-        <section class="detail-section">
-            <h2>🏋️ ISO Exercises</h2>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Shares</th>
-                            <th>Strike</th>
-                            <th>FMV</th>
-                            <th>Bargain Element</th>
-                            <th>AMT Triggered</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for exercise in exercises %}
-                        <tr>
-                            <td>{{ exercise.exercise_date.strftime('%Y-%m-%d') }}</td>
-                            <td>{{ "%.4f"|format(exercise.shares_exercised) }}</td>
-                            <td>${{ "%.2f"|format(exercise.strike_price) }}</td>
-                            <td>${{ "%.2f"|format(exercise.fmv_at_exercise) }}</td>
-                            <td>${{ "{:,.2f}".format(exercise.total_bargain_element) }}</td>
-                            <td>
-                                <span class="badge {{ 'badge-danger' if exercise.amt_triggered else 'badge-success' }}">
-                                    {{ 'Yes' if exercise.amt_triggered else 'No' }}
-                                </span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-danger" onclick="deleteExercise({{ exercise.id }})">Delete</button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <!-- ISO Exercises History -->
+            {% if exercises and grant.share_type in ['iso_5y', 'iso_6y'] %}
+            <div style="margin-top: 2rem;">
+                <h3>🏋️ ISO Exercises</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Shares</th>
+                                <th>Strike</th>
+                                <th>FMV</th>
+                                <th>Bargain Element</th>
+                                <th>AMT Triggered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for exercise in exercises %}
+                            <tr>
+                                <td>{{ exercise.exercise_date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ "%.4f"|format(exercise.shares_exercised) }}</td>
+                                <td>${{ "%.2f"|format(exercise.strike_price) }}</td>
+                                <td>${{ "%.2f"|format(exercise.fmv_at_exercise) }}</td>
+                                <td>${{ "{:,.2f}".format(exercise.total_bargain_element) }}</td>
+                                <td>
+                                    <span class="badge {{ 'badge-danger' if exercise.amt_triggered else 'badge-success' }}">
+                                        {{ 'Yes' if exercise.amt_triggered else 'No' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteExercise({{ exercise.id }})">Delete</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </section>
+            {% endif %}
+        </div>
         {% endif %}
-        {% endif %}
+    </section>
 
         <!-- Notes Section -->
         <section class="detail-section notes-section">
