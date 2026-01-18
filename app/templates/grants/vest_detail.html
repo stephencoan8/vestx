@@ -134,50 +134,60 @@
         </section>
         {% endif %}
 
-        <!-- Tax Breakdown -->
+        <!-- Tax Breakdown (Estimates - Collapsible) -->
         {% if tax_breakdown and tax_breakdown.has_breakdown %}
         <section class="detail-section">
-            <h2>💰 Comprehensive Tax Breakdown</h2>
+            <h2 class="collapsible-header" onclick="toggleSection('taxEstimates')">
+                💰 Tax Estimates (Click to Expand)
+                <span class="expand-icon" id="taxEstimatesIcon">▼</span>
+            </h2>
             
-            <div class="tax-summary">
-                <div class="tax-summary-row">
-                    <span>Gross Value:</span>
-                    <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
+            <div id="taxEstimates" class="collapsible-content" style="display: none;">
+                <div class="estimate-note">
+                    <strong>ℹ️ Note:</strong> These are estimated taxes based on your tax profile. Actual taxes may differ.
                 </div>
-                <div class="tax-summary-row tax-item">
-                    <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
-                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
+                
+                <div class="tax-summary">
+                    <div class="tax-summary-row">
+                        <span>Gross Value:</span>
+                        <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
+                    </div>
+                    <div class="tax-summary-row tax-item">
+                        <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
+                        <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
+                    </div>
+                    <div class="tax-summary-row tax-item">
+                        <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
+                        <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
+                    </div>
+                    <div class="tax-summary-row tax-item">
+                        <span>Social Security ({{ "%.2f"|format(tax_breakdown.social_security_rate * 100) }}%):</span>
+                        <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.social_security_tax) }}</span>
+                    </div>
+                    <div class="tax-summary-row tax-item">
+                        <span>Medicare ({{ "%.2f"|format(tax_breakdown.medicare_rate * 100) }}%):</span>
+                        <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.medicare_tax) }}</span>
+                    </div>
+                    {% if tax_breakdown.additional_medicare_tax > 0 %}
+                    <div class="tax-summary-row tax-item">
+                        <span>Additional Medicare ({{ "%.2f"|format(tax_breakdown.additional_medicare_rate * 100) }}%):</span>
+                        <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.additional_medicare_tax) }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="tax-summary-row total-row">
+                        <span><strong>Total Estimated Tax:</strong></span>
+                        <span class="amount"><strong>-${{ "{:,.2f}".format(tax_breakdown.total_tax) }}</strong></span>
+                    </div>
+                    <div class="tax-summary-row net-row">
+                        <span><strong>Estimated Net Amount:</strong></span>
+                        <span class="amount"><strong>${{ "{:,.2f}".format(tax_breakdown.net_amount) }}</strong></span>
+                    </div>
                 </div>
-                <div class="tax-summary-row tax-item">
-                    <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
-                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
-                </div>
-                <div class="tax-summary-row tax-item">
-                    <span>Social Security ({{ "%.2f"|format(tax_breakdown.social_security_rate * 100) }}%):</span>
-                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.social_security_tax) }}</span>
-                </div>
-                <div class="tax-summary-row tax-item">
-                    <span>Medicare ({{ "%.2f"|format(tax_breakdown.medicare_rate * 100) }}%):</span>
-                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.medicare_tax) }}</span>
-                </div>
-                {% if tax_breakdown.additional_medicare_tax > 0 %}
-                <div class="tax-summary-row tax-item">
-                    <span>Additional Medicare ({{ "%.2f"|format(tax_breakdown.additional_medicare_rate * 100) }}%):</span>
-                    <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.additional_medicare_tax) }}</span>
-                </div>
-                {% endif %}
-                <div class="tax-summary-row total-row">
-                    <span><strong>Total Tax:</strong></span>
-                    <span class="amount"><strong>-${{ "{:,.2f}".format(tax_breakdown.total_tax) }}</strong></span>
-                </div>
-                <div class="tax-summary-row net-row">
-                    <span><strong>Net Amount:</strong></span>
-                    <span class="amount"><strong>${{ "{:,.2f}".format(tax_breakdown.net_amount) }}</strong></span>
+
+                <div class="effective-rate">
+                    <strong>Estimated Effective Tax Rate:</strong> {{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%
                 </div>
             </div>
-
-            <div class="effective-rate">
-                <strong>Effective Tax Rate:</strong> {{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%
             </div>
         </section>
         {% endif %}
@@ -250,6 +260,7 @@
                             <th>Proceeds</th>
                             <th>Cost Basis</th>
                             <th>Gain/Loss</th>
+                            <th>Actual Tax Paid</th>
                             <th>Type</th>
                             <th>Actions</th>
                         </tr>
@@ -264,6 +275,15 @@
                             <td>${{ "{:,.2f}".format(sale.total_cost_basis) }}</td>
                             <td style="color: {{ 'green' if sale.capital_gain > 0 else 'red' }}">
                                 ${{ "{:,.2f}".format(sale.capital_gain) }}
+                            </td>
+                            <td>
+                                {% if sale.actual_total_tax %}
+                                    <span style="color: var(--accent);">${{ "{:,.2f}".format(sale.actual_total_tax) }}</span>
+                                {% elif sale.actual_federal_tax or sale.actual_state_tax %}
+                                    <span style="color: var(--accent);">${{ "{:,.2f}".format((sale.actual_federal_tax or 0) + (sale.actual_state_tax or 0)) }}</span>
+                                {% else %}
+                                    <span style="color: var(--text-secondary);">Not entered</span>
+                                {% endif %}
                             </td>
                             <td>
                                 <span class="badge {{ 'badge-success' if sale.is_long_term else 'badge-warning' }}">
@@ -583,6 +603,30 @@
                 <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
             </div>
             
+            <div class="collapsible-section">
+                <h3 class="section-toggle" onclick="toggleModalSection('actualTaxes')">
+                    💰 Actual Taxes Paid (Optional - Add After Filing)
+                    <span class="expand-icon" id="actualTaxesIcon">▼</span>
+                </h3>
+                <div id="actualTaxes" class="collapsible-content" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="actual_federal_tax">Federal Tax Paid</label>
+                            <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="actual_state_tax">State Tax Paid</label>
+                            <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="actual_total_tax">Total Tax Paid</label>
+                        <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00">
+                        <small>Or leave blank to auto-calculate from federal + state</small>
+                    </div>
+                </div>
+            </div>
+            
             <div class="form-group">
                 <label for="sale_notes">Notes</label>
                 <textarea id="sale_notes" rows="2"></textarea>
@@ -660,6 +704,62 @@
 {% endif %}
 
 <style>
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    transition: color 0.2s ease;
+}
+
+.collapsible-header:hover {
+    color: var(--accent);
+}
+
+.expand-icon {
+    font-size: 0.8rem;
+    transition: transform 0.2s ease;
+}
+
+.collapsible-content {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.estimate-note {
+    background: rgba(59, 130, 246, 0.1);
+    border-left: 4px solid #3b82f6;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.collapsible-section {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: rgba(74, 85, 104, 0.3);
+    border-radius: 8px;
+}
+
+.section-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0;
+    font-size: 1rem;
+    color: var(--accent);
+    transition: opacity 0.2s ease;
+}
+
+.section-toggle:hover {
+    opacity: 0.8;
+}
+
 .info-box {
     background: #4a5568;
     padding: 1rem;
@@ -757,6 +857,32 @@ async function updateTaxPayment(e) {
     }
 }
 
+function toggleSection(sectionId) {
+    const content = document.getElementById(sectionId);
+    const icon = document.getElementById(sectionId + 'Icon');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '▼';
+    }
+}
+
+function toggleModalSection(sectionId) {
+    const content = document.getElementById(sectionId);
+    const icon = document.getElementById(sectionId + 'Icon');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '▼';
+    }
+}
+
 function openSaleModal() {
     document.getElementById('saleModal').style.display = 'block';
 }
@@ -786,6 +912,10 @@ if (amtCheckbox) {
 async function submitSale(e) {
     e.preventDefault();
     
+    const actualFederal = document.getElementById('actual_federal_tax').value;
+    const actualState = document.getElementById('actual_state_tax').value;
+    const actualTotal = document.getElementById('actual_total_tax').value;
+    
     const data = {
         vest_event_id: VEST_ID,
         sale_date: document.getElementById('sale_date').value,
@@ -793,6 +923,9 @@ async function submitSale(e) {
         sale_price: document.getElementById('sale_price').value,
         cost_basis_per_share: {{ vest_event.share_price_at_vest }},
         commission_fees: 0,
+        actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
+        actual_state_tax: actualState ? parseFloat(actualState) : null,
+        actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
         notes: document.getElementById('sale_notes').value
     };
     

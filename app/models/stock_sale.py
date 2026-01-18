@@ -30,6 +30,11 @@ class StockSale(db.Model):
     capital_gain = db.Column(db.Float, nullable=False)  # proceeds - cost basis
     is_long_term = db.Column(db.Boolean, nullable=False)  # Held > 1 year
     
+    # Actual taxes paid (user-entered after filing)
+    actual_federal_tax = db.Column(db.Float, nullable=True)  # Federal tax actually paid on this sale
+    actual_state_tax = db.Column(db.Float, nullable=True)    # State tax actually paid on this sale
+    actual_total_tax = db.Column(db.Float, nullable=True)    # Total tax actually paid (convenience field)
+    
     # ISO-specific tracking
     is_qualifying_disposition = db.Column(db.Boolean, nullable=True)  # For ISOs: met 2+1 year rule?
     disqualifying_ordinary_income = db.Column(db.Float, nullable=True)  # Bargain element if disqualifying
