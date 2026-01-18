@@ -225,6 +225,11 @@
         <!-- Stock Sales & Share Activity - Only for vested grants -->
         {% if vest_event.has_vested %}
         
+        <!-- DEBUG: This section should only show for vested -->
+        <div style="background: lime; color: black; padding: 0.5rem; margin: 0.5rem 0;">
+            ✓ VESTED - Share Activity section is showing because has_vested=True
+        </div>
+        
         <!-- Shares Summary Section -->
         <section class="detail-section">
             <h2>📦 Share Activity</h2>
