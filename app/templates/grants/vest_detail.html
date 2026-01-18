@@ -145,6 +145,83 @@
                         </p>
                     </div>
                     {% endif %}
+                    
+                    <!-- Actual Tax Paid at Vest - Only show for vested grants -->
+                    {% if vest_event.has_vested %}
+                    <div class="tax-subsection" style="margin-top: 2rem;">
+                        <h4>💳 Actual Tax Paid (Your Entry)</h4>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                            Record how you actually paid taxes when this vest occurred.
+                        </p>
+                        
+                        <form id="taxPaymentForm" onsubmit="updateTaxPayment(event)">
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label for="cashPaid">Cash Paid for Taxes:</label>
+                                    <input type="number" 
+                                           id="cashPaid" 
+                                           name="cash_paid"
+                                           value="{{ '{:.2f}'.format(vest_event.cash_paid) if vest_event.cash_paid else '' }}" 
+                                           step="0.01" 
+                                           min="0" 
+                                           placeholder="$0.00"
+                                           style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+                                </div>
+                                
+                                <div class="info-item">
+                                    <label for="cashCoveredAll">Cash Fully Covered Taxes?</label>
+                                    <select id="cashCoveredAll" 
+                                            name="cash_covered_all"
+                                            onchange="toggleSharesSold()"
+                                            style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+                                        <option value="true" {% if vest_event.cash_covered_all %}selected{% endif %}>Yes</option>
+                                        <option value="false" {% if not vest_event.cash_covered_all %}selected{% endif %}>No</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="info-item">
+                                    <label for="sharesSold">Shares Sold for Taxes:</label>
+                                    <input type="number" 
+                                           id="sharesSold" 
+                                           name="shares_sold"
+                                           value="{{ '{:.0f}'.format(vest_event.shares_sold) if vest_event.shares_sold else '' }}" 
+                                           step="1" 
+                                           min="0" 
+                                           max="{{ vest_event.shares_vested }}"
+                                           placeholder="0"
+                                           {% if vest_event.cash_covered_all %}disabled{% endif %}
+                                           style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+                                    <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_event.shares_vested) }}</small>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 1.5rem;">
+                                <button type="submit" class="btn btn-primary">💾 Save Tax Payment Info</button>
+                            </div>
+                        </form>
+                        
+                        <!-- Summary of Tax Paid -->
+                        {% if vest_event.cash_paid > 0 or vest_event.shares_sold > 0 %}
+                        <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+                            <h4 style="margin-bottom: 0.5rem;">Tax Payment Summary:</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label>Cash Paid:</label>
+                                    <span>${{ "{:,.2f}".format(vest_event.cash_paid) }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Shares Sold:</label>
+                                    <span>{{ "%.4f"|format(vest_event.shares_sold) }}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Total Tax Withheld:</label>
+                                    <span class="highlight">${{ "{:,.2f}".format(vest_event.tax_withheld) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </section>
@@ -162,81 +239,6 @@
             
             {% if vest_event.has_vested %}
             <div id="saleDetails" class="collapsible-content" style="display: none;">
-                <!-- Actual Tax Paid at Vest -->
-                <div style="margin-bottom: 2rem;">
-                    <h3>💳 Actual Tax Paid at Vest</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-                        Record how you actually paid taxes when this vest occurred.
-                    </p>
-                    
-                    <form id="taxPaymentForm" onsubmit="updateTaxPayment(event)">
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <label for="cashPaid">Cash Paid for Taxes:</label>
-                                <input type="number" 
-                                       id="cashPaid" 
-                                       name="cash_paid"
-                                       value="{{ '{:.2f}'.format(vest_event.cash_paid) if vest_event.cash_paid else '' }}" 
-                                       step="0.01" 
-                                       min="0" 
-                                       placeholder="$0.00"
-                                       style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                            </div>
-                            
-                            <div class="info-item">
-                                <label for="cashCoveredAll">Cash Fully Covered Taxes?</label>
-                                <select id="cashCoveredAll" 
-                                        name="cash_covered_all"
-                                        onchange="toggleSharesSold()"
-                                        style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                                    <option value="true" {% if vest_event.cash_covered_all %}selected{% endif %}>Yes</option>
-                                    <option value="false" {% if not vest_event.cash_covered_all %}selected{% endif %}>No</option>
-                                </select>
-                            </div>
-                            
-                            <div class="info-item">
-                                <label for="sharesSold">Shares Sold for Taxes:</label>
-                                <input type="number" 
-                                       id="sharesSold" 
-                                       name="shares_sold"
-                                       value="{{ '{:.0f}'.format(vest_event.shares_sold) if vest_event.shares_sold else '' }}" 
-                                       step="1" 
-                                       min="0" 
-                                       max="{{ vest_event.shares_vested }}"
-                                       placeholder="0"
-                                       {% if vest_event.cash_covered_all %}disabled{% endif %}
-                                       style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                                <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_event.shares_vested) }}</small>
-                            </div>
-                        </div>
-                        
-                        <div style="margin-top: 1.5rem;">
-                            <button type="submit" class="btn btn-primary">💾 Save Tax Payment Info</button>
-                        </div>
-                    </form>
-                    
-                    <!-- Summary of Tax Paid -->
-                    {% if vest_event.cash_paid > 0 or vest_event.shares_sold > 0 %}
-                    <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
-                        <h4 style="margin-bottom: 0.5rem;">Tax Payment Summary:</h4>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <label>Cash Paid:</label>
-                                <span>${{ "{:,.2f}".format(vest_event.cash_paid) }}</span>
-                            </div>
-                            <div class="info-item">
-                                <label>Shares Sold:</label>
-                                <span>{{ "%.4f"|format(vest_event.shares_sold) }}</span>
-                            </div>
-                            <div class="info-item">
-                                <label>Total Tax Withheld:</label>
-                                <span class="highlight">${{ "{:,.2f}".format(vest_event.tax_withheld) }}</span>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-
                 <!-- Share Activity -->
                 <div style="margin-bottom: 2rem;">
                     <h3>📦 Share Activity</h3>
