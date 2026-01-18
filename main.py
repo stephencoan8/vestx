@@ -1,5 +1,6 @@
 """
 Main entry point for the VestX Stock Compensation application.
+Updated: 2026-01-18
 """
 
 from app import create_app
