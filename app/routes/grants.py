@@ -705,8 +705,7 @@ def finance_deep_dive():
 def vest_detail(vest_id):
     """View and edit details for a specific vest event - USES CENTRALIZED DATA METHOD."""
     from app.models.vest_event import VestEvent
-    from app.models.stock_sale import StockSale
-    from app.models.iso_exercise import ISOExercise
+    from app.models.stock_sale import StockSale, ISOExercise
     from app.models.tax_rate import UserTaxProfile
     from app.models.annual_income import AnnualIncome
     
