@@ -163,6 +163,14 @@ class User(UserMixin, db.Model):
         db.session.add(self)
         db.session.commit()
     
+    def get_federal_tax_rate(self) -> float:
+        """Get user's federal tax rate (defaults to 22% if not set)."""
+        return self.federal_tax_rate if self.federal_tax_rate is not None else 0.22
+    
+    def get_state_tax_rate(self) -> float:
+        """Get user's state tax rate (defaults to 0% if not set)."""
+        return self.state_tax_rate if self.state_tax_rate is not None else 0.0
+    
     def get_tax_rates(self) -> dict:
         """
         Get user's tax rate preferences.
@@ -171,10 +179,10 @@ class User(UserMixin, db.Model):
         fica_rate = 0.0765 if self.include_fica else 0.0  # 6.2% SS + 1.45% Medicare
         
         return {
-            'federal': self.federal_tax_rate or 0.22,
-            'state': self.state_tax_rate or 0.0,
+            'federal': self.get_federal_tax_rate(),
+            'state': self.get_state_tax_rate(),
             'fica': fica_rate,
-            'total': (self.federal_tax_rate or 0.22) + (self.state_tax_rate or 0.0) + fica_rate
+            'total': self.get_federal_tax_rate() + self.get_state_tax_rate() + fica_rate
         }
     
     def get_total_tax_rate(self) -> float:
