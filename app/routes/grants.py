@@ -637,11 +637,9 @@ def finance_deep_dive():
 @grants_bp.route('/vest/<int:vest_id>', methods=['GET', 'POST'])
 @login_required
 def vest_detail(vest_id):
-    """View and edit details for a specific vest event - USES CENTRALIZED DATA METHOD."""
+    """View and edit details for a specific vest event."""
     from app.models.vest_event import VestEvent
     from app.models.stock_sale import StockSale, ISOExercise
-    from app.models.tax_rate import UserTaxProfile
-    from app.models.annual_income import AnnualIncome
     
     try:
         logger.info(f"=== VEST_DETAIL START: vest_id={vest_id}, user_id={current_user.id} ===")
@@ -676,14 +674,6 @@ def vest_detail(vest_id):
             logger.error(f"Error getting user key: {e}", exc_info=True)
             user_key = b''  # Empty bytes as fallback
         
-        # Get tax data
-        logger.info("Getting tax profile and annual incomes")
-        tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
-        logger.info(f"Tax profile: {tax_profile.id if tax_profile else 'None'}")
-        annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
-        annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
-        logger.info(f"Annual incomes: {len(annual_incomes_list)} entries")
-        
         # Get sales and exercises
         logger.info("Getting sales and exercises")
         sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
@@ -710,8 +700,6 @@ def vest_detail(vest_id):
             vest_data = vest_event.get_complete_data(
                 user_key=user_key,
                 current_price=None,  # Will fetch latest
-                tax_profile=tax_profile,
-                annual_incomes=annual_incomes_dict,
                 sales_data=sales,
                 exercises_data=exercises
             )

@@ -88,22 +88,20 @@ class StockSale(db.Model):
         """
         Calculate estimated capital gains tax using professional-grade methodology.
         
-        Uses total annual income to determine bracket (not incremental stacking).
+        Uses user's simplified tax preferences (federal rate, state rate).
         Includes federal, NIIT, and state taxes.
         
         Returns:
             dict with estimated tax breakdown
         """
-        from app.utils.capital_gains_calculator import CapitalGainsCalculator
-        from app.models.tax_rate import UserTaxProfile
-        from app.models.annual_income import AnnualIncome
+        from app.models.user import User
         
-        # Get user's tax profile
-        tax_profile = UserTaxProfile.query.filter_by(user_id=self.user_id).first()
-        if not tax_profile:
-            # Fallback to simplified estimation if no profile
+        # Get user and their tax preferences
+        user = User.query.get(self.user_id)
+        if not user:
+            # Fallback to simplified estimation if no user
             if self.is_long_term:
-                est_rate = 0.15  # Assume 15% bracket
+                est_rate = 0.15  # Assume 15% LTCG
             else:
                 est_rate = 0.22  # Assume 22% marginal rate
             
@@ -115,48 +113,49 @@ class StockSale(db.Model):
                 'method': 'simplified'
             }
         
-        # Get total annual income for the sale year
-        sale_year = self.sale_date.year
-        year_income = AnnualIncome.query.filter_by(
-            user_id=self.user_id,
-            year=sale_year
-        ).first()
+        # Use simplified capital gains rates based on holding period
+        if self.is_long_term:
+            # Long-term capital gains: typically 0%, 15%, or 20%
+            # Use 15% as reasonable default for most users
+            federal_rate = 0.15
+        else:
+            # Short-term capital gains: taxed as ordinary income
+            # Use user's federal tax rate
+            federal_rate = user.get_federal_tax_rate()
         
-        total_annual_income = year_income.annual_income if year_income else tax_profile.annual_income
-        
-        # Initialize calculator with TOTAL annual income
-        calculator = CapitalGainsCalculator(
-            total_annual_income=total_annual_income,
-            filing_status=tax_profile.filing_status or 'single',
-            state=tax_profile.state,
-            tax_year=sale_year
-        )
+        state_rate = user.get_state_tax_rate()
         
         # Calculate taxes
-        if not self.vest_event:
-            # No vest event, can't determine holding period accurately
-            purchase_date = self.sale_date
-        else:
-            purchase_date = self.vest_event.vest_date
+        estimated_federal = self.capital_gain * federal_rate if self.capital_gain > 0 else 0
+        estimated_state = self.capital_gain * state_rate if self.capital_gain > 0 else 0
         
-        tax_breakdown = calculator.calculate_sale_taxes(
-            capital_gain=self.capital_gain,
-            purchase_date=purchase_date,
-            sale_date=self.sale_date
-        )
+        # NIIT (Net Investment Income Tax): 3.8% on investment income for high earners
+        # Simplified: apply if federal rate is high (proxy for high earner)
+        if user.get_federal_tax_rate() >= 0.32:  # Likely high earner
+            estimated_niit = self.capital_gain * 0.038 if self.capital_gain > 0 else 0
+        else:
+            estimated_niit = 0.0
+        
+        estimated_total = estimated_federal + estimated_niit + estimated_state
+        
+        # Calculate holding period
+        if self.vest_event:
+            holding_days = (self.sale_date - self.vest_event.vest_date).days
+        else:
+            holding_days = 0
         
         return {
-            'estimated_federal': tax_breakdown['federal_tax'],
-            'estimated_niit': tax_breakdown['niit_tax'],
-            'estimated_state': tax_breakdown['state_tax'],
-            'estimated_total': tax_breakdown['total_tax'],
-            'federal_rate': tax_breakdown['federal_rate'],
-            'niit_rate': tax_breakdown['niit_rate'],
-            'state_rate': tax_breakdown['state_rate'],
-            'effective_rate': tax_breakdown['effective_rate'],
-            'is_long_term': tax_breakdown['is_long_term'],
-            'holding_days': tax_breakdown['holding_days'],
-            'method': 'professional'
+            'estimated_federal': estimated_federal,
+            'estimated_niit': estimated_niit,
+            'estimated_state': estimated_state,
+            'estimated_total': estimated_total,
+            'federal_rate': federal_rate,
+            'niit_rate': 0.038 if user.get_federal_tax_rate() >= 0.32 else 0.0,
+            'state_rate': state_rate,
+            'effective_rate': estimated_total / self.capital_gain if self.capital_gain > 0 else 0,
+            'is_long_term': self.is_long_term,
+            'holding_days': holding_days,
+            'method': 'simplified'
         }
 
 

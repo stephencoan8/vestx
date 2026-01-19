@@ -164,29 +164,17 @@ class VestEvent(db.Model):
     def get_comprehensive_tax_breakdown(self, _tax_profile=None, _annual_incomes=None, _cached_rates=None, _year_income=None) -> dict:
         """
         Get detailed tax breakdown including FICA, Medicare, Social Security.
-        Uses user's tax profile for accurate calculations.
-        Uses stored tax_year if available, otherwise defaults to vest year.
+        Uses user's simplified tax preferences (federal rate, state rate, FICA toggle).
         
-        Args:
-            _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
-            _annual_incomes: INTERNAL - dict of {year: income} to avoid N+1 queries
-            _cached_rates: INTERNAL - pre-calculated tax rates dict to avoid TaxBracket queries
-            _year_income: INTERNAL - total income for this vest's year (for effective SS rate calculation)
+        Legacy parameters ignored (kept for backward compatibility):
+            _tax_profile, _annual_incomes, _cached_rates, _year_income
         """
         try:
-            from app.models.tax_rate import UserTaxProfile
-            from app.models.annual_income import AnnualIncome
-            from app.utils.tax_calculator import TaxCalculator
-            from datetime import date
+            from app.models.user import User
             
-            # Get user's tax profile (use cached if available)
-            if _tax_profile is None:
-                tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
-            else:
-                tax_profile = _tax_profile
-                
-            if not tax_profile:
-                # Return basic breakdown if no profile
+            # Get user and their tax preferences
+            user = User.query.get(self.grant.user_id)
+            if not user:
                 return {
                     'has_breakdown': False,
                     'gross_value': self.value_at_vest,
@@ -194,87 +182,64 @@ class VestEvent(db.Model):
                     'net_value': self.net_value
                 }
             
-            # Determine tax year: use stored tax_year, or default to vest year
-            tax_year = self.tax_year or self.vest_date.year
+            # Get user's selected tax rates
+            federal_rate = user.get_federal_tax_rate()
+            state_rate = user.get_state_tax_rate()
+            include_fica = user.include_fica if user.include_fica is not None else True
             
-            # Get income for the specific year (use cached if available)
-            if _annual_incomes is not None:
-                annual_income = _annual_incomes.get(tax_year, tax_profile.annual_income)
-            else:
-                year_income = AnnualIncome.query.filter_by(
-                    user_id=self.grant.user_id,
-                    year=tax_year
-                ).first()
-                annual_income = year_income.annual_income if year_income else tax_profile.annual_income
+            # Calculate tax components
+            gross_value = self.value_at_vest
+            federal_tax = gross_value * federal_rate
+            state_tax = gross_value * state_rate
             
-            if not annual_income:
-                # Return basic breakdown if no income data
-                return {
-                    'has_breakdown': False,
-                    'gross_value': self.value_at_vest,
-                    'total_tax': self.tax_withheld,
-                    'net_value': self.net_value,
-                    'missing_year': tax_year  # Flag that we're missing this year's income
-                }
-            
-            # Get federal and state rates for the specific tax year using year-specific income
-            # Use cached rates if provided (to avoid TaxBracket queries)
-            if _cached_rates:
-                rates = _cached_rates
-            else:
-                # Create temporary profile with year-specific income
-                temp_profile = UserTaxProfile(
-                    user_id=tax_profile.user_id,
-                    state=tax_profile.state,
-                    filing_status=tax_profile.filing_status or 'single',
-                    annual_income=annual_income,
-                    use_manual_rates=False
-                )
-                rates = temp_profile.get_tax_rates(tax_year=tax_year)
-            
-            # Ensure filing_status has a default value
-            filing_status = tax_profile.filing_status or 'single'
-            
-            # Initialize tax calculator with YEAR-SPECIFIC income (not current year)
-            calculator = TaxCalculator(
-                annual_income=annual_income,  # Use the year-specific income from above
-                filing_status=filing_status,
-                state=tax_profile.state
-            )
-            
-            # For past years, use effective rates based on total annual income
-            # For current/future years, use marginal rates with progressive calculation
-            if tax_year < date.today().year:
-                # Past year: calculate effective rates for ALL taxes based on total income
-                year_total_income = _year_income if _year_income is not None else annual_income
+            # FICA components (if enabled)
+            if include_fica:
+                # Social Security: 6.2% up to wage base ($168,600 for 2024)
+                ss_wage_base = 168600
+                # Simplified: assume this vest pushes user over the cap if gross > wage base
+                if gross_value < ss_wage_base:
+                    social_security_tax = gross_value * 0.062
+                else:
+                    social_security_tax = ss_wage_base * 0.062
                 
-                # Get effective rates from tax profile
-                effective_rates = tax_profile.get_effective_tax_rates(year_total_income, tax_year)
+                # Medicare: 1.45% on all income
+                medicare_tax = gross_value * 0.0145
                 
-                # Set effective rates in calculator
-                calculator.set_effective_rates(
-                    effective_federal=effective_rates['federal'],
-                    effective_state=effective_rates['state'],
-                    effective_medicare=effective_rates['medicare'],
-                    effective_ss=effective_rates['social_security']
-                )
+                # Additional Medicare: 0.9% on income over threshold
+                # $200k single, $250k married - simplified to $200k
+                additional_medicare_threshold = 200000
+                if gross_value > additional_medicare_threshold:
+                    additional_medicare_tax = (gross_value - additional_medicare_threshold) * 0.009
+                else:
+                    additional_medicare_tax = 0
             else:
-                # Current/future year: use actual YTD wages from profile for progressive SS calc
-                # If YTD wages not configured, use annual_income as proxy (assumes even distribution)
-                # This prevents double-taxation (high federal + full SS) on high earners
-                ytd_wages = tax_profile.ytd_wages if tax_profile.ytd_wages else annual_income
-                calculator.set_ytd_wages(ytd_wages)
+                social_security_tax = 0
+                medicare_tax = 0
+                additional_medicare_tax = 0
             
-            # Calculate comprehensive taxes
-            breakdown = calculator.calculate_vest_taxes(
-                vest_value=self.value_at_vest,
-                federal_rate=rates['federal'],
-                state_rate=rates['state']
-            )
+            # Total FICA
+            fica_total = social_security_tax + medicare_tax + additional_medicare_tax
             
-            breakdown['has_breakdown'] = True
-            breakdown['tax_year'] = tax_year
-            return breakdown
+            # Total tax
+            total_tax = federal_tax + state_tax + fica_total
+            net_value = gross_value - total_tax
+            
+            return {
+                'has_breakdown': True,
+                'gross_value': gross_value,
+                'federal_tax': federal_tax,
+                'state_tax': state_tax,
+                'social_security_tax': social_security_tax,
+                'medicare_tax': medicare_tax,
+                'additional_medicare_tax': additional_medicare_tax,
+                'fica_total': fica_total,
+                'total_tax': total_tax,
+                'net_value': net_value,
+                'federal_rate': federal_rate,
+                'state_rate': state_rate,
+                'include_fica': include_fica,
+                'tax_year': self.tax_year or self.vest_date.year
+            }
             
         except Exception as e:
             # Log the error but don't crash
@@ -391,12 +356,10 @@ class VestEvent(db.Model):
                 - state_tax: State capital gains tax
                 - federal_rate: Federal rate used
                 - state_rate: State rate used
-                - method: 'professional' or 'simplified'
+                - method: 'simplified' (always)
         """
         from app.models.grant import ShareType
-        from app.models.tax_rate import UserTaxProfile
-        from app.models.annual_income import AnnualIncome
-        from app.utils.capital_gains_calculator import CapitalGainsCalculator
+        from app.models.user import User
         from datetime import date
         
         # Get current stock price if not provided
@@ -456,15 +419,13 @@ class VestEvent(db.Model):
         else:
             holding_period = "—"
         
-        # Calculate estimated tax
-        # Get tax profile (use cached if available)
-        if _tax_profile is None:
-            tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
-        else:
-            tax_profile = _tax_profile
+        # Calculate estimated tax using simplified rates
+        # Get user and their tax preferences
+        from app.models.user import User
+        user = User.query.get(self.grant.user_id)
         
-        if not tax_profile or unrealized_gain <= 0:
-            # No tax profile or no gain = no tax
+        if not user or unrealized_gain <= 0:
+            # No user or no gain = no tax
             return {
                 'shares_held': shares_held,
                 'cost_basis_per_share': cost_basis_per_share,
@@ -483,105 +444,49 @@ class VestEvent(db.Model):
                 'method': 'none'
             }
         
-        # Get total annual income for current year (use cached if available)
-        if _annual_incomes is not None:
-            total_annual_income = _annual_incomes.get(today.year, tax_profile.annual_income)
+        # Use simplified capital gains rates based on holding period
+        if is_long_term:
+            # Long-term capital gains: typically 0%, 15%, or 20%
+            # Use 15% as reasonable default for most users
+            federal_rate = 0.15
         else:
-            year_income = AnnualIncome.query.filter_by(
-                user_id=self.grant.user_id,
-                year=today.year
-            ).first()
-            total_annual_income = year_income.annual_income if year_income else tax_profile.annual_income
+            # Short-term capital gains: taxed as ordinary income
+            # Use user's federal tax rate
+            federal_rate = user.get_federal_tax_rate()
         
-        # Use professional capital gains calculator
-        try:
-            # Get state rate safely before starting calculation
-            state_rate = 0.093  # Default CA rate
-            try:
-                if tax_profile.use_manual_rates and tax_profile.manual_state_rate:
-                    state_rate = tax_profile.manual_state_rate
-                elif tax_profile.state:
-                    # Try to get calculated state rate, but don't fail if it errors
-                    rates = tax_profile.get_tax_rates()
-                    state_rate = rates.get('state', 0.093)
-            except Exception:
-                # If getting tax rates fails, use default
-                state_rate = 0.093
-            
-            calculator = CapitalGainsCalculator(
-                total_annual_income=total_annual_income,
-                filing_status=tax_profile.filing_status or 'single',
-                state=tax_profile.state,
-                tax_year=today.year
-            )
-            
-            # Calculate taxes on the unrealized gain
-            tax_result = calculator.calculate_sale_taxes(
-                capital_gain=unrealized_gain,
-                purchase_date=self.vest_date,
-                sale_date=today,
-                state_rate=state_rate
-            )
-            
-            return {
-                'shares_held': shares_held,
-                'cost_basis_per_share': cost_basis_per_share,
-                'cost_basis': cost_basis,
-                'current_value': current_value,
-                'unrealized_gain': unrealized_gain,
-                'days_held': days_held,
-                'is_long_term': is_long_term,
-                'holding_period': holding_period,
-                'estimated_tax': tax_result.get('total_tax', 0),
-                'federal_tax': tax_result.get('federal_tax', 0),
-                'niit_tax': tax_result.get('niit_tax', 0),
-                'state_tax': tax_result.get('state_tax', 0),
-                'federal_rate': tax_result.get('federal_rate', 0),
-                'state_rate': tax_result.get('state_rate', 0),
-                'method': 'professional'
-            }
-        except Exception as e:
-            # Fallback to simplified calculation
-            import logging
-            logging.getLogger(__name__).error(f"Error in professional sale tax calc: {e}")
-            
-            # Use hardcoded rates to avoid additional DB queries in failed transaction
-            federal_rate = 0.15 if is_long_term else 0.24
-            state_rate = 0.093
-            
-            # Try to get manual rates if available (no DB query needed)
-            try:
-                if tax_profile.use_manual_rates:
-                    if is_long_term and tax_profile.manual_ltcg_rate:
-                        federal_rate = tax_profile.manual_ltcg_rate
-                    elif not is_long_term and tax_profile.manual_federal_rate:
-                        federal_rate = tax_profile.manual_federal_rate
-                    if tax_profile.manual_state_rate:
-                        state_rate = tax_profile.manual_state_rate
-            except Exception:
-                pass  # Use defaults
-            
-            federal_tax = unrealized_gain * federal_rate
-            state_tax = unrealized_gain * state_rate
-            estimated_tax = federal_tax + state_tax
-            
-            return {
-                'shares_held': shares_held,
-                'cost_basis_per_share': cost_basis_per_share,
-                'cost_basis': cost_basis,
-                'current_value': current_value,
-                'unrealized_gain': unrealized_gain,
-                'days_held': days_held,
-                'is_long_term': is_long_term,
-                'holding_period': holding_period,
-                'estimated_tax': estimated_tax,
-                'federal_tax': federal_tax,
-                'niit_tax': 0.0,
-                'state_tax': state_tax,
-                'federal_rate': federal_rate,
-                'state_rate': state_rate,
-                'method': 'simplified'
-            }
+        state_rate = user.get_state_tax_rate()
+        
+        # Calculate taxes
+        federal_tax = unrealized_gain * federal_rate
+        state_tax = unrealized_gain * state_rate
+        
+        # NIIT (Net Investment Income Tax): 3.8% on investment income for high earners
+        # Applies to single filers with MAGI > $200k, married > $250k
+        # Simplified: apply if federal rate is high (proxy for high earner)
+        if user.get_federal_tax_rate() >= 0.32:  # Likely high earner
+            niit_tax = unrealized_gain * 0.038
+        else:
+            niit_tax = 0.0
+        
+        estimated_tax = federal_tax + state_tax + niit_tax
+        
+        return {
+            'shares_held': shares_held,
+            'cost_basis_per_share': cost_basis_per_share,
+            'cost_basis': cost_basis,
+            'current_value': current_value,
+            'unrealized_gain': unrealized_gain,
+            'days_held': days_held,
+            'is_long_term': is_long_term,
+            'holding_period': holding_period,
+            'estimated_tax': estimated_tax,
+            'federal_tax': federal_tax,
+            'niit_tax': niit_tax,
+            'state_tax': state_tax,
+            'federal_rate': federal_rate,
+            'state_rate': state_rate,
+            'method': 'simplified'
+        }
     
     def get_complete_data(self, user_key: bytes, current_price: float = None, 
                          tax_profile=None, annual_incomes=None, 
