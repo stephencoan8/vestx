@@ -30,12 +30,13 @@
                 </ul>
 
                 <h4>Why first-vest timing varies</h4>
-                <p>The app aligns vest events to preset company vest dates (e.g., May 1 & Nov 1). Depending on your grant date:</p>
+                <p>The app calculates the 1-year cliff anniversary, then <strong>snaps to the closest company vest date</strong> (May 15 or Nov 15). Depending on your grant date:</p>
                 <ul>
-                    <li>Fall behind → first vest may occur at ~14 months if grant is after a scheduled date</li>
-                    <li>Get lucky → first vest in ~10 months if grant is just before a scheduled date</li>
+                    <li>Grant on Feb 15 → 1yr anniversary = Feb 15 → closest vest date = <strong>May 15</strong> (~3 months after, total ~15 months)</li>
+                    <li>Grant on Aug 15 → 1yr anniversary = Aug 15 → closest vest date = <strong>Nov 15</strong> (~3 months after, total ~15 months)</li>
+                    <li>Grant on May 20 → 1yr anniversary = May 20 → closest vest date = <strong>May 15</strong> (~3 months before next year, total ~12 months)</li>
                 </ul>
-                <p><em>The percentages remain constant; only calendar dates shift.</em></p>
+                <p><em>The app uses a 3-month look-back/look-ahead window to find the nearest May 15 or Nov 15. Percentages remain constant; only calendar dates shift.</em></p>
 
                 <h4>Math Example (1,000 shares)</h4>
                 <ul>
@@ -69,34 +70,84 @@
 
                     <h5>1. LTI as RSU (5-year)</h5>
                     <ul>
-                        <li><strong>Total Duration:</strong> 5 years</li>
-                        <li><strong>Cliff:</strong> 1.5 years (18 months)</li>
-                        <li><strong>Frequency after cliff:</strong> Biannual (every 6 months)</li>
-                        <li><strong>First vest:</strong> 12.5% (entire 1.5-year allocation)</li>
-                        <li><strong>Subsequent vests:</strong> 12.5% each (8 total events)</li>
+                        <li><strong>Total Duration:</strong> 5 years (60 months)</li>
+                        <li><strong>Vesting Periods:</strong> 10 biannual events (every 6 months)</li>
+                        <li><strong>Cliff:</strong> 1.5 years — theoretical cliff date snapped to closest May 15 or Nov 15</li>
+                        <li><strong>First vest:</strong> 12.5% (1/8 of total, or 1 biannual period worth)</li>
+                        <li><strong>Subsequent vests:</strong> 12.5% each, biannually (May 15 & Nov 15) for remaining 7 events</li>
                     </ul>
-                    <p><strong>Example (1,000 shares):</strong> First vest @ 18mo = 125 shares; then 125 shares every 6 months.</p>
+                    <p><strong>Example (1,000 shares):</strong> First vest @ ~18mo = 125 shares (12.5%); then 125 shares every 6 months on May 15 & Nov 15.</p>
 
                     <h5>2. LTI as ISO (5-year)</h5>
                     <ul>
-                        <li><strong>Total Duration:</strong> 5 years</li>
-                        <li><strong>Cliff/Intro:</strong> 1.5 years wait → first large vest = 12.5% (125 shares on 1,000)</li>
-                        <li><strong>After initial:</strong> Monthly vests for remaining ~4 years</li>
-                        <li><strong>Monthly math:</strong> Remaining 875 shares → ~18.23 shares/month</li>
+                        <li><strong>Total Duration:</strong> 5 years from grant</li>
+                        <li><strong>Vesting Period:</strong> 4 years (48 months) starting 1 year after grant</li>
+                        <li><strong>Cliff/Intro:</strong> Vesting starts 1 year after grant, first vest happens 6 months later (1.5 years total) = 12.5% (6/48 months)</li>
+                        <li><strong>Vest Dates:</strong> Monthly on the 15th (snapped to closest 15th from theoretical date)</li>
+                        <li><strong>After cliff:</strong> Monthly vests for remaining 42 months (each = 1/48 = ~2.08%)</li>
                     </ul>
-                    <p><strong>Example (1,000 shares):</strong> First = 125 shares @ 18mo; then ~18.23/month for remaining period.</p>
-                    <p><em>How app computes: spread = vest price - grant strike price.</em></p>
+                    <p><strong>Example (1,000 shares, grant Jan 15, 2024):</strong></p>
+                    <ul>
+                        <li>Vesting starts: Jan 15, 2025 (1 year after grant)</li>
+                        <li>First vest (cliff): Jul 15, 2025 = 125 shares (6/48 = 12.5%)</li>
+                        <li>Aug 15, 2025: ~20.83 shares (1/48)</li>
+                        <li>Sep 15, 2025: ~20.83 shares (1/48)</li>
+                        <li>...continues monthly on 15th through Dec 15, 2028 (42 more months)</li>
+                    </ul>
+                    <p><em>App computes spread at vest: vest price - grant strike price.</em></p>
 
                     <h5>3. LTI as ISO (6-year)</h5>
                     <ul>
-                        <li><strong>Total Duration:</strong> 6 years</li>
-                        <li><strong>Cliff/Intro:</strong> 2.5 years wait (additional year vs 5yr) → first large vest = 12.5%</li>
-                        <li><strong>After initial:</strong> Monthly vests until year 6</li>
-                        <li><strong>Monthly math:</strong> Remainder spread monthly across remaining months</li>
+                        <li><strong>Total Duration:</strong> 6 years from grant</li>
+                        <li><strong>Vesting Period:</strong> 4 years (48 months) starting 2 years after grant</li>
+                        <li><strong>Cliff/Intro:</strong> Vesting starts 2 years after grant, first vest 6 months later (2.5 years total) = 12.5% (6/48 months)</li>
+                        <li><strong>Vest Dates:</strong> Monthly on the 15th (snapped to closest 15th)</li>
+                        <li><strong>After cliff:</strong> Monthly vests for remaining 42 months (each = 1/48 = ~2.08%)</li>
                     </ul>
-                    <p><strong>Example (1,000 shares):</strong> First = 125 shares @ 30mo; remainder monthly thereafter.</p>
-                    <p><em>How app computes: spread = vest price - grant strike price.</em></p>
+                    <p><strong>Example (1,000 shares, grant Jan 15, 2024):</strong></p>
+                    <ul>
+                        <li>Vesting starts: Jan 15, 2026 (2 years after grant)</li>
+                        <li>First vest (cliff): Jul 15, 2026 = 125 shares (6/48 = 12.5%)</li>
+                        <li>Aug 15, 2026: ~20.83 shares (1/48)</li>
+                        <li>...continues monthly on 15th through Dec 15, 2029 (42 more months)</li>
+                    </ul>
+                    <p><em>App computes spread at vest: vest price - grant strike price.</em></p>
                 </div>
+            </div>
+        </div>
+
+        <!-- ESPP -->
+        <div class="accordion-item">
+            <div class="accordion-header">
+                <h3>💰 ESPP (Employee Stock Purchase Plan)</h3>
+                <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-content">
+                <p><strong>Immediate Vest:</strong> ESPP shares vest immediately on the grant/purchase date (no cliff or vesting period).</p>
+                
+                <h4>Core Parameters</h4>
+                <ul>
+                    <li><strong>Purchase Dates:</strong> Typically May 15 and October 15</li>
+                    <li><strong>Discount:</strong> 15% discount from market price (configurable)</li>
+                    <li><strong>Vesting:</strong> Immediate — shares are yours on purchase date</li>
+                </ul>
+
+                <h4>How it works</h4>
+                <p>You purchase shares at a discounted price (e.g., 85% of FMV if 15% discount). The shares are immediately vested and you can sell them right away (subject to blackout periods and tax implications).</p>
+
+                <h4>Tax Treatment</h4>
+                <ul>
+                    <li><strong>Discount portion:</strong> Taxed as ordinary income (the 15% discount)</li>
+                    <li><strong>Additional gains:</strong> If you sell later at a higher price, the gain beyond the discount is capital gains (short or long-term depending on holding period)</li>
+                </ul>
+
+                <h4>Math Example</h4>
+                <ul>
+                    <li><strong>Market price:</strong> $100/share</li>
+                    <li><strong>Purchase price (15% discount):</strong> $85/share</li>
+                    <li><strong>Immediate taxable income:</strong> $15/share (the discount)</li>
+                    <li><strong>Cost basis for future gains:</strong> $100/share (FMV at purchase)</li>
+                </ul>
             </div>
         </div>
 
