@@ -41,20 +41,15 @@
                 <li><strong>Total: {{ (tax_rates.total * 100)|round(2) }}%</strong></li>
             </ul>
         </div>
-        <div class="tax-sliders" id="taxSliders" style="display: none;">
-        {% comment "Old manual mode removed - now uses simple profile settings" %}
-        {%  endcomment %}
-        {% else %}
-        <p class="text-muted">
-            <strong>💡 Automatic Mode Active.</strong> 
-            Tax rates calculated from your profile.
-            <button onclick="document.getElementById('taxSliders').style.display = document.getElementById('taxSliders').style.display === 'none' ? 'block' : 'none'; this.textContent = document.getElementById('taxSliders').style.display === 'none' ? '▼ Show rate sliders' : '▲ Hide rate sliders';" 
-                    class="btn btn-sm btn-secondary" style="margin-left: 1rem;">
-                ▼ Show rate sliders
-            </button>
+        {# Old manual mode section removed - now uses simple profile settings #}
+        <p class="text-muted" style="margin-top: 1rem;">
+            <strong>💡 Tax Estimates:</strong> 
+            Tax rates based on your profile settings.
+            <a href="{{ url_for('settings.profile') }}">Update tax preferences</a> to change rates.
         </p>
+        
+        {# Optional: Sliders for temporary scenario exploration (not saved) #}
         <div class="tax-sliders" id="taxSliders" style="display: none;">
-        {% endif %}
             <small class="slider-help" style="display: block; margin-bottom: 1rem; opacity: 0.8;">
                 💭 Adjust sliders to explore different tax scenarios. These are temporary changes and won't be saved.
             </small>

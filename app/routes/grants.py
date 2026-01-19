@@ -467,9 +467,11 @@ def finance_deep_dive():
     
     # Get user's tax rates from simple preferences
     tax_rates = current_user.get_tax_rates()
+    # Add LTCG for display (standard 15% rate for long-term capital gains)
+    tax_rates['ltcg'] = 0.15
     federal_rate_default = tax_rates['federal']
     state_rate_default = tax_rates['state']
-    ltcg_rate_default = 0.15  # Standard long-term capital gains rate
+    ltcg_rate_default = tax_rates['ltcg']
     
     # Get latest stock price from user's encrypted prices
     from app.utils.price_utils import get_latest_user_price
