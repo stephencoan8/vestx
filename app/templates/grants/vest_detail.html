@@ -31,9 +31,14 @@
                     <label>Vesting Schedule:</label>
                     <span>{{ grant.vest_years }} years</span>
                 </div>
-                {% if grant.share_price_at_grant %}
+                {% if vest_data.is_iso %}
                 <div class="info-item">
                     <label>Strike Price:</label>
+                    <span>${{ "%.2f"|format(vest_data.strike_price) }}</span>
+                </div>
+                {% elif grant.share_price_at_grant %}
+                <div class="info-item">
+                    <label>Grant Price:</label>
                     <span>${{ "%.2f"|format(grant.share_price_at_grant) }}</span>
                 </div>
                 {% endif %}
@@ -57,28 +62,28 @@
                 </div>
                 <div class="info-item">
                     <label>Shares Vested:</label>
-                    <span class="highlight">{{ "%.4f"|format(vest_event.shares_vested) }}</span>
+                    <span class="highlight">{{ "%.4f"|format(vest_data.shares_vested) }}</span>
                 </div>
                 <div class="info-item">
                     <label>Price at Vest:</label>
                     <span>
-                        ${{ "%.2f"|format(vest_event.share_price_at_vest) }}
-                        {% if not vest_event.has_vested %}
+                        ${{ "%.2f"|format(vest_data.price_at_vest) }}
+                        {% if not vest_data.has_vested %}
                         <small style="color: var(--text-secondary); font-style: italic;">(estimated)</small>
                         {% endif %}
                     </span>
                 </div>
                 <div class="info-item">
                     <label>Gross Value:</label>
-                    <span class="highlight">${{ "{:,.2f}".format(vest_event.value_at_vest) }}</span>
+                    <span class="highlight">${{ "{:,.2f}".format(vest_data.gross_value) }}</span>
                 </div>
                 <div class="info-item">
                     <label>Shares Received:</label>
-                    <span id="sharesReceivedDisplay">{{ "%.4f"|format(vest_event.shares_received) }}</span>
+                    <span id="sharesReceivedDisplay">{{ "%.4f"|format(vest_data.shares_received) }}</span>
                 </div>
                 <div class="info-item">
                     <label>Net Value:</label>
-                    <span id="netValueDisplay" class="highlight">${{ "{:,.2f}".format(vest_event.net_value) }}</span>
+                    <span id="netValueDisplay" class="highlight">${{ "{:,.2f}".format(vest_data.net_value) }}</span>
                 </div>
             </div>
         </section>
@@ -97,7 +102,8 @@
                     <h3 style="margin-top: 0;">💰 Tax at Vest</h3>
                     
                     <!-- Estimated Tax at Vest -->
-                    {% if tax_breakdown and tax_breakdown.has_breakdown %}
+                    {% if vest_data.tax_breakdown and vest_data.tax_breakdown.has_breakdown %}
+                    {% set tax_breakdown = vest_data.tax_breakdown %}
                     <div class="tax-subsection">
                         <h4>📊 Estimated Tax (System Calculated)</h4>
                         {% if not vest_event.has_vested %}
@@ -192,11 +198,11 @@
                                            value="{{ '{:.0f}'.format(vest_event.shares_sold) if vest_event.shares_sold else '' }}" 
                                            step="1" 
                                            min="0" 
-                                           max="{{ vest_event.shares_vested }}"
+                                           max="{{ vest_data.shares_vested }}"
                                            placeholder="0"
                                            {% if vest_event.cash_covered_all %}disabled{% endif %}
                                            style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                                    <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_event.shares_vested) }}</small>
+                                    <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_data.shares_vested) }}</small>
                                 </div>
                             </div>
                             
@@ -245,7 +251,8 @@
             {% if vest_event.has_vested %}
             <div id="saleDetails" class="collapsible-content" style="display: none;">
                 <!-- Estimated Tax at Sale (for remaining shares) - using CENTRALIZED backend calculation -->
-                {% if estimated_sale_tax and estimated_sale_tax.shares_held > 0 and estimated_sale_tax.unrealized_gain > 0 %}
+                {% if vest_data.shares_remaining > 0 and vest_data.sale_tax_projection and vest_data.sale_tax_projection.unrealized_gain > 0 %}
+                {% set proj = vest_data.sale_tax_projection %}
                 <div style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 8px;">
                     <h3 style="margin-top: 0;">📊 Estimated Tax if Sold Today</h3>
                     <p style="color: var(--text-secondary); margin-bottom: 1rem;">
@@ -255,51 +262,51 @@
                     <div class="tax-summary">
                         <div class="tax-summary-row">
                             <span>Remaining Shares:</span>
-                            <span class="amount">{{ "%.4f"|format(estimated_sale_tax.shares_held) }}</span>
+                            <span class="amount">{{ "%.4f"|format(vest_data.shares_remaining) }}</span>
                         </div>
                         <div class="tax-summary-row">
                             <span>Current Price:</span>
-                            <span class="amount">${{ "%.2f"|format(latest_stock_price) }}</span>
+                            <span class="amount">${{ "%.2f"|format(vest_data.current_price) }}</span>
                         </div>
                         <div class="tax-summary-row">
                             <span>Cost Basis (per share):</span>
-                            <span class="amount">${{ "%.2f"|format(estimated_sale_tax.cost_basis_per_share) }}</span>
+                            <span class="amount">${{ "%.2f"|format(vest_data.cost_basis_per_share) }}</span>
                         </div>
                         <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
                             <span><strong>Potential Capital Gain:</strong></span>
                             <span class="amount" style="color: var(--success)">
-                                <strong>${{ "{:,.2f}".format(estimated_sale_tax.unrealized_gain) }}</strong>
+                                <strong>${{ "{:,.2f}".format(proj.unrealized_gain) }}</strong>
                             </span>
                         </div>
                         <div class="tax-summary-row">
                             <span>Holding Period:</span>
-                            <span class="amount">{{ estimated_sale_tax.holding_period }} ({{ estimated_sale_tax.is_long_term and "Long-term" or "Short-term" }})</span>
+                            <span class="amount">{{ proj.holding_period }} ({{ proj.is_long_term and "Long-term" or "Short-term" }})</span>
                         </div>
                         <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
                             <span><strong>Estimated Tax:</strong></span>
                             <span class="amount" style="color: var(--warning);">
-                                <strong>${{ "{:,.2f}".format(estimated_sale_tax.estimated_tax) }}</strong>
+                                <strong>${{ "{:,.2f}".format(proj.estimated_tax) }}</strong>
                             </span>
                         </div>
                         <div class="tax-summary-row">
-                            <span style="padding-left: 1rem; font-size: 0.9em;">Federal ({{ "%.1f"|format(estimated_sale_tax.federal_rate * 100) }}%):</span>
-                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(estimated_sale_tax.federal_tax) }}</span>
+                            <span style="padding-left: 1rem; font-size: 0.9em;">Federal ({{ "%.1f"|format(proj.federal_rate * 100) }}%):</span>
+                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.federal_tax) }}</span>
                         </div>
-                        {% if estimated_sale_tax.niit_tax > 0 %}
+                        {% if proj.niit_tax > 0 %}
                         <div class="tax-summary-row">
                             <span style="padding-left: 1rem; font-size: 0.9em;">NIIT (3.8%):</span>
-                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(estimated_sale_tax.niit_tax) }}</span>
+                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.niit_tax) }}</span>
                         </div>
                         {% endif %}
-                        {% if estimated_sale_tax.state_tax > 0 %}
+                        {% if proj.state_tax > 0 %}
                         <div class="tax-summary-row">
-                            <span style="padding-left: 1rem; font-size: 0.9em;">State ({{ "%.1f"|format(estimated_sale_tax.state_rate * 100) }}%):</span>
-                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(estimated_sale_tax.state_tax) }}</span>
+                            <span style="padding-left: 1rem; font-size: 0.9em;">State ({{ "%.1f"|format(proj.state_rate * 100) }}%):</span>
+                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.state_tax) }}</span>
                         </div>
                         {% endif %}
                         <div style="margin-top: 0.5rem;">
                             <small style="color: var(--text-secondary);">
-                                💡 {{ estimated_sale_tax.method == 'professional' and 'Professional-grade calculation using total annual income methodology.' or 'Simplified estimate - configure tax profile for professional calculation.' }}
+                                💡 {{ proj.method == 'professional' and 'Professional-grade calculation using total annual income methodology.' or 'Simplified estimate - configure tax profile for professional calculation.' }}
                             </small>
                         </div>
                     </div>
@@ -312,21 +319,21 @@
                     <div class="info-grid">
                         <div class="info-item">
                             <label>Shares Received:</label>
-                            <span class="highlight">{{ "%.4f"|format(vest_event.shares_received) }}</span>
+                            <span class="highlight">{{ "%.4f"|format(vest_data.shares_received) }}</span>
                         </div>
                         <div class="info-item">
                             <label>Shares Sold:</label>
-                            <span>{{ "%.4f"|format(total_sold) }}</span>
+                            <span>{{ "%.4f"|format(vest_data.shares_sold) }}</span>
                         </div>
-                        {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
+                        {% if vest_data.is_iso %}
                         <div class="info-item">
                             <label>Shares Exercised:</label>
-                            <span>{{ "%.4f"|format(total_exercised) }}</span>
+                            <span>{{ "%.4f"|format(vest_data.shares_exercised) }}</span>
                         </div>
                         {% endif %}
                         <div class="info-item">
                             <label>Shares Remaining:</label>
-                            <span class="highlight">{{ "%.4f"|format(remaining_shares) }}</span>
+                            <span class="highlight">{{ "%.4f"|format(vest_data.shares_remaining) }}</span>
                         </div>
                     </div>
                     
@@ -349,8 +356,8 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="shares_sold">Shares Sold *</label>
-                                    <input type="number" id="shares_sold" step="0.0001" required max="{{ remaining_shares }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                    <small>Max available: {{ "%.4f"|format(remaining_shares) }}</small>
+                                    <input type="number" id="shares_sold" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                    <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
                                 </div>
                                 <div class="form-group">
                                     <label for="sale_price">Sale Price (per share) *</label>
@@ -359,7 +366,7 @@
                             </div>
                             
                             <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
-                                <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_event.share_price_at_vest) }} per share
+                                <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_data.cost_basis_per_share) }} per share
                                 <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
                             </div>
                             
@@ -412,17 +419,17 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="shares_exercised">Shares Exercised *</label>
-                                    <input type="number" id="shares_exercised" step="0.0001" required max="{{ remaining_shares }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                    <small>Max available: {{ "%.4f"|format(remaining_shares) }}</small>
+                                    <input type="number" id="shares_exercised" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                    <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
                                 </div>
                                 <div class="form-group">
                                     <label for="fmv_at_exercise">FMV at Exercise *</label>
-                                    <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ latest_stock_price }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+                                    <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ vest_data.current_price }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
                                 </div>
                             </div>
                             
                             <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
-                                <strong>Strike Price:</strong> ${{ "%.2f"|format(grant.share_price_at_grant) }} per share
+                                <strong>Strike Price:</strong> ${{ "%.2f"|format(vest_data.strike_price) }} per share
                                 <br><small>Grant date: {{ grant.grant_date.strftime('%Y-%m-%d') }}</small>
                             </div>
                             
@@ -1057,7 +1064,7 @@ async function submitSale(e) {
         sale_date: document.getElementById('sale_date').value,
         shares_sold: document.getElementById('shares_sold').value,
         sale_price: document.getElementById('sale_price').value,
-        cost_basis_per_share: {{ vest_event.share_price_at_vest }},
+        cost_basis_per_share: {{ vest_data.cost_basis_per_share }},
         commission_fees: 0,
         actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
         actual_state_tax: actualState ? parseFloat(actualState) : null,
