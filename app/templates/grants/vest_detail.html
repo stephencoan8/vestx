@@ -1173,20 +1173,6 @@ async function submitExercise(e) {
     }
 }
 
-let editingSaleId = null;
-
-function editSale(id, shares, price, date, commissionFees, notes) {
-    // Populate the form with existing values
-    document.getElementById('sharesSold').value = shares;
-    document.getElementById('salePrice').value = price;
-    document.getElementById('saleDate').value = date;
-    document.getElementById('commissionFees').value = commissionFees || 0;
-    document.getElementById('saleNotes').value = notes || '';
-    
-    // Store the sale ID we're editing
-    editingSaleId = id;
-}
-
 async function deleteSale(id) {
     if (!confirm('Are you sure you want to delete this sale?')) return;
     
