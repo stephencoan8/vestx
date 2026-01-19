@@ -711,40 +711,52 @@ def vest_detail(vest_id):
     from app.models.annual_income import AnnualIncome
     
     try:
-        logger.info(f"Loading vest {vest_id} for user {current_user.id}")
+        logger.info(f"=== VEST_DETAIL START: vest_id={vest_id}, user_id={current_user.id} ===")
         vest_event = VestEvent.query.get_or_404(vest_id)
+        logger.info(f"Loaded vest_event: id={vest_event.id}, vest_date={vest_event.vest_date}")
         
         # Security check
+        logger.info(f"Checking security: vest.grant={vest_event.grant}, grant.user_id={vest_event.grant.user_id if vest_event.grant else 'NO GRANT'}")
         if vest_event.grant.user_id != current_user.id:
+            logger.warning(f"Access denied for user {current_user.id} to vest {vest_id}")
             flash('Access denied.', 'danger')
             return redirect(url_for('grants.list_grants'))
         
         # Handle POST (update notes)
         if request.method == 'POST':
+            logger.info("Processing POST request to update notes")
             vest_event.notes = request.form.get('notes', '').strip()
             db.session.commit()
             flash('Vest notes updated successfully!', 'success')
             return redirect(url_for('grants.vest_detail', vest_id=vest_id))
         
         # Get user's decryption key
+        logger.info("Getting user decryption key")
         try:
             user_key = current_user.get_decrypted_user_key()
             if not user_key:
                 logger.warning(f"User {current_user.id} has no decryption key")
                 user_key = b''  # Empty bytes as fallback
+            else:
+                logger.info(f"Got user_key: {len(user_key)} bytes")
         except Exception as e:
             logger.error(f"Error getting user key: {e}", exc_info=True)
             user_key = b''  # Empty bytes as fallback
         
         # Get tax data
+        logger.info("Getting tax profile and annual incomes")
         tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
+        logger.info(f"Tax profile: {tax_profile.id if tax_profile else 'None'}")
         annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
         annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
+        logger.info(f"Annual incomes: {len(annual_incomes_list)} entries")
         
         # Get sales and exercises
+        logger.info("Getting sales and exercises")
         sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
             StockSale.sale_date.desc()
         ).all()
+        logger.info(f"Sales: {len(sales)}")
         
         # Add estimated tax to each sale
         for sale in sales:
@@ -757,10 +769,11 @@ def vest_detail(vest_id):
         exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
             ISOExercise.exercise_date.desc()
         ).all()
+        logger.info(f"Exercises: {len(exercises)}")
         
         # *** SINGLE SOURCE OF TRUTH - GET ALL DATA FROM ONE METHOD ***
+        logger.info("Calling get_complete_data...")
         try:
-            logger.info(f"Calling get_complete_data for vest {vest_id}")
             vest_data = vest_event.get_complete_data(
                 user_key=user_key,
                 current_price=None,  # Will fetch latest
@@ -769,9 +782,18 @@ def vest_detail(vest_id):
                 sales_data=sales,
                 exercises_data=exercises
             )
-            logger.info(f"Successfully got vest_data with keys: {vest_data.keys() if vest_data else 'None'}")
+            logger.info(f"✓ get_complete_data SUCCESS")
+            logger.info(f"  Keys in vest_data: {list(vest_data.keys())}")
+            logger.info(f"  vest_id: {vest_data.get('vest_id')}")
+            logger.info(f"  has_vested: {vest_data.get('has_vested')}")
+            logger.info(f"  is_iso: {vest_data.get('is_iso')}")
+            logger.info(f"  price_at_vest: {vest_data.get('price_at_vest')}")
+            logger.info(f"  shares_vested: {vest_data.get('shares_vested')}")
+            if 'error' in vest_data:
+                logger.error(f"  ERROR IN VEST_DATA: {vest_data['error']}")
+                flash(f"Warning: Some calculations unavailable: {vest_data['error']}", 'warning')
         except Exception as e:
-            logger.error(f"ERROR in get_complete_data: {e}", exc_info=True)
+            logger.error(f"✗ EXCEPTION in get_complete_data: {e}", exc_info=True)
             # Create minimal vest_data to prevent template errors
             vest_data = {
                 'vest_id': vest_event.id,
@@ -795,6 +817,8 @@ def vest_detail(vest_id):
             }
             flash(f'Warning: Some calculations unavailable: {str(e)}', 'warning')
         
+        logger.info("Rendering template with vest_data")
+        logger.info(f"  Template vars: vest_event={vest_event.id}, grant={vest_event.grant.id if vest_event.grant else None}, vest_data keys={list(vest_data.keys())}, sales={len(sales)}, exercises={len(exercises)}")
         return render_template('grants/vest_detail.html',
                              vest_event=vest_event,
                              grant=vest_event.grant,
@@ -803,7 +827,7 @@ def vest_detail(vest_id):
                              exercises=exercises)
         
     except Exception as e:
-        logger.error(f"Error in vest_detail: {e}", exc_info=True)
+        logger.error(f"✗ CRITICAL ERROR in vest_detail route: {e}", exc_info=True)
         db.session.rollback()
         flash(f'Error loading vest details: {str(e)}', 'danger')
         return redirect(url_for('grants.list_grants'))
