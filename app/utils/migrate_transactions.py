@@ -34,6 +34,22 @@ def migrate_transactions(app):
                 except Exception as alter_error:
                     logger.warning(f"Could not add tax_year column (may already exist): {alter_error}")
                     db.session.rollback()
+            
+            # Check and add actual tax columns to stock_sales if missing
+            try:
+                result = db.session.execute(text('SELECT actual_federal_tax FROM stock_sales LIMIT 1'))
+                logger.info("actual tax columns already exist in stock_sales")
+            except Exception as e:
+                logger.info(f"actual tax columns missing in stock_sales, attempting to add: {e}")
+                try:
+                    db.session.execute(text('ALTER TABLE stock_sales ADD COLUMN actual_federal_tax FLOAT'))
+                    db.session.execute(text('ALTER TABLE stock_sales ADD COLUMN actual_state_tax FLOAT'))
+                    db.session.execute(text('ALTER TABLE stock_sales ADD COLUMN actual_total_tax FLOAT'))
+                    db.session.commit()
+                    logger.info("✅ actual tax columns added to stock_sales")
+                except Exception as alter_error:
+                    logger.warning(f"Could not add actual tax columns (may already exist): {alter_error}")
+                    db.session.rollback()
     
     except Exception as e:
         logger.error(f"Migration failed but continuing: {e}")
