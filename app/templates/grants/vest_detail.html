@@ -1024,18 +1024,6 @@ function toggleModalSection(sectionId) {
     }
 }
 
-function toggleRecordSale() {
-    const form = document.getElementById('recordSaleForm');
-    if (form.style.display === 'none') {
-        form.style.display = 'block';
-        // Scroll to form
-        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } else {
-        form.style.display = 'none';
-        document.getElementById('saleForm').reset();
-    }
-}
-
 function toggleRecordExercise() {
     const form = document.getElementById('recordExerciseForm');
     if (form.style.display === 'none') {
