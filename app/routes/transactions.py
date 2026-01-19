@@ -94,10 +94,9 @@ def create_sale():
             capital_gain=capital_gain,
             is_long_term=is_long_term,
             commission_fees=float(data.get('commission_fees', 0)),
-            # TEMPORARILY REMOVED - columns commented out in model until migration runs
-            # actual_federal_tax=data.get('actual_federal_tax'),
-            # actual_state_tax=data.get('actual_state_tax'),
-            # actual_total_tax=data.get('actual_total_tax'),
+            actual_federal_tax=data.get('actual_federal_tax'),
+            actual_state_tax=data.get('actual_state_tax'),
+            actual_total_tax=data.get('actual_total_tax'),
             notes=data.get('notes', '')
         )
         
@@ -148,13 +147,12 @@ def update_sale(sale_id):
         if 'commission_fees' in data:
             sale.commission_fees = float(data['commission_fees'])
         
-        # TEMPORARILY REMOVED - columns commented out in model until migration runs
-        # if 'actual_federal_tax' in data:
-        #     sale.actual_federal_tax = data.get('actual_federal_tax')
-        # if 'actual_state_tax' in data:
-        #     sale.actual_state_tax = data.get('actual_state_tax')
-        # if 'actual_total_tax' in data:
-        #     sale.actual_total_tax = data.get('actual_total_tax')
+        if 'actual_federal_tax' in data:
+            sale.actual_federal_tax = data.get('actual_federal_tax')
+        if 'actual_state_tax' in data:
+            sale.actual_state_tax = data.get('actual_state_tax')
+        if 'actual_total_tax' in data:
+            sale.actual_total_tax = data.get('actual_total_tax')
         
         if 'notes' in data:
             sale.notes = data.get('notes', '')

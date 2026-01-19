@@ -38,8 +38,11 @@ def migrate_transactions(app):
             # Check and add actual tax columns to stock_sales if missing
             try:
                 result = db.session.execute(text('SELECT actual_federal_tax FROM stock_sales LIMIT 1'))
+                result.close()
                 logger.info("actual tax columns already exist in stock_sales")
             except Exception as e:
+                # Rollback the failed SELECT transaction
+                db.session.rollback()
                 logger.info(f"actual tax columns missing in stock_sales, attempting to add: {e}")
                 try:
                     db.session.execute(text('ALTER TABLE stock_sales ADD COLUMN actual_federal_tax FLOAT'))

@@ -1078,10 +1078,9 @@ async function submitSale(e) {
         sale_price: document.getElementById('sale_price').value,
         cost_basis_per_share: {{ vest_data.cost_basis_per_share }},
         commission_fees: 0,
-        // TEMPORARILY REMOVED - columns commented out in model until migration runs
-        // actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
-        // actual_state_tax: actualState ? parseFloat(actualState) : null,
-        // actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
+        actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
+        actual_state_tax: actualState ? parseFloat(actualState) : null,
+        actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
         notes: document.getElementById('sale_notes').value
     };
     
