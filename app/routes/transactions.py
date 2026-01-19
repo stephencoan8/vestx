@@ -94,9 +94,10 @@ def create_sale():
             capital_gain=capital_gain,
             is_long_term=is_long_term,
             commission_fees=float(data.get('commission_fees', 0)),
-            actual_federal_tax=data.get('actual_federal_tax'),
-            actual_state_tax=data.get('actual_state_tax'),
-            actual_total_tax=data.get('actual_total_tax'),
+            # TEMPORARILY REMOVED - columns commented out in model until migration runs
+            # actual_federal_tax=data.get('actual_federal_tax'),
+            # actual_state_tax=data.get('actual_state_tax'),
+            # actual_total_tax=data.get('actual_total_tax'),
             notes=data.get('notes', '')
         )
         
