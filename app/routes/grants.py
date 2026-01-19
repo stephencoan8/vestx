@@ -727,7 +727,14 @@ def vest_detail(vest_id):
             return redirect(url_for('grants.vest_detail', vest_id=vest_id))
         
         # Get user's decryption key
-        user_key = current_user.get_decrypted_user_key()
+        try:
+            user_key = current_user.get_decrypted_user_key()
+            if not user_key:
+                logger.warning(f"User {current_user.id} has no decryption key")
+                user_key = b''  # Empty bytes as fallback
+        except Exception as e:
+            logger.error(f"Error getting user key: {e}", exc_info=True)
+            user_key = b''  # Empty bytes as fallback
         
         # Get tax data
         tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()

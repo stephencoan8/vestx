@@ -705,21 +705,28 @@ class VestEvent(db.Model):
         strike_price = self.grant.share_price_at_grant if is_iso else None
         
         # === VALUES AT VEST ===
-        if is_cash:
-            gross_value = self.shares_vested  # USD amount
-            shares_withheld = self.shares_sold  # USD withheld
-            tax_withheld_value = self.cash_paid + shares_withheld
-        elif is_iso:
-            spread = price_at_vest - strike_price
-            gross_value = self.shares_vested * spread
-            shares_withheld = self.shares_sold
-            tax_withheld_value = self.cash_paid + (shares_withheld * price_at_vest)
-        else:  # RSU/RSA/ESPP
-            gross_value = self.shares_vested * price_at_vest
-            shares_withheld = self.shares_sold
-            tax_withheld_value = self.cash_paid + (shares_withheld * price_at_vest)
+        shares_vested = self.shares_vested or 0.0
+        shares_sold_for_tax = self.shares_sold or 0.0
+        cash_paid = self.cash_paid or 0.0
         
-        shares_received = self.shares_vested - shares_withheld
+        if is_cash:
+            gross_value = shares_vested  # USD amount
+            shares_withheld = shares_sold_for_tax  # USD withheld
+            tax_withheld_value = cash_paid + shares_withheld
+        elif is_iso:
+            # For ISOs, ensure strike_price exists
+            if strike_price is None:
+                strike_price = 0.0
+            spread = price_at_vest - strike_price
+            gross_value = shares_vested * spread
+            shares_withheld = shares_sold_for_tax
+            tax_withheld_value = cash_paid + (shares_withheld * price_at_vest)
+        else:  # RSU/RSA/ESPP
+            gross_value = shares_vested * price_at_vest
+            shares_withheld = shares_sold_for_tax
+            tax_withheld_value = cash_paid + (shares_withheld * price_at_vest)
+        
+        shares_received = shares_vested - shares_withheld
         
         if is_cash:
             net_value = shares_received  # USD after tax
@@ -737,7 +744,7 @@ class VestEvent(db.Model):
         if is_cash:
             cost_basis_per_share = 1.0
         elif is_iso:
-            cost_basis_per_share = strike_price
+            cost_basis_per_share = strike_price if strike_price is not None else 0.0
         else:
             # For unvested, use current price as estimate; for vested, use actual
             cost_basis_per_share = price_at_vest if has_vested else current_price
