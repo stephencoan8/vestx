@@ -654,30 +654,66 @@ class VestEvent(db.Model):
         Returns:
             Comprehensive dict with all vest data
         """
-        from app.models.grant import ShareType
-        from app.models.user_price import UserPrice
-        from app.utils.encryption import decrypt_for_user
-        from datetime import date
+        import logging
+        logger = logging.getLogger(__name__)
         
-        today = date.today()
+        try:
+            from app.models.grant import ShareType
+            from app.models.user_price import UserPrice
+            from app.utils.encryption import decrypt_for_user
+            from datetime import date
+            
+            # Validate inputs
+            if not user_key:
+                logger.warning("get_complete_data called with empty user_key")
+                user_key = b''
+            
+            if not self.grant:
+                raise ValueError(f"VestEvent {self.id} has no associated grant")
+            
+            today = date.today()
+            
+            # === BASIC INFO ===
+            has_vested = self.vest_date <= today if self.vest_date else False
+            is_iso = self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value] if self.grant.share_type else False
+            is_cash = self.grant.share_type == ShareType.CASH.value if self.grant.share_type else False
+        except Exception as e:
+            logger.error(f"Error in get_complete_data initialization: {e}", exc_info=True)
+            # Return minimal safe data
+            return {
+                'vest_id': self.id,
+                'has_vested': False,
+                'is_iso': False,
+                'is_cash': False,
+                'shares_vested': 0.0,
+                'price_at_vest': 0.0,
+                'gross_value': 0.0,
+                'shares_received': 0.0,
+                'net_value': 0.0,
+                'current_price': 0.0,
+                'strike_price': None,
+                'cost_basis_per_share': 0.0,
+                'shares_sold': 0.0,
+                'shares_exercised': 0.0,
+                'shares_remaining': 0.0,
+                'tax_breakdown': None,
+                'sale_tax_projection': None,
+                'error': str(e)
+            }
         
-        # === BASIC INFO ===
-        has_vested = self.vest_date <= today
-        is_iso = self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]
-        is_cash = self.grant.share_type == ShareType.CASH.value
-        
-        # === PRICES ===
-        # Get price at vest date (historical for vested, current for unvested)
-        if has_vested:
-            # Get actual price at vest date
-            price_query = UserPrice.query.filter_by(user_id=self.grant.user_id).filter(
-                UserPrice.valuation_date <= self.vest_date
-            ).order_by(UserPrice.valuation_date.desc()).first()
-        else:
-            # Get latest price for unvested
-            price_query = UserPrice.query.filter_by(user_id=self.grant.user_id).filter(
-                UserPrice.valuation_date <= today
-            ).order_by(UserPrice.valuation_date.desc()).first()
+        try:
+            # === PRICES ===
+            # Get price at vest date (historical for vested, current for unvested)
+            if has_vested:
+                # Get actual price at vest date
+                price_query = UserPrice.query.filter_by(user_id=self.grant.user_id).filter(
+                    UserPrice.valuation_date <= self.vest_date
+                ).order_by(UserPrice.valuation_date.desc()).first()
+            else:
+                # Get latest price for unvested
+                price_query = UserPrice.query.filter_by(user_id=self.grant.user_id).filter(
+                    UserPrice.valuation_date <= today
+                ).order_by(UserPrice.valuation_date.desc()).first()
         
         price_at_vest = 0.0
         if price_query:
@@ -820,4 +856,31 @@ class VestEvent(db.Model):
             # Metadata
             'notes': self.notes,
             'needs_tax_info': self.needs_tax_info,
-        }
+        }        except Exception as e:
+            logger.error(f"Error calculating vest data in get_complete_data: {e}", exc_info=True)
+            # Return minimal data on error
+            return {
+                'vest_id': self.id,
+                'vest_date': self.vest_date,
+                'has_vested': has_vested if 'has_vested' in locals() else False,
+                'is_iso': is_iso if 'is_iso' in locals() else False,
+                'is_cash': is_cash if 'is_cash' in locals() else False,
+                'shares_vested': self.shares_vested or 0.0,
+                'price_at_vest': 0.0,
+                'gross_value': 0.0,
+                'shares_received': self.shares_received or 0.0,
+                'net_value': 0.0,
+                'current_price': 0.0,
+                'strike_price': self.grant.share_price_at_grant if self.grant and hasattr(self.grant, 'share_price_at_grant') else None,
+                'cost_basis_per_share': 0.0,
+                'shares_sold': 0.0,
+                'shares_exercised': 0.0,
+                'shares_remaining': self.shares_received or 0.0,
+                'tax_breakdown': None,
+                'sale_tax_projection': None,
+                'cash_paid': self.cash_paid or 0.0,
+                'cash_covered_all': self.cash_covered_all or False,
+                'notes': self.notes,
+                'needs_tax_info': self.needs_tax_info if hasattr(self, 'needs_tax_info') else False,
+                'error': str(e)
+            }
