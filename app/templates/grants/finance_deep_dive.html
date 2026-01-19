@@ -14,7 +14,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h2 style="margin: 0;">⚙️ Tax Rate Configuration</h2>
             <div style="display: flex; gap: 1rem; align-items: center;">
-                <a href="{{ url_for('settings.tax_settings') }}" class="btn btn-secondary" style="text-decoration: none;">
+                <a href="{{ url_for('settings.profile') }}" class="btn btn-secondary" style="text-decoration: none;">
                     Configure Tax Settings
                 </a>
                 <div class="toggle-container">
@@ -28,13 +28,22 @@
                 </div>
             </div>
         </div>
-        {% if use_manual_rates %}
         <p class="text-muted">
-            <strong>✍️ Manual Mode Active.</strong>
-            Using your manual tax rates. 
-            <a href="{{ url_for('settings.tax_settings') }}">Switch to automatic</a> for calculated rates.
+            <strong>📊 Tax Estimates:</strong> Based on your profile settings.
+            <a href="{{ url_for('settings.profile') }}">Update your tax preferences</a> to change rates.
         </p>
-        <div class="tax-sliders" id="taxSliders">
+        <div class="tax-summary" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <h4>Your Current Tax Rates:</h4>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                <li>Federal: {{ (tax_rates.federal * 100)|round(2) }}%</li>
+                <li>State: {{ (tax_rates.state * 100)|round(2) }}%</li>
+                <li>FICA: {{ (tax_rates.fica * 100)|round(2) }}%</li>
+                <li><strong>Total: {{ (tax_rates.total * 100)|round(2) }}%</strong></li>
+            </ul>
+        </div>
+        <div class="tax-sliders" id="taxSliders" style="display: none;">
+        {% comment "Old manual mode removed - now uses simple profile settings" %}
+        {%  endcomment %}
         {% else %}
         <p class="text-muted">
             <strong>💡 Automatic Mode Active.</strong> 

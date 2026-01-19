@@ -49,6 +49,11 @@ class User(UserMixin, db.Model):
     # Per-user encrypted key (Fernet) - stored encrypted by server master key
     encrypted_user_key = db.Column(db.LargeBinary, nullable=True)
     
+    # Tax preferences (simplified approach)
+    federal_tax_rate = db.Column(db.Float, default=0.22)  # Default to 22% bracket
+    state_tax_rate = db.Column(db.Float, default=0.0)     # Default to 0% (user sets based on their state)
+    include_fica = db.Column(db.Boolean, default=True)    # Include FICA in tax estimates
+    
     # Relationships
     grants = db.relationship('Grant', backref='user', lazy=True, cascade='all, delete-orphan')
     prices = db.relationship('UserPrice', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -157,6 +162,25 @@ class User(UserMixin, db.Model):
         self.encrypted_user_key = encrypted_blob
         db.session.add(self)
         db.session.commit()
+    
+    def get_tax_rates(self) -> dict:
+        """
+        Get user's tax rate preferences.
+        Returns dict with federal, state, and fica rates.
+        """
+        fica_rate = 0.0765 if self.include_fica else 0.0  # 6.2% SS + 1.45% Medicare
+        
+        return {
+            'federal': self.federal_tax_rate or 0.22,
+            'state': self.state_tax_rate or 0.0,
+            'fica': fica_rate,
+            'total': (self.federal_tax_rate or 0.22) + (self.state_tax_rate or 0.0) + fica_rate
+        }
+    
+    def get_total_tax_rate(self) -> float:
+        """Get total combined tax rate for estimates."""
+        rates = self.get_tax_rates()
+        return rates['total']
     
     def __repr__(self) -> str:
         return f'<User {self.username}>'

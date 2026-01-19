@@ -295,22 +295,21 @@ class VestEvent(db.Model):
                                  _tax_profile = None) -> dict:
         """
         Estimate tax withholding for future vesting events.
-        Uses comprehensive tax calculator for accurate FICA calculations.
+        Uses user's simple tax preferences from their profile.
         Returns dict with estimated_tax, is_estimated flag.
         
-        For unvested events: calculates based on current/projected stock price and tax profile
+        For unvested events: calculates based on current/projected stock price and user tax preferences
         For vested events: returns actual tax_withheld
         
         Args:
             current_stock_price: Stock price to use for estimation (defaults to latest)
-            federal_rate: Federal tax rate (optional - will use tax profile if not provided)
-            state_rate: State tax rate (optional - will use tax profile if not provided)
-            fica_rate: DEPRECATED - now calculated accurately using TaxCalculator
-            _tax_profile: INTERNAL - cached tax profile to avoid N+1 queries
+            federal_rate: DEPRECATED - uses user profile
+            state_rate: DEPRECATED - uses user profile
+            fica_rate: DEPRECATED - uses user profile
+            _tax_profile: DEPRECATED - no longer needed
         """
         from app.models.grant import ShareType, GrantType
-        from app.models.tax_rate import UserTaxProfile
-        from app.utils.tax_calculator import TaxCalculator
+        from app.models.user import User
         
         # If already vested, return actual taxes paid
         if self.has_vested:
@@ -325,11 +324,14 @@ class VestEvent(db.Model):
             from app.utils.price_utils import get_latest_user_price
             current_stock_price = get_latest_user_price(self.grant.user_id) or 0.0
         
-        # Get user's tax profile for accurate calculation (use cached if available)
-        if _tax_profile is None:
-            tax_profile = UserTaxProfile.query.filter_by(user_id=self.grant.user_id).first()
+        # Get user's tax preferences (simple approach)
+        user = User.query.get(self.grant.user_id)
+        if not user:
+            # Fallback to defaults
+            tax_rate = 0.22 + 0.093 + 0.0765  # Default: 22% federal + 9.3% state + 7.65% FICA
         else:
-            tax_profile = _tax_profile
+            rates = user.get_tax_rates()
+            tax_rate = rates['total']
         
         # Calculate vest value based on grant type
         if self.grant.share_type == ShareType.CASH.value:
@@ -346,61 +348,13 @@ class VestEvent(db.Model):
             # RSUs/RSAs: full value is taxable as ordinary income
             vest_value = self.shares_vested * current_stock_price
         
-        # If we have a tax profile, use comprehensive calculator
-        if tax_profile and tax_profile.annual_income:
-            try:
-                # Get tax rates for this year (use provided rates if available)
-                if federal_rate is None or state_rate is None:
-                    rates = tax_profile.get_tax_rates(tax_year=self.vest_date.year)
-                    if federal_rate is None:
-                        federal_rate = rates['federal']
-                    if state_rate is None:
-                        state_rate = rates['state']
-                
-                # Use TaxCalculator for accurate FICA calculation
-                calculator = TaxCalculator(
-                    annual_income=tax_profile.annual_income,
-                    filing_status=tax_profile.filing_status or 'single',
-                    state=tax_profile.state
-                )
-                # Set YTD wages for SS wage base limit
-                # Use actual YTD wages if provided (from paycheck), otherwise use annual_income
-                # YTD wages determine when SS tax stops (at $168,600 wage base)
-                ytd_for_calc = tax_profile.ytd_wages if tax_profile.ytd_wages else tax_profile.annual_income
-                calculator.set_ytd_wages(ytd_for_calc)
-                
-                # Calculate comprehensive taxes
-                breakdown = calculator.calculate_vest_taxes(
-                    vest_value=vest_value,
-                    federal_rate=federal_rate,
-                    state_rate=state_rate
-                )
-                
-                return {
-                    'tax_amount': breakdown['total_tax'],
-                    'is_estimated': True,
-                    'tax_rate': breakdown['effective_rate']
-                }
-            except Exception:
-                # Fall back to simple calculation if comprehensive fails
-                pass
-        
-        # Fallback: simple calculation if no tax profile
-        # Use provided rates or defaults
-        if federal_rate is None:
-            federal_rate = 0.22
-        if state_rate is None:
-            state_rate = 0.093
-        if fica_rate is None:
-            fica_rate = 0.0765
-        
-        estimated_rate = federal_rate + state_rate + fica_rate
-        estimated_tax = vest_value * estimated_rate
+        # Calculate estimated tax
+        estimated_tax = vest_value * tax_rate
         
         return {
             'tax_amount': estimated_tax,
             'is_estimated': True,
-            'tax_rate': estimated_rate
+            'tax_rate': tax_rate
         }
     
     def get_estimated_sale_tax(self, current_stock_price: float = None, 

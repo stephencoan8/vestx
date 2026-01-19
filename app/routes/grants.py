@@ -10,7 +10,6 @@ from app.models.vest_event import VestEvent
 from app.models.stock_price import StockPrice
 from app.models.sale_plan import SalePlan
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
-from app.models.tax_rate import UserTaxProfile
 from app.utils.price_utils import get_latest_user_price
 from datetime import datetime, date, timedelta
 import logging
@@ -406,29 +405,12 @@ def vest_schedule():
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
     
-    # Pre-fetch tax profile once to avoid N+1 queries
-    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
-    
-    # Pre-calculate tax rates for current year (for future vests)
-    current_year_rates = None
-    if tax_profile:
-        current_year_rates = tax_profile.get_tax_rates(tax_year=today.year)
-    
-    # Enrich vest events with tax estimates
+    # Enrich vest events with tax estimates (now uses user's simple tax preferences)
     enriched_events = []
     for ve in vest_events:
-        # For future vests, calculate estimated tax (pass cached tax_profile and rates)
+        # For future vests, calculate estimated tax using user's tax preferences
         if ve.vest_date > today:
-            if tax_profile and current_year_rates:
-                # Pass the cached tax_profile and rates to avoid repeated DB queries
-                tax_info = ve.estimate_tax_withholding(
-                    latest_stock_price, 
-                    federal_rate=current_year_rates['federal'],
-                    state_rate=current_year_rates['state'],
-                    _tax_profile=tax_profile
-                )
-            else:
-                tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            tax_info = ve.estimate_tax_withholding(latest_stock_price)
             ve.estimated_tax = tax_info['tax_amount']
         else:
             ve.estimated_tax = None  # Use actual tax_withheld for vested events
@@ -483,36 +465,12 @@ def finance_deep_dive():
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
     
-    # Get user's tax profile and calculate rates ONCE (avoid N+1 queries)
-    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
-    if tax_profile:
-        # Calculate tax rates once and cache them
-        tax_rates = tax_profile.get_tax_rates()
-        use_manual_rates = tax_profile.use_manual_rates
-    else:
-        # Default rates if no profile exists
-        tax_rates = {'federal': 0.24, 'state': 0.093, 'ltcg': 0.15}
-        use_manual_rates = True
-
-    federal_rate_default = tax_rates.get('federal', 0.24)
-    state_rate_default = tax_rates.get('state', 0.093)
-    ltcg_rate_default = tax_rates.get('ltcg', 0.15)
+    # Get user's tax rates from simple preferences
+    tax_rates = current_user.get_tax_rates()
+    federal_rate_default = tax_rates['federal']
+    state_rate_default = tax_rates['state']
+    ltcg_rate_default = 0.15  # Standard long-term capital gains rate
     
-    # Pre-fetch annual incomes once to avoid N+1 queries (needed for tax rate calculation)
-    from app.models.annual_income import AnnualIncome
-    annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
-    annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
-    
-    # Pre-calculate rates for all possible years to avoid repeated queries
-    # Use year-specific income (gross income from tax returns for accurate bracket calculation)
-    years_with_vests = set(ve.vest_date.year for ve in all_vest_events)
-    cached_rates_by_year = {}
-    if tax_profile:
-        for year in years_with_vests:
-            # Use historical income for that year if available, otherwise current income
-            year_income = annual_incomes_dict.get(year, tax_profile.annual_income)
-            cached_rates_by_year[year] = tax_profile.get_tax_rates(tax_year=year, income_override=year_income)
-
     # Get latest stock price from user's encrypted prices
     from app.utils.price_utils import get_latest_user_price
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
@@ -557,35 +515,12 @@ def finance_deep_dive():
         for ve in vest_events:
             has_vested = ve.vest_date <= today
             
-            # Get cached rates for this vest's year
-            vest_year = ve.vest_date.year
-            vest_year_rates = cached_rates_by_year.get(vest_year, tax_rates)
+            # Calculate estimated taxes using user's simple tax preferences
+            tax_info = ve.estimate_tax_withholding(latest_stock_price)
             
-            # Calculate estimated or actual taxes (pass cached tax_profile and rates)
-            if tax_profile:
-                tax_info = ve.estimate_tax_withholding(
-                    latest_stock_price, 
-                    federal_rate=vest_year_rates['federal'],
-                    state_rate=vest_year_rates['state'],
-                    _tax_profile=tax_profile
-                )
-            else:
-                tax_info = ve.estimate_tax_withholding(latest_stock_price)
-            
-            # Get comprehensive tax breakdown (pass cached data to avoid queries)
+            # Get comprehensive tax breakdown (simplified - no complex year-by-year logic)
             if has_vested:
-                if tax_profile:
-                    # Get total income for this vest's year (for effective SS rate)
-                    vest_year_income = annual_incomes_dict.get(vest_year, tax_profile.annual_income)
-                    
-                    tax_breakdown = ve.get_comprehensive_tax_breakdown(
-                        _tax_profile=tax_profile, 
-                        _annual_incomes=annual_incomes_dict,
-                        _cached_rates=vest_year_rates,
-                        _year_income=vest_year_income
-                    )
-                else:
-                    tax_breakdown = ve.get_comprehensive_tax_breakdown()
+                tax_breakdown = ve.get_comprehensive_tax_breakdown()
             else:
                 tax_breakdown = None
             
@@ -594,9 +529,7 @@ def finance_deep_dive():
             sale_tax_data = ve.get_estimated_sale_tax(
                 current_stock_price=latest_stock_price,
                 total_sold=0,  # Finance deep dive shows all shares (no sales tracked here)
-                total_exercised=0,
-                _tax_profile=tax_profile,
-                _annual_incomes=annual_incomes_dict
+                total_exercised=0
             )
             
             # Extract values from centralized calculation
@@ -696,8 +629,7 @@ def finance_deep_dive():
                            total_unrealized_gain_vested=total_unrealized_gain_vested,
                            total_unrealized_gain_all=total_unrealized_gain_all,
                            total_estimated_tax=total_estimated_tax,
-                           tax_rates=tax_rates,
-                           use_manual_rates=use_manual_rates)
+                           tax_rates=tax_rates)
 
 
 @grants_bp.route('/vest/<int:vest_id>', methods=['GET', 'POST'])
@@ -844,11 +776,8 @@ def sale_planning():
     # Get current stock price
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     
-    # Get user's tax profile
-    tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
-    if not tax_profile:
-        flash('Please configure your tax settings first', 'warning')
-        return redirect(url_for('settings.tax_settings'))
+    # Get user's tax rates from simple preferences
+    tax_rates = current_user.get_tax_rates()
     
     # Get existing sale plans
     existing_plans = {}
@@ -882,7 +811,7 @@ def sale_planning():
                          vests=vest_events,
                          vest_data=vest_data,
                          years=years,
-                         tax_profile=tax_profile,
+                         tax_rates=tax_rates,
                          latest_stock_price=latest_stock_price)
 
 

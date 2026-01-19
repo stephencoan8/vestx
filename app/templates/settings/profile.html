@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block title %}Tax Preferences - VestX{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <header class="page-header">
+        <h1>⚙️ Tax Preferences</h1>
+        <p class="subtitle">Set your tax estimation rates for vest calculations</p>
+    </header>
+
+    <div class="info-box">
+        <h3>📊 How Tax Estimates Work</h3>
+        <p>Most equity software uses a <strong>simplified approach</strong> to estimate taxes at vest. Instead of complex year-by-year calculations, you choose:</p>
+        <ul>
+            <li><strong>Federal bracket:</strong> Select the tax rate that best matches your expected income level (22% or 35% are most common)</li>
+            <li><strong>State tax:</strong> Select your state or enter a custom rate</li>
+            <li><strong>FICA:</strong> Social Security (6.2%) + Medicare (1.45%) = 7.65% total</li>
+        </ul>
+        <p class="note">These rates will be applied to all your vest events for consistent, easy-to-understand tax estimates.</p>
+    </div>
+
+    <form method="POST" class="settings-form">
+        <div class="form-section">
+            <h3>Federal Tax Rate</h3>
+            <p class="help-text">Choose the federal tax bracket that best matches your income level</p>
+            
+            <select name="federal_tax_rate" id="federal_tax_rate" class="form-control" required>
+                {% for bracket in federal_brackets %}
+                <option value="{{ bracket.rate }}" {% if user.federal_tax_rate and (bracket.rate - user.federal_tax_rate)|abs < 0.001 %}selected{% endif %}>
+                    {{ bracket.label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-section">
+            <h3>State Tax Rate</h3>
+            <p class="help-text">Select your state or enter a custom rate</p>
+            
+            <select name="state_code" id="state_code" class="form-control">
+                <option value="">None (0%)</option>
+                {% for code, rate in state_tax_rates.items()|sort %}
+                <option value="{{ code }}" {% if current_state == code %}selected{% endif %}>
+                    {{ code }} - {{ (rate * 100)|round(2) }}%
+                </option>
+                {% endfor %}
+            </select>
+            
+            <div class="custom-rate-section">
+                <label for="custom_state_rate">Or enter custom rate:</label>
+                <div class="input-group">
+                    <input type="number" 
+                           name="custom_state_rate" 
+                           id="custom_state_rate" 
+                           class="form-control" 
+                           placeholder="e.g., 5.5"
+                           step="0.01"
+                           min="0"
+                           max="15">
+                    <span class="input-suffix">%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>FICA Taxes</h3>
+            <p class="help-text">Social Security (6.2%) + Medicare (1.45%) = 7.65% total</p>
+            
+            <div class="checkbox-wrapper">
+                <input type="checkbox" 
+                       name="include_fica" 
+                       id="include_fica" 
+                       {% if user.include_fica %}checked{% endif %}>
+                <label for="include_fica">Include FICA in tax estimates (recommended)</label>
+            </div>
+        </div>
+
+        <div class="tax-summary">
+            <h3>Your Total Estimated Tax Rate</h3>
+            <div class="rate-breakdown">
+                <div class="rate-item">
+                    <span class="rate-label">Federal:</span>
+                    <span class="rate-value">{{ (rates.federal * 100)|round(2) }}%</span>
+                </div>
+                <div class="rate-item">
+                    <span class="rate-label">State:</span>
+                    <span class="rate-value">{{ (rates.state * 100)|round(2) }}%</span>
+                </div>
+                <div class="rate-item">
+                    <span class="rate-label">FICA:</span>
+                    <span class="rate-value">{{ (rates.fica * 100)|round(2) }}%</span>
+                </div>
+                <div class="rate-item total">
+                    <span class="rate-label">Total:</span>
+                    <span class="rate-value">{{ (rates.total * 100)|round(2) }}%</span>
+                </div>
+            </div>
+            <p class="example">Example: $100,000 vest → ${{ (100000 * rates.total)|round(0)|int|format_number }} estimated taxes</p>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">💾 Save Tax Preferences</button>
+            <a href="{{ url_for('grants.index') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.settings-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+}
+
+.info-box {
+    background: var(--bg-secondary);
+    border-left: 4px solid var(--accent);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    border-radius: 8px;
+}
+
+.info-box h3 {
+    margin-top: 0;
+    color: var(--accent);
+}
+
+.info-box ul {
+    margin-left: 1.5rem;
+}
+
+.info-box .note {
+    margin-top: 1rem;
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
+.settings-form {
+    background: var(--surface);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 2px solid var(--border);
+}
+
+.form-section {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.form-section:last-of-type {
+    border-bottom: none;
+}
+
+.form-section h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.help-text {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.custom-rate-section {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--border);
+}
+
+.custom-rate-section label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.input-group .form-control {
+    flex: 1;
+}
+
+.input-suffix {
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.checkbox-wrapper label {
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tax-summary {
+    background: linear-gradient(135deg, var(--accent) 0%, #6366f1 100%);
+    padding: 1.5rem;
+    border-radius: 12px;
+    color: white;
+    margin-bottom: 2rem;
+}
+
+.tax-summary h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: white;
+}
+
+.rate-breakdown {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.rate-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.rate-item:last-child {
+    border-bottom: none;
+}
+
+.rate-item.total {
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    border-top: 2px solid rgba(255, 255, 255, 0.5);
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.rate-label {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.rate-value {
+    font-weight: bold;
+    color: white;
+}
+
+.example {
+    margin-top: 1rem;
+    margin-bottom: 0;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.95rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-start;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #5a54d5;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.btn-secondary {
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 2px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-secondary);
+}
+</style>
+
+<script>
+// Update custom rate when state is selected
+document.getElementById('state_code').addEventListener('change', function() {
+    if (this.value) {
+        document.getElementById('custom_state_rate').value = '';
+    }
+});
+
+// Clear state selection when custom rate is entered
+document.getElementById('custom_state_rate').addEventListener('input', function() {
+    if (this.value) {
+        document.getElementById('state_code').value = '';
+    }
+});
+
+// Live preview of total rate
+function updateTaxPreview() {
+    const federalRate = parseFloat(document.getElementById('federal_tax_rate').value) || 0;
+    const stateCode = document.getElementById('state_code').value;
+    const customStateRate = parseFloat(document.getElementById('custom_state_rate').value) || 0;
+    const includeFica = document.getElementById('include_fica').checked;
+    
+    // Calculate state rate
+    const stateTaxRates = {{ state_tax_rates|tojson }};
+    let stateRate = 0;
+    if (stateCode && stateTaxRates[stateCode]) {
+        stateRate = stateTaxRates[stateCode];
+    } else if (customStateRate > 0) {
+        stateRate = customStateRate / 100;
+    }
+    
+    // Calculate FICA
+    const ficaRate = includeFica ? 0.0765 : 0;
+    
+    // Calculate total
+    const totalRate = federalRate + stateRate + ficaRate;
+    
+    // Update display (could add live preview here if desired)
+}
+
+// Add event listeners for live preview
+document.getElementById('federal_tax_rate').addEventListener('change', updateTaxPreview);
+document.getElementById('state_code').addEventListener('change', updateTaxPreview);
+document.getElementById('custom_state_rate').addEventListener('input', updateTaxPreview);
+document.getElementById('include_fica').addEventListener('change', updateTaxPreview);
+</script>
+
+{% endblock %}

@@ -2,13 +2,13 @@
 User settings routes - tax configuration, preferences.
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from app import db
 
 settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 
-# Common US state tax rates (simplified - top marginal rates)
+# Common US state tax rates (simplified)
 STATE_TAX_RATES = {
     'AL': 0.05, 'AK': 0.0, 'AZ': 0.045, 'AR': 0.059, 'CA': 0.093,
     'CO': 0.0463, 'CT': 0.0699, 'DE': 0.066, 'FL': 0.0, 'GA': 0.0575,
@@ -22,17 +22,6 @@ STATE_TAX_RATES = {
     'VA': 0.0575, 'WA': 0.0, 'WV': 0.065, 'WI': 0.0765, 'WY': 0.0,
     'DC': 0.1075
 }
-
-# Federal tax brackets (2024)
-FEDERAL_TAX_BRACKETS = [
-    {'rate': 0.10, 'label': '10%'},
-    {'rate': 0.12, 'label': '12%'},
-    {'rate': 0.22, 'label': '22% (default)'},
-    {'rate': 0.24, 'label': '24%'},
-    {'rate': 0.32, 'label': '32%'},
-    {'rate': 0.35, 'label': '35%'},
-    {'rate': 0.37, 'label': '37%'},
-]
 
 
 @settings_bp.route('/profile', methods=['GET', 'POST'])
@@ -82,15 +71,79 @@ def profile():
         'settings/profile.html',
         user=current_user,
         rates=rates,
-        federal_brackets=FEDERAL_TAX_BRACKETS,
         state_tax_rates=STATE_TAX_RATES,
         current_state=current_state
     )
 
 
-# Redirect old tax settings URL to new profile page
 @settings_bp.route('/tax', methods=['GET', 'POST'])
+
+
+# Redirect old tax settings URL to new profile page
+@settings_bp.route('/tax', methods=['GET'])
 @login_required
 def tax_settings():
     """Redirect old tax settings to new profile page."""
     return redirect(url_for('settings.profile'))
+
+            'federal': round(rates['federal'] * 100, 2),
+            'state': round(rates['state'] * 100, 2),
+            'ltcg': round(rates['ltcg'] * 100, 2)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@settings_bp.route('/tax/save-annual-income', methods=['POST'])
+@login_required
+def save_annual_income():
+    """Save annual income for a specific year."""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        year = data.get('year')
+        annual_income = data.get('annual_income')
+        
+        if not year:
+            return jsonify({'error': 'Year is required'}), 400
+            
+        if not annual_income:
+            return jsonify({'error': 'Annual income is required'}), 400
+        
+        year = int(year)
+        annual_income = float(annual_income)
+        
+        # Get or create annual income record
+        income_record = AnnualIncome.query.filter_by(
+            user_id=current_user.id,
+            year=year
+        ).first()
+        
+        if income_record:
+            income_record.annual_income = annual_income
+        else:
+            income_record = AnnualIncome(
+                user_id=current_user.id,
+                year=year,
+                annual_income=annual_income
+            )
+            db.session.add(income_record)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Saved {year} income: ${annual_income:,.0f}'
+        })
+        
+    except ValueError as e:
+        return jsonify({'error': f'Invalid number format: {str(e)}'}), 400
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
