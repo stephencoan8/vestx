@@ -657,6 +657,11 @@ class VestEvent(db.Model):
         import logging
         logger = logging.getLogger(__name__)
         
+        # Initialize variables that might be used in except block
+        has_vested = False
+        is_iso = False
+        is_cash = False
+        
         try:
             from app.models.grant import ShareType
             from app.models.user_price import UserPrice
@@ -677,31 +682,6 @@ class VestEvent(db.Model):
             has_vested = self.vest_date <= today if self.vest_date else False
             is_iso = self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value] if self.grant.share_type else False
             is_cash = self.grant.share_type == ShareType.CASH.value if self.grant.share_type else False
-        except Exception as e:
-            logger.error(f"Error in get_complete_data initialization: {e}", exc_info=True)
-            # Return minimal safe data
-            return {
-                'vest_id': self.id,
-                'has_vested': False,
-                'is_iso': False,
-                'is_cash': False,
-                'shares_vested': 0.0,
-                'price_at_vest': 0.0,
-                'gross_value': 0.0,
-                'shares_received': 0.0,
-                'net_value': 0.0,
-                'current_price': 0.0,
-                'strike_price': None,
-                'cost_basis_per_share': 0.0,
-                'shares_sold': 0.0,
-                'shares_exercised': 0.0,
-                'shares_remaining': 0.0,
-                'tax_breakdown': None,
-                'sale_tax_projection': None,
-                'error': str(e)
-            }
-        
-        try:
             # === PRICES ===
             # Get price at vest date (historical for vested, current for unvested)
             if has_vested:
@@ -859,19 +839,26 @@ class VestEvent(db.Model):
             }
         except Exception as e:
             logger.error(f"Error calculating vest data in get_complete_data: {e}", exc_info=True)
-            # Return minimal data on error
+            # Return minimal data on error (variables already initialized at method start)
             return {
                 'vest_id': self.id,
-                'vest_date': self.vest_date,
-                'has_vested': has_vested if 'has_vested' in locals() else False,
-                'is_iso': is_iso if 'is_iso' in locals() else False,
-                'is_cash': is_cash if 'is_cash' in locals() else False,
+                'vest_date': self.vest_date if hasattr(self, 'vest_date') else None,
+                'has_vested': has_vested,
+                'is_iso': is_iso,
+                'is_cash': is_cash,
+                'grant_type': self.grant.grant_type if self.grant else None,
+                'share_type': self.grant.share_type if self.grant else None,
                 'shares_vested': self.shares_vested or 0.0,
+                'shares_withheld_for_taxes': 0.0,
                 'price_at_vest': 0.0,
                 'gross_value': 0.0,
+                'tax_withheld_value': 0.0,
                 'shares_received': self.shares_received or 0.0,
                 'net_value': 0.0,
                 'current_price': 0.0,
+                'current_market_value': 0.0,
+                'total_cost_basis': 0.0,
+                'unrealized_gain': 0.0,
                 'strike_price': self.grant.share_price_at_grant if self.grant and hasattr(self.grant, 'share_price_at_grant') else None,
                 'cost_basis_per_share': 0.0,
                 'shares_sold': 0.0,
@@ -881,7 +868,7 @@ class VestEvent(db.Model):
                 'sale_tax_projection': None,
                 'cash_paid': self.cash_paid or 0.0,
                 'cash_covered_all': self.cash_covered_all or False,
-                'notes': self.notes,
+                'notes': self.notes if hasattr(self, 'notes') else '',
                 'needs_tax_info': self.needs_tax_info if hasattr(self, 'needs_tax_info') else False,
                 'error': str(e)
             }
