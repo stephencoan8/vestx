@@ -225,11 +225,14 @@ class VestEvent(db.Model):
                 additional_medicare_tax = 0
             
             # Total FICA
-            fica_total = social_security_tax + medicare_tax + additional_medicare_tax
+            total_fica = social_security_tax + medicare_tax + additional_medicare_tax
             
             # Total tax
-            total_tax = federal_tax + state_tax + fica_total
+            total_tax = federal_tax + state_tax + total_fica
             net_value = gross_value - total_tax
+            
+            # Effective rate (for display)
+            effective_rate = total_tax / gross_value if gross_value > 0 else 0.0
             
             return {
                 'has_breakdown': True,
@@ -239,14 +242,16 @@ class VestEvent(db.Model):
                 'social_security_tax': social_security_tax,
                 'medicare_tax': medicare_tax,
                 'additional_medicare_tax': additional_medicare_tax,
-                'fica_total': fica_total,
+                'total_fica': total_fica,  # Template expects 'total_fica'
                 'total_tax': total_tax,
                 'net_value': net_value,
+                'net_amount': net_value,  # Template also uses 'net_amount' in some places
                 'federal_rate': federal_rate,
                 'state_rate': state_rate,
                 'social_security_rate': ss_rate,
                 'medicare_rate': medicare_rate,
                 'additional_medicare_rate': additional_medicare_rate,
+                'effective_rate': effective_rate,  # Overall tax rate
                 'include_fica': include_fica,
                 'tax_year': self.tax_year or self.vest_date.year
             }
