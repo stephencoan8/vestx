@@ -537,6 +537,7 @@
                                 </span>
                             </td>
                             <td>
+                                <button class="btn btn-sm btn-primary" onclick="editSale({{ sale.id }}, {{ sale.shares_sold }}, {{ sale.sale_price }}, '{{ sale.sale_date.strftime('%Y-%m-%d') }}', {{ sale.commission_fees or 0 }}, '{{ sale.notes or '' }}')">Edit</button>
                                 <button class="btn btn-sm btn-danger" onclick="deleteSale({{ sale.id }})">Delete</button>
                             </td>
                         </tr>
@@ -1052,6 +1053,29 @@ function toggleAMTFields() {
     document.getElementById('amtFields').style.display = checkbox.checked ? 'grid' : 'none';
 }
 
+let editingSaleId = null;
+
+function editSale(id, shares, price, date, commissionFees, notes) {
+    // Populate the form with existing values
+    document.getElementById('shares_sold').value = shares;
+    document.getElementById('sale_price').value = price;
+    document.getElementById('sale_date').value = date;
+    document.getElementById('sale_notes').value = notes || '';
+    
+    // Store the sale ID we're editing
+    editingSaleId = id;
+    
+    // Change button text to indicate editing
+    const submitBtn = document.querySelector('#saleForm button[type="submit"]');
+    submitBtn.textContent = 'Update Sale';
+    
+    // Show the form
+    document.getElementById('recordSaleForm').style.display = 'block';
+    
+    // Scroll to form
+    document.getElementById('recordSaleForm').scrollIntoView({ behavior: 'smooth' });
+}
+
 async function submitSale(e) {
     e.preventDefault();
     
@@ -1066,15 +1090,28 @@ async function submitSale(e) {
         sale_price: document.getElementById('sale_price').value,
         cost_basis_per_share: {{ vest_data.cost_basis_per_share }},
         commission_fees: 0,
-        actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
-        actual_state_tax: actualState ? parseFloat(actualState) : null,
-        actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
+        // TEMPORARILY REMOVED - columns commented out in model until migration runs
+        // actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
+        // actual_state_tax: actualState ? parseFloat(actualState) : null,
+        // actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
         notes: document.getElementById('sale_notes').value
     };
     
     try {
-        const response = await fetch('/transactions/api/transactions/sales', {
-            method: 'POST',
+        let url, method;
+        
+        if (editingSaleId) {
+            // Update existing sale
+            url = `/transactions/api/transactions/sales/${editingSaleId}`;
+            method = 'PUT';
+        } else {
+            // Create new sale
+            url = '/transactions/api/transactions/sales';
+            method = 'POST';
+        }
+        
+        const response = await fetch(url, {
+            method: method,
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': CSRF_TOKEN
@@ -1083,14 +1120,32 @@ async function submitSale(e) {
         });
         
         if (response.ok) {
-            alert('Stock sale recorded successfully!');
+            alert(editingSaleId ? 'Stock sale updated successfully!' : 'Stock sale recorded successfully!');
             location.reload();
         } else {
             const error = await response.json();
             alert('Error: ' + error.error);
         }
     } catch (error) {
-        alert('Error recording sale: ' + error.message);
+        alert('Error: ' + error.message);
+    }
+}
+
+function toggleRecordSale() {
+    const form = document.getElementById('recordSaleForm');
+    const isVisible = form.style.display !== 'none';
+    
+    if (isVisible) {
+        // Reset editing state
+        editingSaleId = null;
+        const submitBtn = document.querySelector('#saleForm button[type="submit"]');
+        submitBtn.textContent = 'Record Sale';
+        
+        // Clear form
+        document.getElementById('saleForm').reset();
+        form.style.display = 'none';
+    } else {
+        form.style.display = 'block';
     }
 }
 
@@ -1128,6 +1183,20 @@ async function submitExercise(e) {
     } catch (error) {
         alert('Error recording exercise: ' + error.message);
     }
+}
+
+let editingSaleId = null;
+
+function editSale(id, shares, price, date, commissionFees, notes) {
+    // Populate the form with existing values
+    document.getElementById('sharesSold').value = shares;
+    document.getElementById('salePrice').value = price;
+    document.getElementById('saleDate').value = date;
+    document.getElementById('commissionFees').value = commissionFees || 0;
+    document.getElementById('saleNotes').value = notes || '';
+    
+    // Store the sale ID we're editing
+    editingSaleId = id;
 }
 
 async function deleteSale(id) {

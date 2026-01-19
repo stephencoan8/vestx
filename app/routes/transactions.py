@@ -115,6 +115,63 @@ def create_sale():
         return jsonify({'error': str(e)}), 400
 
 
+@transactions_bp.route('/api/transactions/sales/<int:sale_id>', methods=['PUT'])
+@login_required
+def update_sale(sale_id):
+    """Update an existing stock sale."""
+    try:
+        sale = StockSale.query.filter_by(
+            id=sale_id,
+            user_id=current_user.id
+        ).first_or_404()
+        
+        data = request.get_json()
+        
+        # Update fields if provided
+        if 'sale_date' in data:
+            sale.sale_date = datetime.strptime(data['sale_date'], '%Y-%m-%d').date()
+        
+        if 'shares_sold' in data:
+            shares_sold = float(data['shares_sold'])
+            sale.shares_sold = shares_sold
+        
+        if 'sale_price' in data:
+            sale_price = float(data['sale_price'])
+            sale.sale_price = sale_price
+        
+        # Recalculate derived values if shares or price changed
+        if 'shares_sold' in data or 'sale_price' in data:
+            sale.total_proceeds = sale.shares_sold * sale.sale_price
+            sale.total_cost_basis = sale.shares_sold * sale.cost_basis_per_share
+            sale.capital_gain = sale.total_proceeds - sale.total_cost_basis
+        
+        if 'commission_fees' in data:
+            sale.commission_fees = float(data['commission_fees'])
+        
+        # TEMPORARILY REMOVED - columns commented out in model until migration runs
+        # if 'actual_federal_tax' in data:
+        #     sale.actual_federal_tax = data.get('actual_federal_tax')
+        # if 'actual_state_tax' in data:
+        #     sale.actual_state_tax = data.get('actual_state_tax')
+        # if 'actual_total_tax' in data:
+        #     sale.actual_total_tax = data.get('actual_total_tax')
+        
+        if 'notes' in data:
+            sale.notes = data.get('notes', '')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'id': sale.id,
+            'message': 'Stock sale updated successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error updating sale: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 400
+
+
 @transactions_bp.route('/api/transactions/sales/<int:sale_id>', methods=['DELETE'])
 @login_required
 def delete_sale(sale_id):
