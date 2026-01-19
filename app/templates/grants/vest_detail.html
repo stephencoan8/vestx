@@ -61,7 +61,12 @@
                 </div>
                 <div class="info-item">
                     <label>Price at Vest:</label>
-                    <span>${{ "%.2f"|format(vest_event.share_price_at_vest) }}</span>
+                    <span>
+                        ${{ "%.2f"|format(vest_event.share_price_at_vest) }}
+                        {% if not vest_event.has_vested %}
+                        <small style="color: var(--text-secondary); font-style: italic;">(estimated)</small>
+                        {% endif %}
+                    </span>
                 </div>
                 <div class="info-item">
                     <label>Gross Value:</label>

@@ -46,8 +46,18 @@ class VestEvent(db.Model):
     
     @property
     def share_price_at_vest(self) -> float:
-        """Get the stock price at vest date from user's encrypted prices."""
+        """
+        Get the stock price at vest date from user's encrypted prices.
+        For unvested events (future dates), returns current stock price as estimate.
+        For vested events, returns actual historical price at vest date.
+        """
         try:
+            # For unvested shares, use latest available price (current price)
+            if not self.has_vested:
+                price = get_latest_user_price(self.grant.user_id)  # Latest price (today or before)
+                return price if price is not None else 0.0
+            
+            # For vested shares, get actual price at vest date
             price = get_latest_user_price(self.grant.user_id, as_of_date=self.vest_date)
             return price if price is not None else 0.0
         except Exception as e:
