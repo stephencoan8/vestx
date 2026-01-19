@@ -21,6 +21,7 @@
     </div>
 
     <form method="POST" class="settings-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="form-section">
             <h3>Federal Tax Rate</h3>
             <p class="help-text">Choose the federal tax bracket that best matches your income level</p>
