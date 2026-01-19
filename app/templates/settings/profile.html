@@ -96,7 +96,7 @@
                     <span class="rate-value">{{ (rates.total * 100)|round(2) }}%</span>
                 </div>
             </div>
-            <p class="example">Example: $100,000 vest → ${{ (100000 * rates.total)|round(0)|int|format_number }} estimated taxes</p>
+            <p class="example">Example: $100,000 vest → ${{ '{:,.0f}'.format(100000 * rates.total) }} estimated taxes</p>
         </div>
 
         <div class="form-actions">
