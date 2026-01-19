@@ -53,6 +53,29 @@ def migrate_transactions(app):
                 except Exception as alter_error:
                     logger.warning(f"Could not add actual tax columns (may already exist): {alter_error}")
                     db.session.rollback()
+            
+            # Check and add tax preference columns to users if missing
+            try:
+                result = db.session.execute(text('SELECT federal_tax_rate FROM users LIMIT 1'))
+                result.close()
+                logger.info("tax preference columns already exist in users")
+            except Exception as e:
+                # Rollback the failed SELECT transaction
+                db.session.rollback()
+                logger.info(f"tax preference columns missing in users, attempting to add: {e}")
+                try:
+                    db.session.execute(text('ALTER TABLE users ADD COLUMN federal_tax_rate FLOAT'))
+                    db.session.execute(text('ALTER TABLE users ADD COLUMN state_tax_rate FLOAT'))
+                    db.session.execute(text('ALTER TABLE users ADD COLUMN include_fica BOOLEAN'))
+                    # Set defaults for existing users
+                    db.session.execute(text('UPDATE users SET federal_tax_rate = 0.22 WHERE federal_tax_rate IS NULL'))
+                    db.session.execute(text('UPDATE users SET state_tax_rate = 0.0 WHERE state_tax_rate IS NULL'))
+                    db.session.execute(text('UPDATE users SET include_fica = TRUE WHERE include_fica IS NULL'))
+                    db.session.commit()
+                    logger.info("✅ tax preference columns added to users")
+                except Exception as alter_error:
+                    logger.warning(f"Could not add tax preference columns (may already exist): {alter_error}")
+                    db.session.rollback()
     
     except Exception as e:
         logger.error(f"Migration failed but continuing: {e}")
