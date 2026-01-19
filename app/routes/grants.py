@@ -703,157 +703,102 @@ def finance_deep_dive():
 @grants_bp.route('/vest/<int:vest_id>', methods=['GET', 'POST'])
 @login_required
 def vest_detail(vest_id):
-    """View and edit details for a specific vest event."""
+    """View and edit details for a specific vest event - USES CENTRALIZED DATA METHOD."""
+    from app.models.vest_event import VestEvent
+    from app.models.stock_sale import StockSale
+    from app.models.iso_exercise import ISOExercise
+    from app.models.tax_rate import UserTaxProfile
+    from app.models.annual_income import AnnualIncome
+    
     try:
-        logger.info(f"DEBUG: Loading vest_detail for vest_id={vest_id}, user={current_user.id}")
+        logger.info(f"Loading vest {vest_id} for user {current_user.id}")
+        vest_event = VestEvent.query.get_or_404(vest_id)
         
-        from app.models.annual_income import AnnualIncome
-        from app.models.stock_sale import StockSale, ISOExercise
-        from datetime import date
-        
-        # Get vest event with grant relationship
-        logger.info("DEBUG: Querying vest_event...")
-        vest_event = VestEvent.query.options(
-            db.joinedload(VestEvent.grant)
-        ).get_or_404(vest_id)
-        logger.info(f"DEBUG: Found vest_event id={vest_event.id}, grant_id={vest_event.grant_id}")
-        
-        # Security check: ensure this vest belongs to current user's grant
+        # Security check
         if vest_event.grant.user_id != current_user.id:
-            logger.warning(f"DEBUG: Access denied - vest belongs to user {vest_event.grant.user_id}")
             flash('Access denied.', 'danger')
             return redirect(url_for('grants.list_grants'))
         
+        # Handle POST (update notes)
         if request.method == 'POST':
-            # Update notes
             vest_event.notes = request.form.get('notes', '').strip()
             db.session.commit()
             flash('Vest notes updated successfully!', 'success')
             return redirect(url_for('grants.vest_detail', vest_id=vest_id))
         
-        # Get tax profile and calculate comprehensive breakdown
-        logger.info("DEBUG: Loading tax_profile...")
-        tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
-        logger.info(f"DEBUG: Tax profile found: {tax_profile is not None}")
+        # Get user's decryption key
+        user_key = current_user.get_decrypted_user_key()
         
-        # Get annual incomes
-        logger.info("DEBUG: Loading annual_incomes...")
+        # Get tax data
+        tax_profile = UserTaxProfile.query.filter_by(user_id=current_user.id).first()
         annual_incomes_list = AnnualIncome.query.filter_by(user_id=current_user.id).all()
         annual_incomes_dict = {ai.year: ai.annual_income for ai in annual_incomes_list}
-        logger.info(f"DEBUG: Found {len(annual_incomes_list)} annual incomes")
         
-        # Get tax breakdown for all vests (vested and unvested)
-        tax_breakdown = None
-        if tax_profile:  # Only need tax profile, not has_vested
-            logger.info("DEBUG: Calculating tax breakdown...")
-            vest_year = vest_event.tax_year or vest_event.vest_date.year
-            year_income = annual_incomes_dict.get(vest_year, tax_profile.annual_income if tax_profile else None)
-            
-            # Get cached rates for this year
-            cached_rates = None
-            if year_income:
-                cached_rates = tax_profile.get_tax_rates(tax_year=vest_year, income_override=year_income)
-            
-            tax_breakdown = vest_event.get_comprehensive_tax_breakdown(
-                _tax_profile=tax_profile,
-                _annual_incomes=annual_incomes_dict,
-                _cached_rates=cached_rates,
-                _year_income=year_income
-            )
-            logger.info(f"DEBUG: Tax breakdown calculated: {tax_breakdown is not None}")
-        else:
-            logger.info("DEBUG: No tax profile found, skipping tax breakdown")
+        # Get sales and exercises
+        sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
+            StockSale.sale_date.desc()
+        ).all()
         
-        # Get current stock price
-        logger.info("DEBUG: Getting latest stock price...")
-        latest_stock_price = get_latest_user_price(current_user.id) or 0.0
-        logger.info(f"DEBUG: Latest stock price: {latest_stock_price}")
-        
-        # Get sales and exercises for this vest (with safety check for missing tables)
-        sales = []
-        exercises = []
-        total_sold = 0
-        total_exercised = 0
-        
-        try:
-            logger.info("DEBUG: Querying sales...")
-            sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
-                StockSale.sale_date.desc()
-            ).all()
-            logger.info(f"DEBUG: Found {len(sales)} sales")
-            
-            # Add estimated tax calculations to each sale
-            for sale in sales:
-                if sale.capital_gain > 0:
+        # Add estimated tax to each sale
+        for sale in sales:
+            if sale.capital_gain > 0:
+                try:
                     sale.estimated_tax = sale.get_estimated_tax()
-                else:
+                except Exception:
                     sale.estimated_tax = None
-            
-            logger.info("DEBUG: Querying exercises...")
-            exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
-                ISOExercise.exercise_date.desc()
-            ).all()
-            logger.info(f"DEBUG: Found {len(exercises)} exercises")
-            
-            # Calculate remaining shares
-            total_sold = sum(s.shares_sold for s in sales)
-            total_exercised = sum(e.shares_exercised for e in exercises)
-            logger.info(f"DEBUG: total_sold={total_sold}, total_exercised={total_exercised}")
-        except Exception as e:
-            # Tables don't exist yet - just use empty lists
-            logger.warning(f"DEBUG: Could not load sales/exercises: {e}")
         
-        remaining_shares = vest_event.shares_received - total_sold - total_exercised
-        logger.info(f"DEBUG: remaining_shares={remaining_shares}")
+        exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
+            ISOExercise.exercise_date.desc()
+        ).all()
         
-        # Calculate estimated sale tax using centralized method
-        # This is the SINGLE SOURCE OF TRUTH for sale tax calculations
+        # *** SINGLE SOURCE OF TRUTH - GET ALL DATA FROM ONE METHOD ***
         try:
-            estimated_sale_tax = vest_event.get_estimated_sale_tax(
-                current_stock_price=latest_stock_price,
-                total_sold=total_sold,
-                total_exercised=total_exercised,
-                _tax_profile=tax_profile,
-                _annual_incomes=annual_incomes_dict
+            logger.info(f"Calling get_complete_data for vest {vest_id}")
+            vest_data = vest_event.get_complete_data(
+                user_key=user_key,
+                current_price=None,  # Will fetch latest
+                tax_profile=tax_profile,
+                annual_incomes=annual_incomes_dict,
+                sales_data=sales,
+                exercises_data=exercises
             )
-            logger.info(f"DEBUG: estimated_sale_tax calculated")
+            logger.info(f"Successfully got vest_data with keys: {vest_data.keys() if vest_data else 'None'}")
         except Exception as e:
-            logger.error(f"DEBUG: Error calculating estimated_sale_tax: {e}", exc_info=True)
-            # Rollback the transaction if it failed
-            db.session.rollback()
-            # Set to None so template can handle gracefully
-            estimated_sale_tax = None
+            logger.error(f"ERROR in get_complete_data: {e}", exc_info=True)
+            # Create minimal vest_data to prevent template errors
+            vest_data = {
+                'vest_id': vest_event.id,
+                'has_vested': vest_event.has_vested,
+                'is_iso': vest_event.grant.share_type in ['iso_5y', 'iso_6y'],
+                'is_cash': vest_event.grant.share_type == 'cash',
+                'shares_vested': vest_event.shares_vested,
+                'price_at_vest': 0.0,
+                'gross_value': 0.0,
+                'shares_received': vest_event.shares_received,
+                'net_value': 0.0,
+                'current_price': 0.0,
+                'strike_price': vest_event.grant.share_price_at_grant if vest_event.grant.share_type in ['iso_5y', 'iso_6y'] else None,
+                'cost_basis_per_share': 0.0,
+                'shares_sold': 0.0,
+                'shares_exercised': 0.0,
+                'shares_remaining': vest_event.shares_received,
+                'tax_breakdown': None,
+                'sale_tax_projection': None,
+                'error': str(e)
+            }
+            flash(f'Warning: Some calculations unavailable: {str(e)}', 'warning')
         
-        logger.info("DEBUG: Rendering template...")
         return render_template('grants/vest_detail.html',
                              vest_event=vest_event,
                              grant=vest_event.grant,
-                             tax_breakdown=tax_breakdown,
-                             latest_stock_price=latest_stock_price,
+                             vest_data=vest_data,  # ALL DATA IN ONE PLACE
                              sales=sales,
-                             exercises=exercises,
-                             total_sold=total_sold,
-                             total_exercised=total_exercised,
-                             remaining_shares=remaining_shares,
-                             estimated_sale_tax=estimated_sale_tax)
+                             exercises=exercises)
         
     except Exception as e:
-        logger.error(f"DEBUG ERROR in vest_detail: {type(e).__name__}: {str(e)}", exc_info=True)
-        
-        # Return JSON error for debugging
-        import traceback
-        error_data = {
-            'error': type(e).__name__,
-            'message': str(e),
-            'traceback': traceback.format_exc()
-        }
-        
-        # If this is an API request or we're in debug mode, return JSON
-        if request.accept_mimetypes.accept_json or os.getenv('FLASK_ENV') == 'development':
-            logger.error(f"Returning error as JSON: {error_data}")
-            return jsonify(error_data), 500
-        
-        flash(f'Error loading vest details: {type(e).__name__}: {str(e)}', 'danger')
+        logger.error(f"Error in vest_detail: {e}", exc_info=True)
+        db.session.rollback()
+        flash(f'Error loading vest details: {str(e)}', 'danger')
         return redirect(url_for('grants.list_grants'))
 
 
