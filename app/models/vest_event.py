@@ -196,25 +196,32 @@ class VestEvent(db.Model):
             if include_fica:
                 # Social Security: 6.2% up to wage base ($168,600 for 2024)
                 ss_wage_base = 168600
+                ss_rate = 0.062
                 # Simplified: assume this vest pushes user over the cap if gross > wage base
                 if gross_value < ss_wage_base:
-                    social_security_tax = gross_value * 0.062
+                    social_security_tax = gross_value * ss_rate
                 else:
-                    social_security_tax = ss_wage_base * 0.062
+                    social_security_tax = ss_wage_base * ss_rate
                 
                 # Medicare: 1.45% on all income
-                medicare_tax = gross_value * 0.0145
+                medicare_rate = 0.0145
+                medicare_tax = gross_value * medicare_rate
                 
                 # Additional Medicare: 0.9% on income over threshold
                 # $200k single, $250k married - simplified to $200k
                 additional_medicare_threshold = 200000
+                additional_medicare_rate = 0.009
                 if gross_value > additional_medicare_threshold:
-                    additional_medicare_tax = (gross_value - additional_medicare_threshold) * 0.009
+                    additional_medicare_tax = (gross_value - additional_medicare_threshold) * additional_medicare_rate
                 else:
                     additional_medicare_tax = 0
+                    additional_medicare_rate = 0.0  # Show 0% if not applicable
             else:
+                ss_rate = 0.0
                 social_security_tax = 0
+                medicare_rate = 0.0
                 medicare_tax = 0
+                additional_medicare_rate = 0.0
                 additional_medicare_tax = 0
             
             # Total FICA
@@ -237,6 +244,9 @@ class VestEvent(db.Model):
                 'net_value': net_value,
                 'federal_rate': federal_rate,
                 'state_rate': state_rate,
+                'social_security_rate': ss_rate,
+                'medicare_rate': medicare_rate,
+                'additional_medicare_rate': additional_medicare_rate,
                 'include_fica': include_fica,
                 'tax_year': self.tax_year or self.vest_date.year
             }
