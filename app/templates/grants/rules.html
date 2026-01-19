@@ -6,22 +6,23 @@
 <div class="rules-page">
     <header class="page-header">
         <h1>📋 Grant Rules & Calculation Logic</h1>
-        <p class="subtitle">Understanding how your equity compensation is calculated</p>
+        <p class="subtitle">Accurate, actionable definitions that mirror the app math</p>
     </header>
 
-    <!-- Vesting Schedules -->
-    <section class="rules-section">
-        <h2>🗓️ Vesting Schedules</h2>
-        
-        <div class="rule-card highlight">
-            <h3>New Hire RSUs (Restricted Stock Units)</h3>
-            <p><strong>Vesting Frequency: BIANNUAL (Twice per year)</strong></p>
-            <ul>
-                <li><strong>Total Duration:</strong> Typically 5-6 years</li>
-                <li><strong>Vesting Events:</strong> Every 6 months on specific dates (May 15 and November 15)</li>
-                <li><strong>Cliff:</strong> 1 year - nothing vests until first vesting date after 12 months</li>
-                <li><strong>First Vest:</strong> 20% at 1-year cliff, then 10% every 6 months</li>
-            </ul>
+    <p class="lead">Click each section to expand a precise, example-driven breakdown of how vesting, cliffing, and payout math is calculated for each grant type.</p>
+
+    <div class="accordion" id="rulesAccordion">
+
+        <!-- New Hire RSU -->
+        <div class="accordion-item">
+            <button class="accordion-toggle" data-target="#newhire-rsu">New Hire RSU (preset 5-year)</button>
+            <div id="newhire-rsu" class="accordion-panel">
+                <p><strong>Preset Schedule:</strong> New hire RSUs use a 5-year vest schedule (not 5-6 years).</p>
+                <ul>
+                    <li><strong>Total Duration:</strong> 5 years</li>
+                    <li><strong>Cliff:</strong> 1 year (first vest = entire first-year allocation = 20%)</li>
+                    <li><strong>Subsequent Vesting:</strong> Biannual (every 6 months) until 5-year completion</li>
+                </ul>
             <div class="example">
                 <strong>Example:</strong> 1,000 RSU grant on May 1, 2024 (5-year schedule)
                 <ul>
