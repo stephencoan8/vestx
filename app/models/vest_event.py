@@ -645,9 +645,9 @@ class VestEvent(db.Model):
                 # For unvested, use current price as estimate; for vested, use actual
                 cost_basis_per_share = price_at_vest if has_vested else current_price
             
-            # === TAX BREAKDOWN (if tax profile provided) ===
+            # === TAX BREAKDOWN (uses user's tax preferences directly) ===
             tax_breakdown = None
-            if tax_profile and not is_cash:
+            if not is_cash:
                 try:
                     tax_breakdown = self.get_comprehensive_tax_breakdown(
                         _tax_profile=tax_profile,
