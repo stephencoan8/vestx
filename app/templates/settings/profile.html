@@ -73,7 +73,18 @@
                        name="include_fica" 
                        id="include_fica" 
                        {% if user.include_fica %}checked{% endif %}>
-                <label for="include_fica">Include FICA in tax estimates (recommended)</label>
+                <label for="include_fica">Include FICA in tax estimates</label>
+            </div>
+            
+            <div class="checkbox-wrapper" id="ss_maxed_wrapper" style="margin-left: 2rem; {% if not user.include_fica %}display: none;{% endif %}">
+                <input type="checkbox" 
+                       name="ss_wage_base_maxed" 
+                       id="ss_wage_base_maxed" 
+                       {% if user.ss_wage_base_maxed %}checked{% endif %}>
+                <label for="ss_wage_base_maxed">Already maxed Social Security for the year (only Medicare applies)</label>
+                <p class="help-text" style="margin-left: 1.5rem; font-size: 0.85em; color: var(--text-secondary);">
+                    Check this if you've already earned $168,600+ in W-2 wages this year
+                </p>
             </div>
         </div>
 
@@ -361,6 +372,15 @@ function updateTaxPreview() {
     const stateCode = document.getElementById('state_code').value;
     const customStateRate = parseFloat(document.getElementById('custom_state_rate').value) || 0;
     const includeFica = document.getElementById('include_fica').checked;
+    const ssMaxed = document.getElementById('ss_wage_base_maxed').checked;
+    
+    // Show/hide SS maxed checkbox based on FICA checkbox
+    const ssMaxedWrapper = document.getElementById('ss_maxed_wrapper');
+    if (includeFica) {
+        ssMaxedWrapper.style.display = 'block';
+    } else {
+        ssMaxedWrapper.style.display = 'none';
+    }
     
     // Calculate state rate
     const stateTaxRates = {{ state_tax_rates|tojson }};
@@ -372,7 +392,10 @@ function updateTaxPreview() {
     }
     
     // Calculate FICA
-    const ficaRate = includeFica ? 0.0765 : 0;
+    let ficaRate = 0;
+    if (includeFica) {
+        ficaRate = ssMaxed ? 0.0145 : 0.0765;  // Medicare only or full FICA
+    }
     
     // Calculate total
     const totalRate = federalRate + stateRate + ficaRate;
@@ -382,6 +405,10 @@ function updateTaxPreview() {
 
 // Add event listeners for live preview
 document.getElementById('federal_tax_rate').addEventListener('change', updateTaxPreview);
+document.getElementById('state_code').addEventListener('change', updateTaxPreview);
+document.getElementById('custom_state_rate').addEventListener('input', updateTaxPreview);
+document.getElementById('include_fica').addEventListener('change', updateTaxPreview);
+document.getElementById('ss_wage_base_maxed').addEventListener('change', updateTaxPreview);
 document.getElementById('state_code').addEventListener('change', updateTaxPreview);
 document.getElementById('custom_state_rate').addEventListener('input', updateTaxPreview);
 document.getElementById('include_fica').addEventListener('change', updateTaxPreview);

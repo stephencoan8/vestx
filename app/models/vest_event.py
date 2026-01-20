@@ -188,10 +188,11 @@ class VestEvent(db.Model):
             federal_rate = user.get_federal_tax_rate()
             state_rate = user.get_state_tax_rate()
             include_fica = user.include_fica if user.include_fica is not None else True
+            ss_wage_base_maxed = user.ss_wage_base_maxed if hasattr(user, 'ss_wage_base_maxed') and user.ss_wage_base_maxed is not None else False
             
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Tax breakdown for vest {self.id}: user={user.id}, federal={federal_rate}, state={state_rate}, fica={include_fica}")
+            logger.info(f"Tax breakdown for vest {self.id}: user={user.id}, federal={federal_rate}, state={state_rate}, fica={include_fica}, ss_maxed={ss_wage_base_maxed}")
             
             # Calculate tax components
             gross_value = self.value_at_vest
@@ -200,16 +201,20 @@ class VestEvent(db.Model):
             
             # FICA components (if enabled)
             if include_fica:
-                # Social Security: 6.2% up to wage base ($168,600 for 2024)
-                ss_wage_base = 168600
-                ss_rate = 0.062
-                # Simplified: assume this vest pushes user over the cap if gross > wage base
-                if gross_value < ss_wage_base:
-                    social_security_tax = gross_value * ss_rate
+                # Social Security: 6.2% up to wage base (skip if already maxed)
+                if ss_wage_base_maxed:
+                    ss_rate = 0.0
+                    social_security_tax = 0
                 else:
-                    social_security_tax = ss_wage_base * ss_rate
+                    ss_wage_base = 168600
+                    ss_rate = 0.062
+                    # Simplified: assume this vest pushes user over the cap if gross > wage base
+                    if gross_value < ss_wage_base:
+                        social_security_tax = gross_value * ss_rate
+                    else:
+                        social_security_tax = ss_wage_base * ss_rate
                 
-                # Medicare: 1.45% on all income
+                # Medicare: 1.45% on all income (always applies)
                 medicare_rate = 0.0145
                 medicare_tax = gross_value * medicare_rate
                 

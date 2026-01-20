@@ -90,9 +90,12 @@ def create_app():
     with app.app_context():
         db.create_all()
         
-        # Run transaction migration
+        # Run migrations
         from app.utils.migrate_transactions import migrate_transactions
         migrate_transactions(app)
+        
+        from app.utils.migrate_ss_wage_base import migrate_ss_wage_base
+        migrate_ss_wage_base(app)
         
         from app.models.user import User
         from app.utils.init_db import init_admin_user

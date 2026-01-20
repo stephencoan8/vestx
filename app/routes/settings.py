@@ -46,6 +46,7 @@ def profile():
             state_code = request.form.get('state_code', '')
             custom_state_rate = request.form.get('custom_state_rate', '')
             include_fica = request.form.get('include_fica') == 'on'
+            ss_wage_base_maxed = request.form.get('ss_wage_base_maxed') == 'on'
             
             # Determine state rate - custom rate takes priority over state selection
             if custom_state_rate:
@@ -62,6 +63,7 @@ def profile():
             current_user.federal_tax_rate = federal_rate
             current_user.state_tax_rate = state_rate
             current_user.include_fica = include_fica
+            current_user.ss_wage_base_maxed = ss_wage_base_maxed
             
             db.session.commit()
             flash('Tax preferences saved successfully!', 'success')

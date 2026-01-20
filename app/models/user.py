@@ -53,6 +53,7 @@ class User(UserMixin, db.Model):
     federal_tax_rate = db.Column(db.Float, default=0.22)  # Default to 22% bracket
     state_tax_rate = db.Column(db.Float, default=0.0)     # Default to 0% (user sets based on their state)
     include_fica = db.Column(db.Boolean, default=True)    # Include FICA in tax estimates
+    ss_wage_base_maxed = db.Column(db.Boolean, default=False)  # If True, only Medicare applies (no SS tax)
     
     # Relationships
     grants = db.relationship('Grant', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -176,7 +177,12 @@ class User(UserMixin, db.Model):
         Get user's tax rate preferences.
         Returns dict with federal, state, and fica rates.
         """
-        fica_rate = 0.0765 if self.include_fica else 0.0  # 6.2% SS + 1.45% Medicare
+        if not self.include_fica:
+            fica_rate = 0.0
+        elif self.ss_wage_base_maxed:
+            fica_rate = 0.0145  # Medicare only (SS wage base already maxed)
+        else:
+            fica_rate = 0.0765  # 6.2% SS + 1.45% Medicare
         
         return {
             'federal': self.get_federal_tax_rate(),
