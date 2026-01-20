@@ -520,11 +520,8 @@ def finance_deep_dive():
             # Calculate estimated taxes using user's simple tax preferences
             tax_info = ve.estimate_tax_withholding(latest_stock_price)
             
-            # Get comprehensive tax breakdown (simplified - no complex year-by-year logic)
-            if has_vested:
-                tax_breakdown = ve.get_comprehensive_tax_breakdown()
-            else:
-                tax_breakdown = None
+            # Get comprehensive tax breakdown for ALL events (vested and unvested)
+            tax_breakdown = ve.get_comprehensive_tax_breakdown()
             
             # Use centralized method to calculate sale tax estimate
             # This is the SINGLE SOURCE OF TRUTH for sale tax calculations

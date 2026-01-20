@@ -348,14 +348,10 @@
                                     <span class="estimated-tax" style="color: var(--warning-color);" title="Estimated tax - updates with tax sliders">
                                         ${{ "{:,.2f}".format(ve_data.tax_amount) }}*
                                     </span>
-                                {% elif ve_data.has_vested %}
-                                    {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
-                                        <span onclick="event.stopPropagation(); toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: var(--primary-color);" title="Click to view tax breakdown">
-                                            ${{ "{:,.2f}".format(ve_data.tax_amount) }}
-                                        </span>
-                                    {% else %}
+                                {% elif ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
+                                    <span onclick="event.stopPropagation(); toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: var(--primary-color);" title="Click to view tax breakdown">
                                         ${{ "{:,.2f}".format(ve_data.tax_amount) }}
-                                    {% endif %}
+                                    </span>
                                 {% else %}
                                     <span style="color: var(--text-secondary);">—</span>
                                 {% endif %}
@@ -367,7 +363,7 @@
                         </tr>
                         
                         <!-- Tax Breakdown Row (Hidden by default) -->
-                        {% if ve_data.has_vested and ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
+                        {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
                         <tr class="tax-breakdown-row" style="display: none !important; width: 100%;">
                             <td colspan="9" style="background: #3a3a3a; color: #ffffff; padding: 1.5rem; border-left: 4px solid var(--primary-color); display: block; width: 100%;">
                                 <div style="max-width: 800px;">
