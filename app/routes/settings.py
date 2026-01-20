@@ -47,12 +47,15 @@ def profile():
             custom_state_rate = request.form.get('custom_state_rate', '')
             include_fica = request.form.get('include_fica') == 'on'
             
-            # Determine state rate
-            if state_code and state_code in STATE_TAX_RATES:
+            # Determine state rate - custom rate takes priority over state selection
+            if custom_state_rate:
+                # Custom rate entered - use it (convert percentage to decimal)
+                state_rate = float(custom_state_rate) / 100
+            elif state_code and state_code in STATE_TAX_RATES:
+                # State selected - use predefined rate
                 state_rate = STATE_TAX_RATES[state_code]
-            elif custom_state_rate:
-                state_rate = float(custom_state_rate) / 100  # Convert percentage to decimal
             else:
+                # No state or custom rate
                 state_rate = 0.0
             
             # Update user tax preferences
