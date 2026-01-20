@@ -175,6 +175,8 @@ class VestEvent(db.Model):
             # Get user and their tax preferences
             user = User.query.get(self.grant.user_id)
             if not user:
+                import logging
+                logging.getLogger(__name__).warning(f"No user found for grant.user_id={self.grant.user_id if self.grant else 'NO GRANT'}")
                 return {
                     'has_breakdown': False,
                     'gross_value': self.value_at_vest,
@@ -186,6 +188,10 @@ class VestEvent(db.Model):
             federal_rate = user.get_federal_tax_rate()
             state_rate = user.get_state_tax_rate()
             include_fica = user.include_fica if user.include_fica is not None else True
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Tax breakdown for vest {self.id}: user={user.id}, federal={federal_rate}, state={state_rate}, fica={include_fica}")
             
             # Calculate tax components
             gross_value = self.value_at_vest
