@@ -344,13 +344,9 @@
                             <td data-column="shares-held">{{ ve_data.shares_held }}</td>
                             <td data-column="cost-at-vest">${{ "{:,.2f}".format(ve_data.cost_basis) }}</td>
                             <td data-column="tax-paid" class="event-tax-paid">
-                                {% if ve_data.tax_is_estimated %}
-                                    <span class="estimated-tax" style="color: var(--warning-color);" title="Estimated tax - updates with tax sliders">
-                                        ${{ "{:,.2f}".format(ve_data.tax_amount) }}*
-                                    </span>
-                                {% elif ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
-                                    <span onclick="event.stopPropagation(); toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: var(--primary-color);" title="Click to view tax breakdown">
-                                        ${{ "{:,.2f}".format(ve_data.tax_amount) }}
+                                {% if ve_data.tax_breakdown and ve_data.tax_breakdown.has_breakdown %}
+                                    <span onclick="event.stopPropagation(); toggleTaxBreakdown(this)" style="cursor: pointer; text-decoration: underline; color: {{ 'var(--warning-color)' if ve_data.tax_is_estimated else 'var(--primary-color)' }};" title="Click to view tax breakdown">
+                                        ${{ "{:,.2f}".format(ve_data.tax_amount) }}{% if ve_data.tax_is_estimated %}*{% endif %}
                                     </span>
                                 {% else %}
                                     <span style="color: var(--text-secondary);">—</span>
