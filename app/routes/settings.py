@@ -78,10 +78,16 @@ def profile():
     
     # Find current state code if applicable
     current_state = None
+    custom_state_rate = None
+    
     for code, rate in STATE_TAX_RATES.items():
         if abs(rate - (current_user.state_tax_rate or 0.0)) < 0.0001:
             current_state = code
             break
+    
+    # If no matching state found and rate is not 0, it's a custom rate
+    if not current_state and current_user.state_tax_rate and current_user.state_tax_rate > 0:
+        custom_state_rate = round(current_user.state_tax_rate * 100, 2)
     
     return render_template(
         'settings/profile.html',
@@ -89,7 +95,8 @@ def profile():
         rates=rates,
         federal_brackets=FEDERAL_TAX_BRACKETS,
         state_tax_rates=STATE_TAX_RATES,
-        current_state=current_state
+        current_state=current_state,
+        custom_state_rate=custom_state_rate
     )
 
 
