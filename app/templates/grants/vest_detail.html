@@ -157,12 +157,15 @@
                     </div>
                     {% endif %}
                     
-                    <!-- Actual Tax Paid at Vest - Only show for vested grants -->
-                    {% if vest_event.has_vested %}
+                    <!-- Tax Payment Method - Show for all vests -->
                     <div class="tax-subsection" style="margin-top: 2rem;">
-                        <h4>💳 Actual Tax Paid (Your Entry)</h4>
+                        <h4>💳 Tax Payment Method</h4>
                         <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                            {% if vest_event.has_vested %}
                             Record how you actually paid taxes when this vest occurred.
+                            {% else %}
+                            Plan how you will pay taxes when this vest occurs.
+                            {% endif %}
                         </p>
                         
                         <form id="taxPaymentForm" onsubmit="updateTaxPayment(event)">
@@ -232,7 +235,6 @@
                         </div>
                         {% endif %}
                     </div>
-                    {% endif %}
                 </div>
             </div>
         </section>
