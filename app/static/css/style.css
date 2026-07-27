@@ -152,6 +152,16 @@ body.app-layout {
     border-left-color: var(--copper);
 }
 
+/* Global advisor entry in left nav (same look as links) */
+button.nav-link.advisor-nav-btn {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
 .sidebar .nav-link.admin-link {
     color: var(--copper);
 }
