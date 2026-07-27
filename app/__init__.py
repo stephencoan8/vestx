@@ -104,6 +104,9 @@ def create_app():
         from app.utils.migrate_tax_profile_state import migrate_tax_profile_state
         migrate_tax_profile_state(app)
 
+        from app.utils.migrate_user_xai_key import migrate_user_xai_key
+        migrate_user_xai_key(app)
+
         from app.utils.init_db import init_admin_user
         init_admin_user()
 

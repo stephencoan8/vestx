@@ -43,8 +43,9 @@ class Config:
     PUBLIC_MARKET_START = os.getenv('PUBLIC_MARKET_START', '2026-06-12')  # first SPCX trading day
     MARKET_SYNC_MINUTES = int(os.getenv('MARKET_SYNC_MINUTES', '15'))
 
-    # SpaceXAI / xAI Grok (server-side only; never expose to browser)
-    XAI_API_KEY = os.getenv('XAI_API_KEY')
+    # SpaceXAI / xAI Grok — optional server fallback only.
+    # Preferred: each user stores an encrypted key on their profile (Settings).
+    XAI_API_KEY = os.getenv('XAI_API_KEY')  # optional single-tenant fallback
     XAI_MODEL = os.getenv('XAI_MODEL', 'grok-4.5')
     XAI_BASE_URL = os.getenv('XAI_BASE_URL', 'https://api.x.ai/v1')
 

@@ -61,7 +61,7 @@ def hub():
         live_price=live,
         shares_available=available,
         profile_ready=profile.other_ordinary_income is not None,
-        grok_enabled=xai_advisor.is_configured(),
+        grok_enabled=xai_advisor.is_configured(current_user),
     )
 
 
@@ -337,13 +337,14 @@ def api_goal():
                 'exercise_date': goal.exercise_date,
                 'exercise_fmv': goal.exercise_fmv,
             }
-            if data.get('use_grok_parse', True) and xai_advisor.is_configured():
+            if data.get('use_grok_parse', True) and xai_advisor.is_configured(current_user):
                 try:
                     parsed = xai_advisor.parse_goal_with_grok(
                         prompt,
                         inventory_summary=xai_advisor.summarize_inventory(lots),
                         profile_summary=xai_advisor.summarize_profile(eng),
                         defaults=defaults,
+                        user=current_user,
                     )
                     parse_meta = {
                         'source': 'grok',
@@ -391,7 +392,7 @@ def api_goal():
         payload = result.to_dict()
         payload['parse'] = parse_meta
 
-        if explain and xai_advisor.is_configured() and (
+        if explain and xai_advisor.is_configured(current_user) and (
             prompt or result.picks
         ):
             try:
@@ -400,6 +401,7 @@ def api_goal():
                     plan=payload,
                     profile_summary=xai_advisor.summarize_profile(eng),
                     inventory_summary=xai_advisor.summarize_inventory(lots),
+                    user=current_user,
                 )
             except Exception as e:
                 logger.warning('Grok explain failed: %s', e)
@@ -407,12 +409,13 @@ def api_goal():
                 payload['explanation_error'] = str(e)
         else:
             payload['explanation'] = None
-            if not xai_advisor.is_configured():
+            if not xai_advisor.is_configured(current_user):
                 payload['explanation_note'] = (
-                    'Set XAI_API_KEY for Grok narrative explanations of this plan.'
+                    'Add your xAI API key under Settings (encrypted on your profile) '
+                    'to enable Grok explanations. Goal math still works without it.'
                 )
 
-        payload['grok_enabled'] = xai_advisor.is_configured()
+        payload['grok_enabled'] = xai_advisor.is_configured(current_user)
         return jsonify({'success': True, **payload})
     except Exception as e:
         logger.error('goal optimize failed: %s', e, exc_info=True)
@@ -426,9 +429,9 @@ def api_advisor():
     Free-form Grok chat with plan + inventory context.
     Body: { messages: [{role, content}], plan?: object }
     """
-    if not xai_advisor.is_configured():
+    if not xai_advisor.is_configured(current_user):
         return jsonify({
-            'error': 'Grok is not configured. Set XAI_API_KEY on the server.',
+            'error': 'Add your xAI API key under Settings → profile (stored encrypted for your account only).',
             'grok_enabled': False,
         }), 503
     try:
@@ -444,6 +447,7 @@ def api_advisor():
             plan=data.get('plan'),
             profile_summary=xai_advisor.summarize_profile(eng),
             inventory_summary=xai_advisor.summarize_inventory(lots),
+            user=current_user,
         )
         return jsonify({'success': True, 'reply': reply, 'grok_enabled': True})
     except Exception as e:

@@ -64,9 +64,19 @@ def profile():
             current_user.state_tax_rate = state_rate
             current_user.include_fica = include_fica
             current_user.ss_wage_base_maxed = ss_wage_base_maxed
+
+            # Per-user encrypted xAI API key (only your account; billed to your console)
+            if request.form.get('clear_xai_api_key') == 'on':
+                current_user.clear_xai_api_key()
+            else:
+                new_key = (request.form.get('xai_api_key') or '').strip()
+                if new_key:
+                    current_user.set_xai_api_key(new_key)
+            model = (request.form.get('xai_model') or '').strip()
+            current_user.xai_model = model or None
             
             db.session.commit()
-            flash('Tax preferences saved successfully!', 'success')
+            flash('Preferences saved successfully!', 'success')
             return redirect(url_for('settings.profile'))
             
         except Exception as e:
@@ -88,6 +98,12 @@ def profile():
     # If no matching state found and rate is not 0, it's a custom rate
     if not current_state and current_user.state_tax_rate and current_user.state_tax_rate > 0:
         custom_state_rate = round(current_user.state_tax_rate * 100, 2)
+
+    xai_hint = None
+    try:
+        xai_hint = current_user.xai_key_hint() if current_user.has_xai_api_key() else None
+    except Exception:
+        xai_hint = '•••• (saved; unlock failed — check VESTX_MASTER_KEY)' if current_user.has_xai_api_key() else None
     
     return render_template(
         'settings/profile.html',
@@ -96,7 +112,9 @@ def profile():
         federal_brackets=FEDERAL_TAX_BRACKETS,
         state_tax_rates=STATE_TAX_RATES,
         current_state=current_state,
-        custom_state_rate=custom_state_rate
+        custom_state_rate=custom_state_rate,
+        xai_key_hint=xai_hint,
+        xai_key_saved=current_user.has_xai_api_key(),
     )
 
 

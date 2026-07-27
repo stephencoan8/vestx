@@ -48,6 +48,11 @@ class User(UserMixin, db.Model):
     
     # Per-user encrypted key (Fernet) - stored encrypted by server master key
     encrypted_user_key = db.Column(db.LargeBinary, nullable=True)
+
+    # Optional per-user xAI / Grok API key (encrypted with the user's Fernet key)
+    # Never store plaintext; never return full key to the client after save.
+    encrypted_xai_api_key = db.Column(db.LargeBinary, nullable=True)
+    xai_model = db.Column(db.String(64), nullable=True)  # e.g. grok-4.5; null = default
     
     # Tax preferences (simplified approach)
     federal_tax_rate = db.Column(db.Float, default=0.22)  # Default to 22% bracket
@@ -176,6 +181,43 @@ class User(UserMixin, db.Model):
         self.encrypted_user_key = encrypted_blob
         db.session.add(self)
         db.session.commit()
+
+    def has_xai_api_key(self) -> bool:
+        return bool(self.encrypted_xai_api_key)
+
+    def set_xai_api_key(self, api_key: str) -> None:
+        """Encrypt and store the user's xAI API key. Empty string clears it."""
+        from app.utils.encryption import encrypt_for_user
+
+        raw = (api_key or '').strip()
+        if not raw:
+            self.encrypted_xai_api_key = None
+            return
+        user_key = self.get_decrypted_user_key()
+        self.encrypted_xai_api_key = encrypt_for_user(user_key, raw)
+
+    def clear_xai_api_key(self) -> None:
+        self.encrypted_xai_api_key = None
+
+    def get_xai_api_key(self):
+        """Decrypt API key for server-side Grok calls only. Never send to templates."""
+        if not self.encrypted_xai_api_key:
+            return None
+        from app.utils.encryption import decrypt_for_user, EncryptionError
+        try:
+            user_key = self.get_decrypted_user_key()
+            return decrypt_for_user(user_key, self.encrypted_xai_api_key)
+        except EncryptionError:
+            return None
+
+    def xai_key_hint(self):
+        """Masked hint for UI, e.g. xai-...abcd — never the full secret."""
+        key = self.get_xai_api_key()
+        if not key:
+            return None
+        if len(key) <= 8:
+            return '••••••••'
+        return f'{key[:4]}…{key[-4:]}'
     
     def get_federal_tax_rate(self) -> float:
         """Get user's federal tax rate (defaults to 22% if not set)."""

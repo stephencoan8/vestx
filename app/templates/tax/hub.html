@@ -59,8 +59,9 @@
     <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.9rem;max-width:48rem;">
       Tell VestX <strong>what you want out</strong> (e.g. net $500,000 cash). The engine picks
       <strong>specific lots (SpecID)</strong> to minimize tax, then optionally
-      {% if grok_enabled %}<strong>Grok</strong> explains the tradeoffs.
-      {% else %}<strong>Grok</strong> can explain tradeoffs when <code>XAI_API_KEY</code> is set.
+      {% if grok_enabled %}<strong>Grok</strong> explains the tradeoffs (using your encrypted API key).
+      {% else %}<strong>Grok</strong> explanations need your personal xAI key under
+      <a href="{{ url_for('settings.profile') }}">Settings</a> (encrypted; your console billing only).
       {% endif %}
     </p>
 

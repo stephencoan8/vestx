@@ -112,8 +112,46 @@
  <p class="example">Example: $100,000 vest → ${{ '{:,.0f}'.format(100000 * rates.total) }} estimated taxes</p>
  </div>
 
+ <div class="form-section">
+ <h3>Grok / xAI API (your account only)</h3>
+ <p class="help-text">
+ Optional. Powers goal-prompt parsing and explanations on Sales &amp; Tax.
+ The key is <strong>encrypted with your personal key</strong> (same system as private prices)
+ and used only when you are logged in. Billed to <em>your</em> console.x.ai credits — not SuperGrok $30 chat.
+ Create a key at <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a>.
+ </p>
+ {% if xai_key_saved %}
+ <p class="note" style="margin-bottom:0.75rem;">
+ Saved key: <code>{{ xai_key_hint or '••••' }}</code>
+ — leave the field blank to keep it; check “Remove” to delete.
+ </p>
+ {% else %}
+ <p class="note" style="margin-bottom:0.75rem;">No API key saved yet. Goal optimizer still works without Grok.</p>
+ {% endif %}
+ <label for="xai_api_key">xAI API key</label>
+ <input type="password"
+ name="xai_api_key"
+ id="xai_api_key"
+ class="form-control"
+ autocomplete="off"
+ placeholder="{% if xai_key_saved %}•••••••• (enter new key to replace){% else %}xai-...{% endif %}"
+ style="margin-bottom:0.75rem;">
+ <label for="xai_model">Model (optional)</label>
+ <input type="text"
+ name="xai_model"
+ id="xai_model"
+ class="form-control"
+ value="{{ user.xai_model or '' }}"
+ placeholder="grok-4.5 (default)"
+ style="margin-bottom:0.75rem;">
+ <div class="checkbox-wrapper">
+ <input type="checkbox" name="clear_xai_api_key" id="clear_xai_api_key">
+ <label for="clear_xai_api_key">Remove saved API key from my account</label>
+ </div>
+ </div>
+
  <div class="form-actions">
- <button type="submit" class="btn btn-primary">💾 Save Tax Preferences</button>
+ <button type="submit" class="btn btn-primary">Save preferences</button>
  <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Cancel</a>
  </div>
  </form>
