@@ -5,6 +5,7 @@ Sales & Tax Center — lot inventory, sale recording, what-if tax engine.
 from __future__ import annotations
 
 from datetime import datetime, date
+from typing import Optional
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, Response
 from flask_login import login_required, current_user
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 tax_center_bp = Blueprint('tax_center', __name__, url_prefix='/tax')
 
-ADVISOR_API_VERSION = '2026-07-27-v3'
+ADVISOR_API_VERSION = '2026-07-27-v4'
 
 
 def _iso(share_type: str) -> bool:
@@ -49,6 +50,29 @@ def _api_json(payload: dict, status: int = 200) -> Response:
         )
         status = 500
     return Response(body, status=status, mimetype='application/json; charset=utf-8')
+
+
+def _slim_engine_plan(payload: Optional[dict]) -> Optional[dict]:
+    """
+    Keep UI-sync fields; drop bulky tax_analysis so chat JSON always encodes cleanly.
+    Full tax stack remains available via Sales & Tax goal API.
+    """
+    if not payload or not isinstance(payload, dict):
+        return payload
+    out = dict(payload)
+    # Nested analysis can contain dates/lots and occasionally non-finite floats
+    out.pop('tax_analysis', None)
+    alts = out.get('alternatives')
+    if isinstance(alts, list):
+        slim_alts = []
+        for a in alts[:5]:
+            if not isinstance(a, dict):
+                continue
+            aa = dict(a)
+            aa.pop('tax_analysis', None)
+            slim_alts.append(aa)
+        out['alternatives'] = slim_alts
+    return out
 
 
 # ensure date is available in template helpers
@@ -560,13 +584,14 @@ def api_advisor():
                 'api_ok': False,
             }, 500)
 
-        # Engine-only (no Grok)
+        # Engine-only (no Grok) — sell / cash / SpecID plans always take this path
         if routed.skip_grok and routed.deterministic_reply:
             grok_on = False
             try:
                 grok_on = xai_advisor.is_configured(current_user)
             except Exception:
                 pass
+            plan_out = _slim_engine_plan(routed.engine_payload)
             return _api_json({
                 'success': True,
                 'reply': routed.deterministic_reply,
@@ -574,7 +599,7 @@ def api_advisor():
                 'used_grok': False,
                 'api_ok': True,
                 'phase': 'engine_done',
-                'engine_plan': routed.engine_payload or None,
+                'engine_plan': plan_out,
                 'context_meta': {
                     **routed.to_meta(),
                     'live_price': live,
@@ -600,7 +625,7 @@ def api_advisor():
                     'used_grok': False,
                     'api_ok': True,
                     'phase': 'engine_done_no_key',
-                    'engine_plan': routed.engine_payload or None,
+                    'engine_plan': _slim_engine_plan(routed.engine_payload),
                     'grok_enabled': False,
                     'context_meta': {
                         **routed.to_meta(),
@@ -663,7 +688,7 @@ def api_advisor():
                     'api_ok': False,
                     'grok_error': str(e),
                     'phase': 'grok_failed_engine_fallback',
-                    'engine_plan': routed.engine_payload or None,
+                    'engine_plan': _slim_engine_plan(routed.engine_payload),
                     'grok_enabled': True,
                     'context_meta': {
                         **routed.to_meta(),
@@ -696,7 +721,7 @@ def api_advisor():
             'used_grok': True,
             'api_ok': True,
             'phase': 'grok_done',
-            'engine_plan': routed.engine_payload or None,
+            'engine_plan': _slim_engine_plan(routed.engine_payload),
             'context_meta': {
                 'lots': meta.get('lot_count') or len(lots),
                 'live_price': meta.get('live_price') or live,

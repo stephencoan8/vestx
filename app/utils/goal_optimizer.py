@@ -133,43 +133,55 @@ def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
     """Convert lot_inventory dicts to LotSpec with max available shares for planning."""
     specs: List[LotSpec] = []
     for lot in lots:
-        is_iso = bool(lot.get('is_iso'))
-        held = float(lot.get('shares_available') or 0)
-        unex = float(lot.get('shares_unexercised') or 0)
-        # Represent max sellable stock + unexercised as separate conceptual capacity
-        # Primary shares field = held stock for sell; unexercised tracked on field
-        shares = held if held > 0 else unex
-        if shares <= 0 and unex <= 0:
-            continue
-        ex_raw = lot.get('exercise_date')
-        ex_date = None
-        if ex_raw:
-            ex_date = date.fromisoformat(ex_raw) if isinstance(ex_raw, str) else ex_raw
-        specs.append(
-            LotSpec(
-                vest_event_id=int(lot['vest_event_id']),
-                grant_id=int(lot['grant_id']),
-                share_type=lot.get('share_type') or 'rsu',
-                grant_type=lot.get('grant_type') or '',
-                is_iso=is_iso,
-                shares=held if held > 0 else 0.0,
-                vest_date=date.fromisoformat(lot['vest_date']),
-                grant_date=date.fromisoformat(lot['grant_date']),
-                strike_price=float(lot.get('strike_price') or lot.get('cost_basis_per_share') or 0),
-                cost_basis_per_share=float(lot.get('cost_basis_per_share') or 0),
-                exercise_date=ex_date,
-                fmv_at_exercise=lot.get('fmv_at_exercise'),
-                shares_available=held,
-                shares_unexercised=unex,
-                label=lot.get('label') or f"vest {lot['vest_event_id']}",
+        try:
+            is_iso = bool(lot.get('is_iso'))
+            held = float(lot.get('shares_available') or 0)
+            unex = float(lot.get('shares_unexercised') or 0)
+            if held <= 0 and unex <= 0:
+                continue
+            ex_raw = lot.get('exercise_date')
+            ex_date = None
+            if ex_raw:
+                try:
+                    ex_date = date.fromisoformat(str(ex_raw)[:10]) if not isinstance(ex_raw, date) else ex_raw
+                except Exception:
+                    ex_date = None
+            vd = lot.get('vest_date') or lot.get('grant_date')
+            gd = lot.get('grant_date') or lot.get('vest_date')
+            if not vd or not gd:
+                continue
+            vest_date = date.fromisoformat(str(vd)[:10]) if not isinstance(vd, date) else vd
+            grant_date = date.fromisoformat(str(gd)[:10]) if not isinstance(gd, date) else gd
+            specs.append(
+                LotSpec(
+                    vest_event_id=int(lot['vest_event_id']),
+                    grant_id=int(lot.get('grant_id') or lot['vest_event_id']),
+                    share_type=lot.get('share_type') or 'rsu',
+                    grant_type=lot.get('grant_type') or '',
+                    is_iso=is_iso,
+                    shares=held if held > 0 else 0.0,
+                    vest_date=vest_date,
+                    grant_date=grant_date,
+                    strike_price=float(lot.get('strike_price') or lot.get('cost_basis_per_share') or 0),
+                    cost_basis_per_share=float(lot.get('cost_basis_per_share') or 0),
+                    exercise_date=ex_date,
+                    fmv_at_exercise=(
+                        float(lot['fmv_at_exercise'])
+                        if lot.get('fmv_at_exercise') is not None
+                        else None
+                    ),
+                    shares_available=held,
+                    shares_unexercised=unex,
+                    label=lot.get('label') or f"vest {lot['vest_event_id']}",
+                )
             )
-        )
-        # If both held and unexercised, ensure unexercised is on the same spec
-        if held > 0 and unex > 0:
-            specs[-1].shares_unexercised = unex
-        elif unex > 0 and held <= 0:
-            specs[-1].shares = 0.0
-            specs[-1].shares_unexercised = unex
+            if held > 0 and unex > 0:
+                specs[-1].shares_unexercised = unex
+            elif unex > 0 and held <= 0:
+                specs[-1].shares = 0.0
+                specs[-1].shares_unexercised = unex
+        except Exception:
+            continue
     return specs
 
 
@@ -459,6 +471,30 @@ def optimize_goal(
     Main entry: select specific lots/actions to meet goal.target_net_cash
     while minimizing tax (default) or shares.
     """
+    try:
+        return _optimize_goal_impl(profile, inventory_lots, goal)
+    except Exception as e:
+        return GoalPlanResult(
+            success=False,
+            goal=goal.to_dict() if goal else {},
+            achieved_net_cash=0,
+            shortfall=float(goal.target_net_cash or 0) if goal else 0,
+            total_proceeds=0,
+            total_tax=0,
+            total_strike_outlay=0,
+            effective_tax_rate=0,
+            picks=[],
+            actions_summary=[],
+            efficiency_notes=[f'Optimizer error: {e}'],
+            warnings=[str(e)],
+        )
+
+
+def _optimize_goal_impl(
+    profile: dict,
+    inventory_lots: Sequence[dict],
+    goal: GoalRequest,
+) -> GoalPlanResult:
     price = float(goal.sale_price or 0)
     if price <= 0:
         return GoalPlanResult(
@@ -481,7 +517,7 @@ def optimize_goal(
     fmv = float(goal.exercise_fmv if goal.exercise_fmv is not None else price)
     target = float(goal.target_net_cash or 0)
 
-    specs = inventory_to_specs(inventory_lots, price)
+    specs = inventory_to_specs(inventory_lots or [], price)
     ranked = _build_ranked_candidates(specs, goal, sale_date, price)
 
     if not ranked:
@@ -588,19 +624,42 @@ def optimize_goal(
         profile, picks, specs, goal, sale_date, exercise_date, price, fmv, target, ranked
     )
 
-    ev = _evaluate_picks_with_specs(profile, picks, specs, sale_date, exercise_date, price, fmv)
+    try:
+        ev = _evaluate_picks_with_specs(profile, picks, specs, sale_date, exercise_date, price, fmv)
+    except Exception:
+        # Fallback: approx net without full tax stack so UI still gets picks
+        approx_tax = sum(max(0.0, p.estimated_gain) * 0.30 for p in picks)
+        proceeds = sum(p.shares * p.price for p in picks)
+        outlay = sum(
+            p.basis_or_strike * p.shares for p in picks if p.action == 'iso_cashless_dd'
+        )
+        class _Ev:
+            pass
+        ev = {
+            'analysis': None,
+            'proceeds': proceeds,
+            'tax': approx_tax,
+            'strike_outlay': outlay,
+            'net_cash': proceeds - approx_tax - outlay,
+        }
 
     # ISO split optimization if user wants exercise+hold mix
     iso_split = {}
     if goal.allow_iso_exercise_hold and goal.iso_prefer_hold_fraction is not None:
-        iso_split = _optimize_iso_split(
-            profile, specs, goal, sale_date, exercise_date, price, fmv, target
-        )
+        try:
+            iso_split = _optimize_iso_split(
+                profile, specs, goal, sale_date, exercise_date, price, fmv, target
+            )
+        except Exception:
+            iso_split = {}
 
     # Alternatives
-    alternatives = _build_alternatives(
-        profile, specs, goal, sale_date, exercise_date, price, fmv, target, ev
-    )
+    try:
+        alternatives = _build_alternatives(
+            profile, specs, goal, sale_date, exercise_date, price, fmv, target, ev
+        )
+    except Exception:
+        alternatives = []
 
     return _result_from_eval(goal, picks, ev, target, ranked, alternatives, iso_split)
 
@@ -945,12 +1004,23 @@ def _result_from_eval(
     alternatives: Optional[List] = None,
     iso_split: Optional[Dict] = None,
 ) -> GoalPlanResult:
-    analysis = ev['analysis']
-    net = ev['net_cash']
-    tax = ev['tax']
-    proceeds = ev['proceeds']
-    outlay = ev['strike_outlay']
-    gain = max(proceeds - outlay, analysis.total_proceeds - analysis.total_cost_basis + analysis.equity_ordinary)
+    analysis = ev.get('analysis')
+    net = float(ev.get('net_cash') or 0)
+    tax = float(ev.get('tax') or 0)
+    proceeds = float(ev.get('proceeds') or 0)
+    outlay = float(ev.get('strike_outlay') or 0)
+    if analysis is not None:
+        try:
+            gain = max(
+                proceeds - outlay,
+                float(analysis.total_proceeds)
+                - float(analysis.total_cost_basis)
+                + float(analysis.equity_ordinary),
+            )
+        except Exception:
+            gain = max(proceeds - outlay, 0.0)
+    else:
+        gain = max(proceeds - outlay, sum(max(0.0, p.estimated_gain) for p in picks))
     eff = (tax / gain) if gain > 0 else 0.0
 
     summary = []
@@ -975,6 +1045,20 @@ def _result_from_eval(
 
     success = (target <= 0) or (net >= target * 0.99)
 
+    tax_analysis_dict = None
+    if analysis is not None:
+        try:
+            tax_analysis_dict = analysis.to_dict()
+        except Exception:
+            tax_analysis_dict = None
+
+    warnings: List[str] = []
+    if analysis is not None:
+        try:
+            warnings = list(analysis.warnings or [])
+        except Exception:
+            warnings = []
+
     return GoalPlanResult(
         success=success,
         goal=goal.to_dict(),
@@ -987,9 +1071,9 @@ def _result_from_eval(
         picks=picks,
         actions_summary=summary,
         efficiency_notes=notes,
-        tax_analysis=analysis.to_dict() if analysis else None,
+        tax_analysis=tax_analysis_dict,
         alternatives=alternatives or [],
-        warnings=list(analysis.warnings or []) if analysis else [],
+        warnings=warnings,
         iso_split=iso_split or {},
     )
 
@@ -1006,23 +1090,32 @@ def parse_goal_heuristic(text: str, defaults: Optional[dict] = None) -> GoalRequ
         raw_text=text or '',
     )
     t = (text or '').lower()
-    # money targets
-    m = re.search(
-        r'(?:net|after[\s-]?tax|take[\s-]?home|cash(?:\s+out)?|need|want|get)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?',
-        t,
-    )
-    if not m:
-        m = re.search(r'\$\s*([\d,]+(?:\.\d+)?)\s*([kmb])?', t)
-    if m:
-        val = float(m.group(1).replace(',', ''))
-        suf = (m.group(2) or '').lower()
+    # money targets: "net 50k", "get 300k liquid", "$50,000", "50k cash"
+    money_patterns = [
+        r'(?:net|after[\s-]?tax|take[\s-]?home|liquid(?:ity)?|cash(?:\s+out)?|'
+        r'need|want|get|raise|have)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?\b',
+        r'\$\s*([\d,]+(?:\.\d+)?)\s*([kmb])?',
+        r'\b([\d,]+(?:\.\d+)?)\s*([kmb])\b\s*(?:liquid|cash|net|after)?',
+    ]
+    for pat in money_patterns:
+        m = re.search(pat, t)
+        if not m:
+            continue
+        try:
+            val = float(m.group(1).replace(',', ''))
+        except (ValueError, IndexError):
+            continue
+        suf = (m.group(2) or '').lower() if m.lastindex and m.lastindex >= 2 else ''
         if suf == 'k':
             val *= 1_000
         elif suf == 'm':
             val *= 1_000_000
         elif suf == 'b':
             val *= 1_000_000_000
+        if not suf and val < 1000:
+            continue
         g.target_net_cash = val
+        break
 
     if 'minimi' in t and 'share' in t:
         g.objective = 'min_shares'

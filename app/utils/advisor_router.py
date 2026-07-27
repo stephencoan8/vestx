@@ -30,14 +30,19 @@ from app.utils.tax_engine import earliest_qualifying_sale_date, classify_iso_dis
 from app.utils.account_context import estimate_tokens
 
 
+# Cash targets: "net 50k", "get 300k liquid", "$50,000", "raise 100k"
 _NET_CASH = re.compile(
-    r'(?:net|after[\s-]?tax|take[\s-]?home|cash(?:\s+out)?)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?'
-    r'|\$\s*([\d,]+(?:\.\d+)?)\s*([kmb])?\s*(?:net|after[\s-]?tax)',
+    r'(?:net|after[\s-]?tax|take[\s-]?home|cash(?:\s+out)?|liquid(?:ity)?|'
+    r'raise|need|want|get|raise)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?\b'
+    r'|\$\s*([\d,]+(?:\.\d+)?)\s*([kmb])?'
+    r'|\b([\d,]+(?:\.\d+)?)\s*([kmb])\b\s*(?:liquid|cash|after[\s-]?tax|net)?',
     re.I,
 )
 _OPTIMIZE = re.compile(
-    r'\b(which lots?|what (?:should|do) i sell|minimi[sz]e tax|optimal|optimize|'
-    r'specid|sell order|tax.?efficient)\b',
+    r'\b(which lots?|what (?:should|do|to)?\s*i?\s*sell|what i should sell|'
+    r'minimi[sz]e\s+tax(?:es)?|optimal|optimize|specid|sell order|'
+    r'tax.?efficient|update (?:my )?screen|show what i should sell|'
+    r'lots? to sell)\b',
     re.I,
 )
 _PORTFOLIO = re.compile(
@@ -53,29 +58,57 @@ _PROFILE = re.compile(
     r'\b(tax profile|my (?:filing|wages|bracket|state)|what rate)\b',
     re.I,
 )
+# Explicit explain/why only — NOT "should I sell" (that is pure optimize)
 _NUANCE = re.compile(
-    r'\b(why|explain|nuance|risk|should i|pros?|cons?|tradeoff|compared? to|'
-    r'what if|opinion|advice|think)\b',
+    r'\b(why|explain|nuance|risks?|pros?|cons?|tradeoffs?|compared? to|'
+    r'what if|opinion|in your (?:view|opinion))\b',
     re.I,
 )
 
 
-def _parse_money(m: re.Match) -> Optional[float]:
+def _parse_money_from_match(m: re.Match) -> Optional[float]:
     g = m.groups()
-    # groups: (amt1, suf1, amt2, suf2) depending on pattern
-    if g[0]:
-        val, suf = float(g[0].replace(',', '')), (g[1] or '').lower()
-    elif len(g) > 2 and g[2]:
-        val, suf = float(g[2].replace(',', '')), (g[3] or '').lower()
-    else:
+    # Flexible groups: (a,suf) pairs at 0-1, 2-3, 4-5
+    for i in range(0, len(g), 2):
+        if g[i] is None:
+            continue
+        try:
+            val = float(str(g[i]).replace(',', ''))
+        except ValueError:
+            continue
+        suf = (g[i + 1] or '').lower() if i + 1 < len(g) else ''
+        if suf == 'k':
+            val *= 1_000
+        elif suf == 'm':
+            val *= 1_000_000
+        elif suf == 'b':
+            val *= 1_000_000_000
+        # Ignore tiny bare numbers without k/m (e.g. "2 lots")
+        if not suf and val < 1000:
+            continue
+        return val
+    return None
+
+
+def extract_cash_target(text: str) -> Optional[float]:
+    """Pull a dollar target from free text."""
+    if not text:
         return None
-    if suf == 'k':
-        val *= 1_000
-    elif suf == 'm':
-        val *= 1_000_000
-    elif suf == 'b':
-        val *= 1_000_000_000
-    return val
+    # Prefer explicit liquid/net/cash phrases
+    patterns = [
+        r'(?:net|after[\s-]?tax|take[\s-]?home|liquid(?:ity)?|cash)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?\b',
+        r'(?:get|need|want|raise|have)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kmb])?\s*(?:liquid|cash|net|after)?',
+        r'\$\s*([\d,]+(?:\.\d+)?)\s*([kmb])?',
+        r'\b([\d,]+(?:\.\d+)?)\s*([kmb])\b',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.I)
+        if not m:
+            continue
+        val = _parse_money_from_match(m)
+        if val is not None and val >= 1000:
+            return val
+    return None
 
 
 @dataclass
@@ -118,11 +151,21 @@ def route_and_compute(
     wants_nuance = bool(_NUANCE.search(text)) or force_grok
     today = sale_date or date.today()
     price = float(live_price or 0)
+    cash_target = extract_cash_target(text)
+    is_sell_plan = bool(
+        cash_target
+        or _OPTIMIZE.search(text)
+        or _NET_CASH.search(text)
+        or re.search(r'\b(sell|liquid|minimi[sz]e\s+tax)', text, re.I)
+    )
+    # Sell / cash / SpecID questions are pure engine — never force Grok just because of "should I sell"
+    if is_sell_plan and not force_grok and not re.search(
+        r'\b(why|explain|risk|tradeoff)\b', text, re.I
+    ):
+        wants_nuance = False
 
     # Portfolio before optimize (avoid "how many shares" false positives)
-    if _PORTFOLIO.search(text) and not _NET_CASH.search(text) and not re.search(
-        r'\b(sell|tax|net \$|minimize)\b', text, re.I
-    ):
+    if _PORTFOLIO.search(text) and not is_sell_plan and not _NET_CASH.search(text):
         held = sum(float(l.get('shares_available') or 0) for l in inventory_lots)
         unex = sum(float(l.get('shares_unexercised') or 0) for l in inventory_lots)
         rsu_h = sum(
@@ -160,34 +203,46 @@ def route_and_compute(
             notes=['Portfolio totals from lot_inventory (0 Grok tokens)'],
         )
 
-    # --- Net cash / optimize lots ---
-    net_m = _NET_CASH.search(text)
-    if net_m or _OPTIMIZE.search(text):
-        target = _parse_money(net_m) if net_m else None
+    # --- Net cash / optimize lots / update screen ---
+    if is_sell_plan:
         heur = parse_goal_heuristic(text, {
             'sale_price': price,
             'sale_date': today,
             'exercise_date': today,
             'exercise_fmv': price,
         })
-        if target is None:
-            target = heur.target_net_cash
+        target = cash_target if cash_target is not None else heur.target_net_cash
+        px = price if price > 0 else float(heur.sale_price or 0) or 1.0
 
         goal = GoalRequest(
             target_net_cash=target,
             objective=heur.objective or 'min_tax',
-            sale_price=price,
+            sale_price=px,
             sale_date=today,
             exercise_date=today,
-            exercise_fmv=price,
-            allow_rsu=heur.allow_rsu,
-            allow_iso_sell_held=heur.allow_iso_sell_held,
-            allow_iso_cashless=heur.allow_iso_cashless,
-            allow_iso_exercise_hold=heur.allow_iso_exercise_hold,
+            exercise_fmv=px,
+            allow_rsu=True,
+            allow_iso_sell_held=True,
+            allow_iso_cashless=True,
+            allow_iso_exercise_hold=False,
             raw_text=text,
         )
-        result = optimize_goal(profile_dict, inventory_lots, goal)
-        payload = result.to_dict()
+        try:
+            result = optimize_goal(profile_dict, inventory_lots, goal)
+            payload = result.to_dict()
+        except Exception as e:
+            return RouterResult(
+                mode='engine_only',
+                intent='goal_optimize',
+                engine_text=f'ENGINE_RESULT error: {e}',
+                engine_payload={},
+                deterministic_reply=(
+                    f'**Goal optimizer error**\n\n`{e}`\n\n'
+                    'Try **Sales & Tax → Goal optimizer** and set the target manually.'
+                ),
+                skip_grok=True,
+                notes=[f'optimize_goal failed: {e}'],
+            )
 
         lines = [
             'ENGINE_RESULT (deterministic goal optimizer — trust these $):',
@@ -196,7 +251,7 @@ def route_and_compute(
             f"shortfall=${result.shortfall:,.0f}",
             f"proceeds=${result.total_proceeds:,.0f} tax=${result.total_tax:,.0f} "
             f"strike_outlay=${result.total_strike_outlay:,.0f} "
-            f"eff_rate={result.effective_tax_rate*100:.1f}%",
+            f"eff_rate={result.effective_tax_rate * 100:.1f}%",
             'picks (SpecID order):',
         ]
         for p in result.picks:
@@ -230,7 +285,7 @@ def route_and_compute(
             engine_payload=payload,
             deterministic_reply=human,
             skip_grok=True,
-            notes=['Answered from goal_optimizer only (0 Grok tokens)'],
+            notes=['Answered from goal_optimizer only (0 Grok tokens); UI should sync picks'],
         )
 
     # --- ISO QD calendar ---

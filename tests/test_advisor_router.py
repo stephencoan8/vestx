@@ -100,9 +100,61 @@ def test_open_uses_grok():
     assert r.skip_grok is False
 
 
+def test_should_i_sell_50k_engine_only():
+    """User phrase that previously crashed: should I sell + 50k + minimize taxes."""
+    from app.utils.advisor_router import extract_cash_target
+    msg = 'what should I sell to get 50k and minimize my taxes?'
+    assert extract_cash_target(msg) == 50_000
+    r = route_and_compute(
+        user_message=msg,
+        profile_dict=_profile(),
+        inventory_lots=_lots(),
+        live_price=115.07,
+        sale_date=date(2026, 7, 27),
+    )
+    assert r.mode == 'engine_only'
+    assert r.skip_grok is True
+    assert r.intent == 'goal_optimize'
+    assert r.engine_payload
+    assert r.engine_payload.get('picks') or r.engine_payload.get('actions_summary')
+    assert r.deterministic_reply
+    # Must be JSON-serializable for chat API
+    import json
+    json.dumps(r.engine_payload, default=str, allow_nan=False)
+
+
+def test_update_screen_300k_liquid_engine_only():
+    """User phrase: update screen + minimize taxes + 300k liquid."""
+    from app.utils.advisor_router import extract_cash_target
+    msg = (
+        'Can you update my screen to show what i should sell '
+        'to minimize taxes and get 300k liquid?'
+    )
+    assert extract_cash_target(msg) == 300_000
+    r = route_and_compute(
+        user_message=msg,
+        profile_dict=_profile(),
+        inventory_lots=_lots(),
+        live_price=115.07,
+        sale_date=date(2026, 7, 27),
+    )
+    assert r.mode == 'engine_only'
+    assert r.skip_grok is True
+    assert r.intent == 'goal_optimize'
+    assert r.engine_payload
+    picks = r.engine_payload.get('picks') or []
+    assert len(picks) >= 1
+    net = float(r.engine_payload.get('achieved_net_cash') or 0)
+    assert net >= 250_000  # close to target with inventory
+    import json
+    json.dumps(r.engine_payload, default=str, allow_nan=False)
+
+
 if __name__ == '__main__':
     test_net_cash_is_engine_only()
     test_why_uses_grok_after_engine()
     test_portfolio_engine_only()
     test_open_uses_grok()
+    test_should_i_sell_50k_engine_only()
+    test_update_screen_300k_liquid_engine_only()
     print('ADVISOR ROUTER TESTS PASSED')
