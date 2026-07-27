@@ -30,6 +30,7 @@
     --radius: 0.75rem;
     --radius-sm: 0.5rem;
     --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    --sidebar-width: 15.5rem;
 }
 
 * {
@@ -50,13 +51,185 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* ——— App shell (sidebar layout) ——— */
+body.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    padding: 1.25rem 0.85rem 1rem;
+}
+
+.sidebar-brand {
+    padding: 0.35rem 0.65rem 1.25rem;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 1rem;
+}
+
+.sidebar-brand a,
+.nav-brand a,
+.mobile-brand {
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-primary);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.sidebar-brand a::before,
+.nav-brand a::before {
+    content: "";
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    border: 1.5px solid var(--copper);
+    background:
+        radial-gradient(circle at 40% 40%, var(--copper-soft), transparent 60%),
+        linear-gradient(145deg, var(--accent-bright), var(--accent));
+    box-shadow: 0 0 0 1px rgba(184, 115, 51, 0.15);
+    flex-shrink: 0;
+}
+
+.sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 0 0.15rem;
+}
+
+.sidebar-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.sidebar-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0.35rem 0.75rem 0.45rem;
+}
+
+.sidebar .nav-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    border-left: 2px solid transparent;
+}
+
+.sidebar .nav-link:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.sidebar .nav-link.active {
+    color: var(--text-primary);
+    background: var(--accent-soft);
+    border-left-color: var(--copper);
+}
+
+.sidebar .nav-link.admin-link {
+    color: var(--copper);
+}
+
+.sidebar .nav-link.admin-link.active {
+    background: var(--copper-soft);
+}
+
+.sidebar-footer {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 0.85rem;
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.sidebar-footer .user-badge {
+    margin: 0 0.35rem 0.25rem;
+    text-align: center;
+}
+
+.sidebar-footer .logout-link {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.app-main {
+    flex: 1;
+    min-width: 0;
+    margin-left: var(--sidebar-width);
+    min-height: 100vh;
+}
+
+.mobile-topbar {
+    display: none;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(20, 22, 18, 0.95);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 150;
+}
+
+.sidebar-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+    border-color: var(--copper-border);
+    background: var(--bg-hover);
+}
+
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 180;
+}
+
 .container {
     max-width: 1400px;
     margin: 0 auto;
     padding: 1.75rem 2rem 3rem;
 }
 
-/* ——— Navigation ——— */
+/* Guest top nav (login / register only) */
 .navbar {
     background: rgba(20, 22, 18, 0.92);
     backdrop-filter: blur(12px);
@@ -81,30 +254,6 @@ body {
     gap: 1.5rem;
 }
 
-.nav-brand a {
-    font-size: 1.2rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--text-primary);
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-}
-
-.nav-brand a::before {
-    content: "";
-    width: 1.35rem;
-    height: 1.35rem;
-    border-radius: 50%;
-    border: 1.5px solid var(--copper);
-    background:
-        radial-gradient(circle at 40% 40%, var(--copper-soft), transparent 60%),
-        linear-gradient(145deg, var(--accent-bright), var(--accent));
-    box-shadow: 0 0 0 1px rgba(184, 115, 51, 0.15);
-    flex-shrink: 0;
-}
-
 .nav-menu {
     display: flex;
     flex-wrap: wrap;
@@ -113,7 +262,7 @@ body {
     justify-content: flex-end;
 }
 
-.nav-link {
+.guest-layout .nav-link {
     color: var(--text-secondary);
     text-decoration: none;
     padding: 0.4rem 0.7rem;
@@ -123,13 +272,9 @@ body {
     transition: color 0.15s, background 0.15s;
 }
 
-.nav-link:hover {
+.guest-layout .nav-link:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
-}
-
-.nav-link.admin-link {
-    color: var(--copper);
 }
 
 .user-badge {
@@ -139,7 +284,6 @@ body {
     color: var(--text-secondary);
     border: 1px solid var(--border);
     font-size: 0.8rem;
-    margin-left: 0.35rem;
 }
 
 /* Guest welcome */
@@ -1013,6 +1157,28 @@ body {
 
 /* ——— Responsive ——— */
 @media (max-width: 900px) {
+    .sidebar {
+        transform: translateX(-105%);
+        transition: transform 0.2s ease;
+        box-shadow: 8px 0 32px var(--shadow);
+    }
+
+    body.sidebar-open .sidebar {
+        transform: translateX(0);
+    }
+
+    body.sidebar-open .sidebar-backdrop {
+        display: block;
+    }
+
+    .app-main {
+        margin-left: 0;
+    }
+
+    .mobile-topbar {
+        display: flex;
+    }
+
     .nav-container {
         flex-direction: column;
         align-items: flex-start;

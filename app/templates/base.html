@@ -7,31 +7,49 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="{% if current_user.is_authenticated %}app-layout{% else %}guest-layout{% endif %}">
     {% if current_user.is_authenticated %}
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <a href="{{ url_for('main.dashboard') }}">VestX</a>
-            </div>
-            <div class="nav-menu">
-                <a href="{{ url_for('main.dashboard') }}" class="nav-link">Dashboard</a>
-                <a href="{{ url_for('grants.list_grants') }}" class="nav-link">Grants</a>
-                <a href="{{ url_for('prices.list_prices') }}" class="nav-link">Prices</a>
-                <a href="{{ url_for('scenarios.price_scenarios') }}" class="nav-link">Scenarios</a>
-                <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link">Schedule</a>
-                <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link">Finance</a>
-                <a href="{{ url_for('grants.sale_planning') }}" class="nav-link">Sale Planning</a>
-                <a href="{{ url_for('grants.rules') }}" class="nav-link">Rules</a>
-                <a href="{{ url_for('settings.profile') }}" class="nav-link">Settings</a>
-                {% if current_user.is_admin %}
-                <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link">Admin</a>
-                {% endif %}
-                <a href="{{ url_for('auth.logout') }}" class="nav-link">Logout</a>
-                <span class="user-badge">{{ current_user.username }}</span>
-            </div>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <a href="{{ url_for('main.dashboard') }}">VestX</a>
         </div>
-    </nav>
+
+        <nav class="sidebar-nav" aria-label="Main">
+            <div class="sidebar-section">
+                <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Dashboard</a>
+                <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint in ['grants.list_grants', 'grants.add_grant', 'grants.view_grant', 'grants.edit_grant'] %} active{% endif %}">Grants</a>
+                <a href="{{ url_for('prices.list_prices') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('prices.') %} active{% endif %}">Prices</a>
+                <a href="{{ url_for('scenarios.price_scenarios') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('scenarios.') %} active{% endif %}">Scenarios</a>
+            </div>
+
+            <div class="sidebar-section">
+                <span class="sidebar-label">Analysis</span>
+                <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link{% if request.endpoint == 'grants.vest_schedule' %} active{% endif %}">Schedule</a>
+                <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link{% if request.endpoint == 'grants.finance_deep_dive' %} active{% endif %}">Finance</a>
+                <a href="{{ url_for('grants.sale_planning') }}" class="nav-link{% if request.endpoint == 'grants.sale_planning' %} active{% endif %}">Sale Planning</a>
+                <a href="{{ url_for('grants.rules') }}" class="nav-link{% if request.endpoint == 'grants.rules' %} active{% endif %}">Rules</a>
+            </div>
+
+            <div class="sidebar-section">
+                <span class="sidebar-label">Account</span>
+                <a href="{{ url_for('settings.profile') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('settings.') %} active{% endif %}">Settings</a>
+                {% if current_user.is_admin %}
+                <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link{% if request.endpoint and request.endpoint.startswith('admin.') %} active{% endif %}">Admin</a>
+                {% endif %}
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <span class="user-badge">{{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="nav-link logout-link">Logout</a>
+        </div>
+    </aside>
+
+    <div class="app-main">
+        <header class="mobile-topbar">
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
+            <a href="{{ url_for('main.dashboard') }}" class="mobile-brand">VestX</a>
+        </header>
     {% else %}
     <nav class="navbar guest-navbar">
         <div class="nav-container">
@@ -46,20 +64,55 @@
     </nav>
     {% endif %}
 
-    <div class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">
-                    {{ message }}
-                    <button type="button" class="alert-close" onclick="this.parentElement.remove()" aria-label="Dismiss">&times;</button>
-                </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+        <div class="container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                        <button type="button" class="alert-close" onclick="this.parentElement.remove()" aria-label="Dismiss">&times;</button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
-        {% block content %}{% endblock %}
-    </div>
+            {% block content %}{% endblock %}
+        </div>
+
+    {% if current_user.is_authenticated %}
+    </div><!-- /.app-main -->
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+    <script>
+    (function () {
+        var sidebar = document.getElementById('sidebar');
+        var toggle = document.getElementById('sidebarToggle');
+        var backdrop = document.getElementById('sidebarBackdrop');
+        if (!sidebar || !toggle || !backdrop) return;
+
+        function openNav() {
+            document.body.classList.add('sidebar-open');
+            toggle.setAttribute('aria-expanded', 'true');
+            backdrop.hidden = false;
+        }
+        function closeNav() {
+            document.body.classList.remove('sidebar-open');
+            toggle.setAttribute('aria-expanded', 'false');
+            backdrop.hidden = true;
+        }
+        toggle.addEventListener('click', function () {
+            if (document.body.classList.contains('sidebar-open')) closeNav();
+            else openNav();
+        });
+        backdrop.addEventListener('click', closeNav);
+        sidebar.querySelectorAll('a').forEach(function (a) {
+            a.addEventListener('click', function () {
+                if (window.matchMedia('(max-width: 900px)').matches) closeNav();
+            });
+        });
+    })();
+    </script>
+    {% endif %}
 
     <script src="{{ url_for('static', filename='js/sortable-tables.js') }}"></script>
     {% block extra_js %}{% endblock %}
