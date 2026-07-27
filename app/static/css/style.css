@@ -356,6 +356,26 @@ body.app-layout {
 body.advisor-open .app-main {
     margin-right: min(var(--advisor-width), 100vw);
 }
+
+/* SpecID picks highlighted when chat/engine updates the screen */
+#lotsTable tbody tr.lot-pick-highlight,
+#goalPicksTable tbody tr.lot-pick-highlight {
+    background: var(--accent-soft) !important;
+    box-shadow: inset 3px 0 0 var(--copper);
+}
+#lotsTable tbody tr.lot-pick-highlight td {
+    border-color: var(--copper-border);
+}
+.advisor-ui-sync {
+    border-color: var(--copper-border) !important;
+    background: var(--copper-soft) !important;
+    color: var(--text-primary) !important;
+    font-size: 0.8rem !important;
+}
+.advisor-ui-sync a {
+    color: var(--copper);
+    font-weight: 600;
+}
 @media (max-width: 900px) {
     body.advisor-open .app-main {
         margin-right: 0;

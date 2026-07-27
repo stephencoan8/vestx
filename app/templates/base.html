@@ -98,8 +98,8 @@
       </header>
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
         <div class="advisor-msg bot">
-          Computable questions (net cash, which lots, portfolio totals, ISO QD dates) run on VestX engines first — no Grok tokens.
-          Add “why” or “explain” for a short Grok narrative. Open-ended strategy questions use Grok + compact account data.
+          Computable questions run on VestX engines first (0 Grok tokens) and <strong>update the Sales &amp; Tax screen</strong> (goal stats, SpecID table, lot checkboxes).
+          Say “why” for a short explanation. Stay on Sales &amp; Tax while chatting for live UI sync.
         </div>
       </div>
       <div class="advisor-input-row">
@@ -173,7 +173,39 @@
         window.VESTX_CSRF = '{{ csrf_token() }}';
         window.VESTX_ADVISOR_URL = '{{ url_for("tax_center.api_advisor") }}';
         window.VESTX_SETTINGS_URL = '{{ url_for("settings.profile") }}';
+        window.VESTX_TAX_HUB_URL = '{{ url_for("tax_center.hub") }}';
         window.VESTX_LAST_PLAN = window.VESTX_LAST_PLAN || null;
+        try {
+            var _saved = sessionStorage.getItem('vestx_last_plan');
+            if (_saved && !window.VESTX_LAST_PLAN) {
+                window.VESTX_LAST_PLAN = JSON.parse(_saved);
+            }
+        } catch (e) {}
+
+        /**
+         * Push a deterministic engine plan (goal picks, etc.) into the UI.
+         * On Sales & Tax, page registers window.vestxOnEnginePlan to update tables.
+         * Elsewhere we store the plan and offer a link.
+         */
+        window.vestxApplyEnginePlan = function (plan, meta) {
+            if (!plan || typeof plan !== 'object') return false;
+            window.VESTX_LAST_PLAN = plan;
+            try {
+                sessionStorage.setItem('vestx_last_plan', JSON.stringify(plan));
+            } catch (e) {}
+            window.dispatchEvent(new CustomEvent('vestx:plan-updated', {
+                detail: { plan: plan, meta: meta || {} }
+            }));
+            if (typeof window.vestxOnEnginePlan === 'function') {
+                try {
+                    window.vestxOnEnginePlan(plan, meta || {});
+                    return true;
+                } catch (err) {
+                    console.warn('vestxOnEnginePlan failed', err);
+                }
+            }
+            return false;
+        };
 
         var fab = document.getElementById('advisorFab');
         var panel = document.getElementById('advisorPanel');
@@ -200,11 +232,40 @@
         });
         if (closeBtn) closeBtn.addEventListener('click', closeAdvisor);
 
-        function appendMsg(role, text) {
+        function appendMsg(role, text, opts) {
+            opts = opts || {};
             var div = document.createElement('div');
             div.className = 'advisor-msg ' + (role === 'user' ? 'user' : 'bot');
-            div.textContent = text;
+            if (opts.html) {
+                div.innerHTML = text;
+            } else {
+                div.textContent = text;
+            }
             log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+            return div;
+        }
+
+        function applyPlanFromChat(data) {
+            var plan = data.engine_plan;
+            if (!plan) return;
+            var applied = window.vestxApplyEnginePlan(plan, data.context_meta || {});
+            var picks = plan.picks || [];
+            var n = picks.length;
+            var net = plan.achieved_net_cash;
+            var tip = document.createElement('div');
+            tip.className = 'advisor-msg bot advisor-ui-sync';
+            if (applied) {
+                tip.innerHTML = '<strong>Screen updated</strong> from engine' +
+                    (n ? ' · ' + n + ' SpecID pick(s)' : '') +
+                    (net != null ? ' · net ~$' + Number(net).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '') +
+                    ' · Goal panel + lot table refreshed.';
+            } else {
+                tip.innerHTML = '<strong>Plan ready</strong> (' + (n || 0) + ' picks)' +
+                    (net != null ? ', net ~$' + Number(net).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '') +
+                    '. <a href="' + window.VESTX_TAX_HUB_URL + '">Open Sales &amp; Tax</a> to see the full table (plan is saved for this session).';
+            }
+            log.appendChild(tip);
             log.scrollTop = log.scrollHeight;
         }
 
@@ -214,7 +275,7 @@
             input.value = '';
             appendMsg('user', text);
             history.push({ role: 'user', content: text });
-            statusEl.textContent = 'Thinking with your account data…';
+            statusEl.textContent = 'Running engines / advisor…';
             sendBtn.disabled = true;
             window.vestxFetchJson(window.VESTX_ADVISOR_URL, {
                 method: 'POST',
@@ -227,20 +288,21 @@
                 var reply = data.reply || '(empty reply)';
                 history.push({ role: 'assistant', content: reply });
                 appendMsg('bot', reply);
+                if (data.engine_plan) {
+                    applyPlanFromChat(data);
+                }
                 if (data.context_meta) {
                     var cm = data.context_meta;
                     if (data.used_grok === false) {
-                        statusEl.textContent = 'Engine only (0 Grok tokens) · ' + (cm.intent || cm.mode || '');
+                        statusEl.textContent = 'Engine only (0 Grok) · UI ' +
+                            (data.engine_plan ? 'synced' : 'no plan') +
+                            ' · ' + (cm.intent || cm.mode || '');
                     } else {
                         statusEl.textContent = 'Grok · ctx ~' + (cm.est_context_tokens || '?') +
-                            ' tok · ' + (cm.mode || '') + ' · $' +
-                            Number(cm.live_price || 0).toFixed(2);
+                            ' tok · ' + (cm.mode || '');
                     }
                 } else {
                     statusEl.textContent = 'Ready';
-                }
-                if (data.engine_plan) {
-                    window.VESTX_LAST_PLAN = data.engine_plan;
                 }
             })
             .catch(function (e) {

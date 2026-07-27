@@ -447,7 +447,46 @@
     return body;
   }
 
-  function renderGoal(data) {
+  function applyPicksToLotsTable(picks) {
+    const table = document.getElementById('lotsTable');
+    if (!table || !picks || !picks.length) return;
+    table.querySelectorAll('tbody tr').forEach(function (tr) {
+      tr.classList.remove('lot-pick-highlight');
+      const check = tr.querySelector('.lot-check');
+      const qty = tr.querySelector('.lot-qty');
+      if (check) check.checked = false;
+      if (qty && !qty.disabled) qty.value = 0;
+    });
+    picks.forEach(function (p) {
+      const sellActions = {
+        sell_rsu: true,
+        sell_iso_held: true,
+        iso_cashless_dd: true
+      };
+      if (!sellActions[p.action] && p.action !== 'iso_exercise_hold') return;
+      const tr = table.querySelector('tbody tr[data-vest="' + p.vest_event_id + '"]');
+      if (!tr) return;
+      tr.classList.add('lot-pick-highlight');
+      const check = tr.querySelector('.lot-check');
+      const qty = tr.querySelector('.lot-qty');
+      if (check && !check.disabled) check.checked = true;
+      if (qty && !qty.disabled && p.shares != null) {
+        // For unexercised ISO cashless, qty field may be on held=0 row — still set max avail
+        const maxQ = parseFloat(tr.dataset.available || tr.dataset.unexercised || qty.max || 0);
+        const unex = parseFloat(tr.dataset.unexercised || 0);
+        let set = Number(p.shares);
+        if (p.action === 'iso_cashless_dd' && maxQ <= 0 && unex > 0) {
+          // enable mentally: use unexercised as capacity for display
+          qty.disabled = false;
+          qty.max = unex;
+        }
+        qty.value = set;
+      }
+    });
+  }
+
+  function renderGoal(data, opts) {
+    opts = opts || {};
     lastGoalPlan = data;
     const panel = document.getElementById('goalPanel');
     panel.style.display = 'block';
@@ -455,6 +494,7 @@
     let status = data.success
       ? 'Target met — execute the SpecID picks below.'
       : 'Could not fully meet target with current inventory / options.';
+    if (opts.fromChat) status = 'Updated from chat · ' + status;
     if (parse.interpretation) status += ' · ' + parse.interpretation;
     if (parse.source) status += ' (parsed via ' + parse.source + ')';
     document.getElementById('goalStatus').textContent = status;
@@ -477,7 +517,7 @@
     if (picks.length) {
       tbl.innerHTML = '<thead><tr><th>#</th><th>Lot (SpecID)</th><th>Action</th><th>Shares</th><th>Price</th><th>Basis/strike</th><th>Gain est.</th><th>Term / ISO</th><th>Why</th></tr></thead><tbody>' +
         picks.map(function (p, i) {
-          return '<tr><td>' + (i + 1) + '</td><td>' + (p.label || p.vest_event_id) +
+          return '<tr class="lot-pick-highlight"><td>' + (i + 1) + '</td><td>' + (p.label || p.vest_event_id) +
             ' <span style="color:var(--text-muted);font-size:0.75rem;">#' + p.vest_event_id + '</span></td><td>' +
             p.action + '</td><td>' + Number(p.shares).toLocaleString('en-US', { maximumFractionDigits: 2 }) +
             '</td><td>' + money(p.price) + '</td><td>' + money(p.basis_or_strike) +
@@ -504,12 +544,45 @@
       }
     }
 
-    // Sync target field if Grok filled it
-    if (data.goal && data.goal.target_net_cash && !document.getElementById('goalTarget').value) {
+    if (data.goal && data.goal.target_net_cash != null) {
       document.getElementById('goalTarget').value = data.goal.target_net_cash;
     }
+    if (picks.length && picks[0].price) {
+      const gp = document.getElementById('goalPrice');
+      if (gp && (!gp.value || opts.fromChat)) gp.value = picks[0].price;
+    }
+
+    applyPicksToLotsTable(picks);
     window.VESTX_LAST_PLAN = data;
+
+    if (opts.scroll !== false) {
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
+
+  // Live UI sync from Ask Grok / engine router
+  window.vestxOnEnginePlan = function (plan, meta) {
+    if (!plan) return;
+    const data = Object.assign({}, plan, {
+      parse: Object.assign({}, plan.parse || {}, { source: 'chat' }),
+      success: plan.success !== false
+    });
+    renderGoal(data, { fromChat: true, scroll: true });
+  };
+
+  // Restore plan from prior chat session on this browser tab
+  try {
+    const saved = sessionStorage.getItem('vestx_last_plan');
+    if (saved) {
+      const plan = JSON.parse(saved);
+      if (plan && (plan.picks || plan.achieved_net_cash != null)) {
+        renderGoal(Object.assign({ parse: { source: 'session' } }, plan), {
+          fromChat: true,
+          scroll: false
+        });
+      }
+    }
+  } catch (e) { /* ignore */ }
 
   document.getElementById('btnGoalRun').addEventListener('click', function () {
     const btn = document.getElementById('btnGoalRun');
