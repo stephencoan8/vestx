@@ -225,7 +225,7 @@ body.app-layout {
 
 /* ——— Right-side Advisor chat ——— */
 :root {
-    --advisor-width: 26rem;
+    --advisor-width: 34rem; /* ~544px; wider for tables + markdown */
 }
 
 .advisor-fab {
