@@ -2,34 +2,20 @@
 Grant management routes - view, add, edit, delete grants.
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app as app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from app import db
 from app.models.grant import Grant, GrantType, ShareType
 from app.models.vest_event import VestEvent
-from app.models.stock_price import StockPrice
 from app.models.sale_plan import SalePlan
 from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
 from app.utils.price_utils import get_latest_user_price
 from datetime import datetime, date, timedelta
 import logging
-import os
-
-logging.basicConfig(level=logging.DEBUG)
 
 grants_bp = Blueprint('grants', __name__, url_prefix='/grants')
 
 logger = logging.getLogger(__name__)
-
-
-@grants_bp.route('/health')
-def health_check():
-    """Health check endpoint to verify routes are working."""
-    return jsonify({
-        'status': 'ok', 
-        'message': 'Grants blueprint is working',
-        'timestamp': datetime.utcnow().isoformat()
-    })
 
 
 @grants_bp.route('/')
@@ -163,11 +149,7 @@ def view_grant(grant_id):
         return redirect(url_for('grants.list_grants'))
     
     vest_events = VestEvent.query.filter_by(grant_id=grant.id).order_by(VestEvent.vest_date).all()
-    
-    # Debug: provide the decrypted price pulled via helper for the view
-    debug_decrypted_price = get_latest_user_price(grant.user_id, as_of_date=grant.grant_date)
-    
-    return render_template('grants/view.html', grant=grant, vest_events=vest_events, debug_decrypted_price=debug_decrypted_price)
+    return render_template('grants/view.html', grant=grant, vest_events=vest_events)
 
 
 @grants_bp.route('/<int:grant_id>/delete', methods=['POST'])
@@ -378,12 +360,8 @@ def update_vest_event(event_id):
     
     except Exception as e:
         db.session.rollback()
-        import traceback
-        logger = logging.getLogger(__name__)
-        logger.error(f"ERROR: Failed to update vest event {event_id}: {e}", exc_info=True)
-        tb = traceback.format_exc()
-        # Return error detail for debugging (remove in production)
-        return jsonify({'error': str(e), 'trace': tb}), 500
+        logger.error("Failed to update vest event %s: %s", event_id, e, exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 @grants_bp.route('/schedule')
@@ -410,7 +388,7 @@ def vest_schedule():
     for ve in vest_events:
         # For future vests, calculate estimated tax using user's tax preferences
         if ve.vest_date > today:
-            tax_info = ve.estimate_tax_withholding(latest_stock_price)
+            tax_info = ve.estimate_tax_withholding(latest_stock_price, user=current_user)
             ve.estimated_tax = tax_info['tax_amount']
         else:
             ve.estimated_tax = None  # Use actual tax_withheld for vested events
@@ -449,38 +427,29 @@ def rules():
 @login_required
 def finance_deep_dive():
     """Comprehensive tax and capital gains analysis."""
-    import logging
     from sqlalchemy.orm import joinedload
-    logger = logging.getLogger(__name__)
 
-    # Get all grants with eager loading of vest events
     grants = Grant.query.options(
         joinedload(Grant.vest_events)
     ).filter_by(user_id=current_user.id).all()
-    
-    # Get all vest events with eager loading of grants
+
     all_vest_events = VestEvent.query.options(
         joinedload(VestEvent.grant)
     ).join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
-    
-    # Get user's tax rates from simple preferences
-    tax_rates = current_user.get_tax_rates()
-    # Add LTCG for display (standard 15% rate for long-term capital gains)
-    tax_rates['ltcg'] = 0.15
-    federal_rate_default = tax_rates['federal']
-    state_rate_default = tax_rates['state']
-    ltcg_rate_default = tax_rates['ltcg']
-    
-    # Get latest stock price from user's encrypted prices
-    from app.utils.price_utils import get_latest_user_price
-    latest_stock_price = get_latest_user_price(current_user.id) or 0.0
-    logger.debug(f"Using latest_stock_price={latest_stock_price} for user {current_user.id}")
 
+    # Index vests by grant once (avoid O(grants * vests) filtering)
+    vests_by_grant = {}
+    for ve in all_vest_events:
+        vests_by_grant.setdefault(ve.grant_id, []).append(ve)
+
+    tax_rates = current_user.get_tax_rates()
+    tax_rates['ltcg'] = 0.15
+
+    latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
 
-    # Initialize totals
     total_shares_held_vested = 0.0
     total_shares_held_all = 0.0
     total_cost_basis_vested = 0.0
@@ -491,13 +460,11 @@ def finance_deep_dive():
     total_unrealized_gain_all = 0.0
     total_estimated_tax = 0.0
 
-    # Prepare data for analysis
     analysis_data = []
 
     for grant in grants:
-        vest_events = [ve for ve in all_vest_events if ve.grant_id == grant.id]
-        
-        # Initialize grant-level totals
+        vest_events = vests_by_grant.get(grant.id, [])
+
         grant_shares_held_vested = 0.0
         grant_shares_held_all = 0.0
         grant_cost_basis_vested = 0.0
@@ -506,66 +473,46 @@ def finance_deep_dive():
         grant_current_value_all = 0.0
         grant_unrealized_gain_vested = 0.0
         grant_unrealized_gain_all = 0.0
-        
-        # Enrich vest event data
-        enriched_vest_events = []
-        is_cash_grant = grant.share_type == 'cash'
-        
-        # Track grant-level estimated tax-on-sale
         grant_estimated_tax_on_sale = 0.0
+        enriched_vest_events = []
 
         for ve in vest_events:
             has_vested = ve.vest_date <= today
-            
-            # Calculate estimated taxes using user's simple tax preferences
-            tax_info = ve.estimate_tax_withholding(latest_stock_price)
-            
-            # Get comprehensive tax breakdown for ALL events (vested and unvested)
-            tax_breakdown = ve.get_comprehensive_tax_breakdown()
-            
-            # Use centralized method to calculate sale tax estimate
-            # This is the SINGLE SOURCE OF TRUTH for sale tax calculations
+
+            tax_info = ve.estimate_tax_withholding(latest_stock_price, user=current_user)
+            tax_breakdown = ve.get_comprehensive_tax_breakdown(user=current_user)
             sale_tax_data = ve.get_estimated_sale_tax(
                 current_stock_price=latest_stock_price,
-                total_sold=0,  # Finance deep dive shows all shares (no sales tracked here)
-                total_exercised=0
+                total_sold=0,
+                total_exercised=0,
+                user=current_user,
             )
-            
-            # Extract values from centralized calculation
+
             shares_held = sale_tax_data['shares_held']
-            cost_basis_per_share = sale_tax_data['cost_basis_per_share']
             cost_basis = sale_tax_data['cost_basis']
             current_value = sale_tax_data['current_value']
             unrealized_gain = sale_tax_data['unrealized_gain']
-            days_held = sale_tax_data['days_held']
-            is_long_term = sale_tax_data['is_long_term']
-            holding_period = sale_tax_data['holding_period']
             estimated_tax = sale_tax_data['estimated_tax']
 
-            
-            ve_data = {
+            enriched_vest_events.append({
                 'vest_event': ve,
                 'has_vested': has_vested,
                 'shares_held': shares_held,
-                'cost_basis_per_share': cost_basis_per_share,
+                'cost_basis_per_share': sale_tax_data['cost_basis_per_share'],
                 'cost_basis': cost_basis,
                 'current_value': current_value,
                 'unrealized_gain': unrealized_gain,
-                'days_held': days_held,
-                'is_long_term': is_long_term,
-                'holding_period': holding_period,
+                'days_held': sale_tax_data['days_held'],
+                'is_long_term': sale_tax_data['is_long_term'],
+                'holding_period': sale_tax_data['holding_period'],
                 'tax_amount': tax_info['tax_amount'],
                 'tax_is_estimated': tax_info['is_estimated'],
                 'tax_rate': tax_info['tax_rate'],
                 'estimated_tax': estimated_tax,
-                'tax_breakdown': tax_breakdown
-            }
-            enriched_vest_events.append(ve_data)
+                'tax_breakdown': tax_breakdown,
+            })
 
-            # accumulate grant estimated tax
             grant_estimated_tax_on_sale += estimated_tax
-
-            # Add to grant totals
             grant_shares_held_all += shares_held
             grant_cost_basis_all += cost_basis
             grant_current_value_all += current_value
@@ -576,7 +523,7 @@ def finance_deep_dive():
                 grant_cost_basis_vested += cost_basis
                 grant_current_value_vested += current_value
                 grant_unrealized_gain_vested += unrealized_gain
-        
+
         analysis_data.append({
             'grant': grant,
             'vest_events': enriched_vest_events,
@@ -588,10 +535,9 @@ def finance_deep_dive():
             'current_value_all': grant_current_value_all,
             'unrealized_gain_vested': grant_unrealized_gain_vested,
             'unrealized_gain_all': grant_unrealized_gain_all,
-            'estimated_tax': grant_estimated_tax_on_sale
+            'estimated_tax': grant_estimated_tax_on_sale,
         })
-        
-        # Add to overall totals
+
         total_shares_held_vested += grant_shares_held_vested
         total_shares_held_all += grant_shares_held_all
         total_cost_basis_vested += grant_cost_basis_vested
@@ -601,155 +547,117 @@ def finance_deep_dive():
         total_unrealized_gain_vested += grant_unrealized_gain_vested
         total_unrealized_gain_all += grant_unrealized_gain_all
         total_estimated_tax += grant_estimated_tax_on_sale
-    
-    # Debug logging for calculated totals
-    logger = logging.getLogger(__name__)
 
-    # Debug logging for calculated totals
-    logger.debug(f"Total Shares Held (Vested): {total_shares_held_vested}")
-    logger.debug(f"Total Shares Held (All): {total_shares_held_all}")
-    logger.debug(f"Total Cost Basis (Vested): {total_cost_basis_vested}")
-    logger.debug(f"Total Cost Basis (All): {total_cost_basis_all}")
-    logger.debug(f"Total Current Value (Vested): {total_current_value_vested}")
-    logger.debug(f"Total Current Value (All): {total_current_value_all}")
-    logger.debug(f"Total Unrealized Gain (Vested): {total_unrealized_gain_vested}")
-    logger.debug(f"Total Unrealized Gain (All): {total_unrealized_gain_all}")
-    
-    # Pass all required data to the template
-    return render_template('grants/finance_deep_dive.html',
-                           analysis_data=analysis_data,
-                           latest_stock_price=latest_stock_price,
-                           total_shares_held_vested=total_shares_held_vested,
-                           total_shares_held_all=total_shares_held_all,
-                           total_cost_basis_vested=total_cost_basis_vested,
-                           total_cost_basis_all=total_cost_basis_all,
-                           total_current_value_vested=total_current_value_vested,
-                           total_current_value_all=total_current_value_all,
-                           total_unrealized_gain_vested=total_unrealized_gain_vested,
-                           total_unrealized_gain_all=total_unrealized_gain_all,
-                           total_estimated_tax=total_estimated_tax,
-                           tax_rates=tax_rates)
+    return render_template(
+        'grants/finance_deep_dive.html',
+        analysis_data=analysis_data,
+        latest_stock_price=latest_stock_price,
+        total_shares_held_vested=total_shares_held_vested,
+        total_shares_held_all=total_shares_held_all,
+        total_cost_basis_vested=total_cost_basis_vested,
+        total_cost_basis_all=total_cost_basis_all,
+        total_current_value_vested=total_current_value_vested,
+        total_current_value_all=total_current_value_all,
+        total_unrealized_gain_vested=total_unrealized_gain_vested,
+        total_unrealized_gain_all=total_unrealized_gain_all,
+        total_estimated_tax=total_estimated_tax,
+        tax_rates=tax_rates,
+    )
 
 
 @grants_bp.route('/vest/<int:vest_id>', methods=['GET', 'POST'])
 @login_required
 def vest_detail(vest_id):
     """View and edit details for a specific vest event."""
-    from app.models.vest_event import VestEvent
     from app.models.stock_sale import StockSale, ISOExercise
-    
+    from sqlalchemy.orm import joinedload
+
     try:
-        logger.info(f"=== VEST_DETAIL START: vest_id={vest_id}, user_id={current_user.id} ===")
-        vest_event = VestEvent.query.get_or_404(vest_id)
-        logger.info(f"Loaded vest_event: id={vest_event.id}, vest_date={vest_event.vest_date}")
-        
-        # Security check
-        logger.info(f"Checking security: vest.grant={vest_event.grant}, grant.user_id={vest_event.grant.user_id if vest_event.grant else 'NO GRANT'}")
+        vest_event = VestEvent.query.options(
+            joinedload(VestEvent.grant)
+        ).get_or_404(vest_id)
+
         if vest_event.grant.user_id != current_user.id:
-            logger.warning(f"Access denied for user {current_user.id} to vest {vest_id}")
             flash('Access denied.', 'danger')
             return redirect(url_for('grants.list_grants'))
-        
-        # Handle POST (update notes)
+
         if request.method == 'POST':
-            logger.info("Processing POST request to update notes")
             vest_event.notes = request.form.get('notes', '').strip()
             db.session.commit()
             flash('Vest notes updated successfully!', 'success')
             return redirect(url_for('grants.vest_detail', vest_id=vest_id))
-        
-        # Get user's decryption key
-        logger.info("Getting user decryption key")
+
         try:
-            user_key = current_user.get_decrypted_user_key()
-            if not user_key:
-                logger.warning(f"User {current_user.id} has no decryption key")
-                user_key = b''  # Empty bytes as fallback
-            else:
-                logger.info(f"Got user_key: {len(user_key)} bytes")
+            user_key = current_user.get_decrypted_user_key() or b''
         except Exception as e:
-            logger.error(f"Error getting user key: {e}", exc_info=True)
-            user_key = b''  # Empty bytes as fallback
-        
-        # Get sales and exercises
-        logger.info("Getting sales and exercises")
+            logger.error("Error getting user key: %s", e, exc_info=True)
+            user_key = b''
+
         sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
             StockSale.sale_date.desc()
         ).all()
-        logger.info(f"Sales: {len(sales)}")
-        
-        # Add estimated tax to each sale
+
         for sale in sales:
             if sale.capital_gain > 0:
                 try:
-                    sale.estimated_tax = sale.get_estimated_tax()
+                    sale.estimated_tax = sale.get_estimated_tax(user=current_user)
                 except Exception:
                     sale.estimated_tax = None
-        
+
         exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
             ISOExercise.exercise_date.desc()
         ).all()
-        logger.info(f"Exercises: {len(exercises)}")
-        
-        # *** SINGLE SOURCE OF TRUTH - GET ALL DATA FROM ONE METHOD ***
-        logger.info("Calling get_complete_data...")
+
+        current_price = get_latest_user_price(current_user.id) or 0.0
         try:
             vest_data = vest_event.get_complete_data(
                 user_key=user_key,
-                current_price=None,  # Will fetch latest
+                current_price=current_price,
                 sales_data=sales,
-                exercises_data=exercises
+                exercises_data=exercises,
+                user=current_user,
             )
-            logger.info(f"✓ get_complete_data SUCCESS")
-            logger.info(f"  Keys in vest_data: {list(vest_data.keys())}")
-            logger.info(f"  vest_id: {vest_data.get('vest_id')}")
-            logger.info(f"  has_vested: {vest_data.get('has_vested')}")
-            logger.info(f"  is_iso: {vest_data.get('is_iso')}")
-            logger.info(f"  price_at_vest: {vest_data.get('price_at_vest')}")
-            logger.info(f"  shares_vested: {vest_data.get('shares_vested')}")
             if 'error' in vest_data:
-                logger.error(f"  ERROR IN VEST_DATA: {vest_data['error']}")
                 flash(f"Warning: Some calculations unavailable: {vest_data['error']}", 'warning')
         except Exception as e:
-            logger.error(f"✗ EXCEPTION in get_complete_data: {e}", exc_info=True)
-            # Create minimal vest_data to prevent template errors
+            logger.error("get_complete_data failed for vest %s: %s", vest_id, e, exc_info=True)
+            is_iso = vest_event.grant.share_type in ['iso_5y', 'iso_6y']
             vest_data = {
                 'vest_id': vest_event.id,
                 'has_vested': vest_event.has_vested,
-                'is_iso': vest_event.grant.share_type in ['iso_5y', 'iso_6y'],
+                'is_iso': is_iso,
                 'is_cash': vest_event.grant.share_type == 'cash',
                 'shares_vested': vest_event.shares_vested,
                 'price_at_vest': 0.0,
                 'gross_value': 0.0,
                 'shares_received': vest_event.shares_received,
                 'net_value': 0.0,
-                'current_price': 0.0,
-                'strike_price': vest_event.grant.share_price_at_grant if vest_event.grant.share_type in ['iso_5y', 'iso_6y'] else None,
+                'current_price': current_price,
+                'strike_price': vest_event.grant.share_price_at_grant if is_iso else None,
                 'cost_basis_per_share': 0.0,
                 'shares_sold': 0.0,
                 'shares_exercised': 0.0,
                 'shares_remaining': vest_event.shares_received,
                 'tax_breakdown': None,
                 'sale_tax_projection': None,
-                'error': str(e)
+                'error': str(e),
             }
             flash(f'Warning: Some calculations unavailable: {str(e)}', 'warning')
-        
-        logger.info("Rendering template with vest_data")
-        logger.info(f"  Template vars: vest_event={vest_event.id}, grant={vest_event.grant.id if vest_event.grant else None}, vest_data keys={list(vest_data.keys())}, sales={len(sales)}, exercises={len(exercises)}")
-        return render_template('grants/vest_detail.html',
-                             vest_event=vest_event,
-                             grant=vest_event.grant,
-                             vest_data=vest_data,  # ALL DATA IN ONE PLACE
-                             sales=sales,
-                             exercises=exercises)
-        
+
+        return render_template(
+            'grants/vest_detail.html',
+            vest_event=vest_event,
+            grant=vest_event.grant,
+            vest_data=vest_data,
+            sales=sales,
+            exercises=exercises,
+        )
+
     except Exception as e:
-        logger.error(f"✗ CRITICAL ERROR in vest_detail route: {e}", exc_info=True)
+        logger.error("Error in vest_detail route: %s", e, exc_info=True)
         db.session.rollback()
         flash(f'Error loading vest details: {str(e)}', 'danger')
         return redirect(url_for('grants.list_grants'))
-
 
 @grants_bp.route('/sale-planning')
 @login_required

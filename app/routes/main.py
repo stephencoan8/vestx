@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from app.models.grant import Grant
 from app.models.vest_event import VestEvent
 from datetime import date
+from sqlalchemy.orm import joinedload
 
 main_bp = Blueprint('main', __name__)
 
@@ -23,170 +24,168 @@ def index():
 @login_required
 def dashboard():
     """User dashboard showing grant summary."""
-    # Get user's grants
-    grants = Grant.query.filter_by(user_id=current_user.id).all()
-    
-    # Get current stock price from user's encrypted prices
-    # Get current stock price (exclude future prices)
     from app.utils.price_utils import get_latest_user_price
+    from app.models.user_price import UserPrice
+    from app.utils.encryption import decrypt_for_user
+
+    grants = Grant.query.filter_by(user_id=current_user.id).all()
+
+    # Single price lookup (request-cached for any later grant.current_value access)
     current_price = get_latest_user_price(current_user.id) or 0.0
-    
-    # Calculate totals - use grant.current_value which handles ISOs correctly
+
     total_grants = len(grants)
     total_shares = sum(g.share_quantity for g in grants)
-    # For total value, sum up each grant's current_value (which handles ISO spread correctly)
-    total_value = sum(g.current_value for g in grants)
-    
-    # Get upcoming vests (vest_date in the future)
-    upcoming_vests = VestEvent.query.join(Grant).filter(
-        Grant.user_id == current_user.id,
-        VestEvent.vest_date >= date.today()
-    ).order_by(VestEvent.vest_date).limit(5).all()
-    
-    # Get ALL vest events and filter by has_vested property (vest_date in the past)
-    all_vest_events = VestEvent.query.join(Grant).filter(
-        Grant.user_id == current_user.id
-    ).order_by(VestEvent.vest_date).all()
-    
-    # Filter vested events using the has_vested property
-    vested_events = [v for v in all_vest_events if v.has_vested]
+
+    # Compute values from current_price directly — avoid N property lookups
+    total_value = 0.0
+    for g in grants:
+        if g.share_type == 'cash':
+            total_value += g.share_quantity
+        elif g.share_type in ('iso_5y', 'iso_6y'):
+            total_value += g.share_quantity * (current_price - g.share_price_at_grant)
+        else:
+            total_value += g.share_quantity * current_price
+
+    upcoming_vests = (
+        VestEvent.query
+        .options(joinedload(VestEvent.grant))
+        .join(Grant)
+        .filter(Grant.user_id == current_user.id, VestEvent.vest_date >= date.today())
+        .order_by(VestEvent.vest_date)
+        .limit(5)
+        .all()
+    )
+
+    all_vest_events = (
+        VestEvent.query
+        .options(joinedload(VestEvent.grant))
+        .join(Grant)
+        .filter(Grant.user_id == current_user.id)
+        .order_by(VestEvent.vest_date)
+        .all()
+    )
+
+    today = date.today()
+    vested_events = [v for v in all_vest_events if v.vest_date <= today]
     vested_shares_gross = sum(v.shares_vested for v in vested_events)
     vested_shares_net = sum(v.shares_received for v in vested_events)
     vested_value_gross = vested_shares_gross * current_price
     vested_value_net = vested_shares_net * current_price
-    
-    # Count vests that need tax info
     needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
-    
-    # Build comprehensive timeline with ALL state changes (stock price updates + vest events)
-    from app.models.user_price import UserPrice
-    from app.utils.encryption import decrypt_for_user
-    
-    # Get user's encrypted prices and decrypt them
-    all_user_prices = UserPrice.query.filter_by(user_id=current_user.id).order_by(UserPrice.valuation_date).all()
+
+    # Decrypt all user prices once for timeline + chart
+    all_user_prices = (
+        UserPrice.query
+        .filter_by(user_id=current_user.id)
+        .order_by(UserPrice.valuation_date)
+        .all()
+    )
     all_stock_prices = []
     try:
         user_key = current_user.get_decrypted_user_key()
         for price_entry in all_user_prices:
             try:
-                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-                price_val = float(price_str)
+                price_val = float(decrypt_for_user(user_key, price_entry.encrypted_price))
                 all_stock_prices.append({
                     'valuation_date': price_entry.valuation_date,
-                    'price_per_share': price_val
+                    'price_per_share': price_val,
                 })
             except Exception:
                 continue
     except Exception:
         all_stock_prices = []
-    
-    # Create a timeline of all significant dates (vest events + price changes)
+
     timeline_events = []
-    
-    # Add all vest events
     for vest in all_vest_events:
-        timeline_events.append({
-            'date': vest.vest_date,
-            'type': 'vest',
-            'vest': vest
-        })
-    
-    # Add all stock price updates
+        timeline_events.append({'date': vest.vest_date, 'type': 'vest', 'vest': vest})
     for price in all_stock_prices:
         timeline_events.append({
             'date': price['valuation_date'],
             'type': 'price_update',
-            'price': price['price_per_share']
+            'price': price['price_per_share'],
         })
-    
-    # Sort all events by date
     timeline_events.sort(key=lambda x: x['date'])
-    
-    # Pre-build a dict for O(1) price lookups
-    price_dict = {p['valuation_date']: p['price_per_share'] for p in all_stock_prices}
-    
-    # Calculate cumulative values efficiently with O(n) complexity
+
+    # Precompute share types / strike to avoid repeated attribute access in nested loops
+    vest_meta = []
+    for vest in all_vest_events:
+        grant = vest.grant
+        is_iso = grant.share_type in ('iso_5y', 'iso_6y')
+        vest_meta.append({
+            'vest': vest,
+            'shares': vest.shares_vested,
+            'is_iso': is_iso,
+            'strike': grant.share_price_at_grant if is_iso else 0.0,
+            'vest_date': vest.vest_date,
+        })
+
     vesting_timeline = []
-    cumulative_vested_value = 0
-    cumulative_total_value = 0
-    cumulative_vested_shares = 0
-    cumulative_total_shares = 0
-    current_price = 0
-    
+    cumulative_vested_value = 0.0
+    cumulative_total_value = 0.0
+    cumulative_vested_shares = 0.0
+    cumulative_total_shares = 0.0
+    running_price = 0.0
+
     for event in timeline_events:
         event_date = event['date']
-        
-        # Update price if this is a price update
+
         if event['type'] == 'price_update':
-            # Recalculate all cumulative values with new price
-            # This is necessary because ISOs use spread (price - strike)
-            current_price = event['price']
-            
-            # Recalculate from scratch when price changes
-            cumulative_vested_value = 0
-            cumulative_total_value = 0
-            
-            for vest in all_vest_events:
-                if vest.vest_date <= event_date:
-                    grant = vest.grant
-                    shares = vest.shares_vested
-                    
-                    if grant.share_type in ['iso_5y', 'iso_6y']:
-                        value = shares * (current_price - grant.share_price_at_grant)
+            running_price = event['price']
+            cumulative_vested_value = 0.0
+            cumulative_total_value = 0.0
+            for meta in vest_meta:
+                if meta['vest_date'] <= event_date:
+                    if meta['is_iso']:
+                        value = meta['shares'] * (running_price - meta['strike'])
                     else:
-                        value = shares * current_price
-                    
+                        value = meta['shares'] * running_price
                     cumulative_total_value += value
-                    if vest.has_vested:
+                    if meta['vest_date'] <= today:
                         cumulative_vested_value += value
-        
-        # Process vest event
+
         elif event['type'] == 'vest':
             vest = event['vest']
             grant = vest.grant
             shares = vest.shares_vested
-            
-            # Use most recent price
-            if not current_price:
+            if not running_price:
                 continue
-            
-            if grant.share_type in ['iso_5y', 'iso_6y']:
-                value = shares * (current_price - grant.share_price_at_grant)
+            if grant.share_type in ('iso_5y', 'iso_6y'):
+                value = shares * (running_price - grant.share_price_at_grant)
             else:
-                value = shares * current_price
-            
+                value = shares * running_price
+
             cumulative_total_value += value
             cumulative_total_shares += shares
-            
-            if vest.has_vested:
+            if vest.vest_date <= today:
                 cumulative_vested_value += value
                 cumulative_vested_shares += shares
-        
-        # Only add timeline point if we have data
-        if current_price > 0 and cumulative_total_shares > 0:
+
+        if running_price > 0 and cumulative_total_shares > 0:
             vesting_timeline.append({
                 'date': event_date.strftime('%Y-%m-%d'),
                 'vested_shares': cumulative_vested_shares,
                 'total_shares': cumulative_total_shares,
                 'vested_value': cumulative_vested_value,
                 'total_value': cumulative_total_value,
-                'is_vested': event_date <= date.today(),
-                'price_at_date': current_price,
-                'event_type': event['type']
+                'is_vested': event_date <= today,
+                'price_at_date': running_price,
+                'event_type': event['type'],
             })
-    
-    return render_template('main/dashboard.html',
-                         total_grants=total_grants,
-                         total_shares=total_shares,
-                         total_value=total_value,
-                         vested_shares_gross=vested_shares_gross,
-                         vested_shares_net=vested_shares_net,
-                         vested_value_gross=vested_value_gross,
-                         vested_value_net=vested_value_net,
-                         upcoming_vests=upcoming_vests,
-                         current_price=current_price,
-                         vesting_timeline=vesting_timeline,
-                         needs_info_count=needs_info_count)
+
+    return render_template(
+        'main/dashboard.html',
+        total_grants=total_grants,
+        total_shares=total_shares,
+        total_value=total_value,
+        vested_shares_gross=vested_shares_gross,
+        vested_shares_net=vested_shares_net,
+        vested_value_gross=vested_value_gross,
+        vested_value_net=vested_value_net,
+        upcoming_vests=upcoming_vests,
+        current_price=current_price,
+        vesting_timeline=vesting_timeline,
+        needs_info_count=needs_info_count,
+    )
 
 
 @main_bp.route('/stock-price-chart-data')
@@ -195,29 +194,26 @@ def stock_price_chart_data():
     """Get stock price data for dashboard chart."""
     from app.models.user_price import UserPrice
     from app.utils.encryption import decrypt_for_user
-    
-    # Get user's encrypted prices and decrypt them
-    price_entries = UserPrice.query.filter_by(user_id=current_user.id).order_by(UserPrice.valuation_date).all()
-    
+
+    price_entries = (
+        UserPrice.query
+        .filter_by(user_id=current_user.id)
+        .order_by(UserPrice.valuation_date)
+        .all()
+    )
+
     dates = []
     prices = []
-    
     try:
         user_key = current_user.get_decrypted_user_key()
         for price_entry in price_entries:
             try:
-                price_str = decrypt_for_user(user_key, price_entry.encrypted_price)
-                price_val = float(price_str)
+                price_val = float(decrypt_for_user(user_key, price_entry.encrypted_price))
                 dates.append(price_entry.valuation_date.strftime('%Y-%m-%d'))
                 prices.append(price_val)
             except Exception:
                 continue
     except Exception:
         pass
-    
-    data = {
-        'dates': dates,
-        'prices': prices
-    }
-    
-    return jsonify(data)
+
+    return jsonify({'dates': dates, 'prices': prices})

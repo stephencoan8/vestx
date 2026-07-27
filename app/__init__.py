@@ -7,8 +7,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_mail import Mail
 from flask_wtf.csrf import CSRFProtect
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from dotenv import load_dotenv
 import os
@@ -21,7 +19,6 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 mail = Mail()
 csrf = CSRFProtect()
-limiter = None  # Disable rate limiting
 talisman = Talisman()
 
 
@@ -40,7 +37,6 @@ def create_app():
     login_manager.session_protection = 'strong'  # Enhanced session protection
     mail.init_app(app)
     csrf.init_app(app)
-    # limiter.init_app(app)  # Disabled rate limiting
 
     # Make csrf_token available in all templates for manual forms
     @app.context_processor

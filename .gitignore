@@ -70,5 +70,11 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
-# Database files
+
+# Database files (never commit local DBs)
 instance/*.db
+*.db
+stonks.db
+
+# Runtime logs
+logs/

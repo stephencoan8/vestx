@@ -75,20 +75,11 @@ class Grant(db.Model):
         For RSUs/RSAs: returns shares × price at grant
         For CASH: returns the cash amount (share_quantity represents USD amount)
         """
-        import logging
-        logger = logging.getLogger(__name__)
-
         if self.share_type == ShareType.CASH.value:
-            logger.debug(f"Cash Total Value at Grant: {self.share_quantity}")
             return self.share_quantity
-
         if self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            logger.debug("ISO Total Value at Grant: 0.0")
             return 0.0
-
-        total_value = self.share_quantity * self.share_price_at_grant
-        logger.debug(f"RSU/ESPP Total Value at Grant: {total_value}")
-        return total_value
+        return self.share_quantity * self.share_price_at_grant
     
     @property
     def current_share_price(self) -> float:
@@ -109,19 +100,10 @@ class Grant(db.Model):
         For ISOs: strike price
         For RSUs/Cash: $0 (granted, not purchased)
         """
-        import logging
-        logger = logging.getLogger(__name__)
-
         if self.grant_type == GrantType.ESPP.value and self.espp_discount:
-            cost_basis = self.share_price_at_grant * (1 - self.espp_discount)
-            logger.debug(f"ESPP Actual Cost Basis: {cost_basis}")
-            return cost_basis
-
+            return self.share_price_at_grant * (1 - self.espp_discount)
         if self.grant_type == GrantType.NQESPP.value or self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            logger.debug(f"ISO/NQESPP Actual Cost Basis: {self.share_price_at_grant}")
             return self.share_price_at_grant
-
-        logger.debug("RSU/Cash Actual Cost Basis: 0.0")
         return 0.0
     
     @property

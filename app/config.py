@@ -4,7 +4,6 @@ Secure configuration management for the application.
 
 import os
 import secrets
-from pathlib import Path
 
 
 class Config:
@@ -48,12 +47,6 @@ class Config:
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = 3600  # 1 hour
     WTF_CSRF_SSL_STRICT = os.getenv('FLASK_ENV') == 'production'
-    
-    # Rate Limiting
-    RATELIMIT_ENABLED = True
-    RATELIMIT_STORAGE_URL = os.getenv('REDIS_URL', 'memory://')
-    RATELIMIT_STRATEGY = 'fixed-window'
-    RATELIMIT_HEADERS_ENABLED = True
     
     # Security Headers (Flask-Talisman)
     TALISMAN_FORCE_HTTPS = os.getenv('FLASK_ENV') == 'production'

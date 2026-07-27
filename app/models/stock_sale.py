@@ -84,20 +84,17 @@ class StockSale(db.Model):
                 return 0.0
         return self.capital_gain
     
-    def get_estimated_tax(self) -> dict:
+    def get_estimated_tax(self, user=None) -> dict:
         """
-        Calculate estimated capital gains tax using professional-grade methodology.
-        
-        Uses user's simplified tax preferences (federal rate, state rate).
-        Includes federal, NIIT, and state taxes.
-        
-        Returns:
-            dict with estimated tax breakdown
+        Calculate estimated capital gains tax using simplified user tax preferences.
+
+        Args:
+            user: Optional User instance to avoid a DB lookup when already loaded.
         """
         from app.models.user import User
-        
-        # Get user and their tax preferences
-        user = User.query.get(self.user_id)
+
+        if user is None:
+            user = User.query.get(self.user_id)
         if not user:
             # Fallback to simplified estimation if no user
             if self.is_long_term:
