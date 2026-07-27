@@ -4,51 +4,51 @@
 
 {% block content %}
 <div class="page">
-    <header class="page-header">
-        <h1>My Grants</h1>
-        <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Grant</a>
-    </header>
+ <header class="page-header">
+ <h1>My Grants</h1>
+ <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Grant</a>
+ </header>
 
-    {% if grants %}
-    <div class="table-container">
-        <table class="data-table sortable-table">
-            <thead>
-                <tr>
-                    <th data-sort="date">Grant Date</th>
-                    <th data-sort="text">Type</th>
-                    <th data-sort="text">Share Type</th>
-                    <th data-sort="number">Quantity</th>
-                    <th data-sort="number">Price at Grant</th>
-                    <th data-sort="number">Value at Grant**</th>
-                    <th data-sort="number">Current Value*</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for grant in grants %}
-                <tr class="clickable-row" onclick="window.location='{{ url_for('grants.view_grant', grant_id=grant.id) }}';" style="cursor: pointer;">
-                    <td>{{ grant.grant_date.strftime('%Y-%m-%d') }}</td>
-                    <td><span class="badge badge-{{ grant.grant_type }}">{{ grant.grant_type.replace('_', ' ').title() }}</span></td>
-                    <td><span class="badge badge-share">{{ grant.share_type.upper() }}</span></td>
-                    <td>{{ "{:,.2f}".format(grant.share_quantity) }}</td>
-                    <td>${{ "{:,.2f}".format(grant.share_price_at_grant) }}{% if grant.share_type.startswith('iso_') %} <small>(strike)</small>{% endif %}</td>
-                    <td>${{ "{:,.2f}".format(grant.total_value_at_grant) }}</td>
-                    <td class="highlight">${{ "{:,.2f}".format(grant.current_value) }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p style="margin-top: 1rem; font-size: 0.9em; color: #666;">
-            <strong>*Current Value:</strong> For ISOs (stock options), this is the spread value: shares × (current price - strike price). For RSUs/RSAs, this is the full value: shares × current price.<br>
-            <strong>**Value at Grant:</strong> For ISOs, value at grant is $0 (options have no intrinsic value at grant, only strike price). For RSUs/RSAs, this is shares × price at grant.
-        </p>
-    </div>
-    {% else %}
-    <div class="empty-state-large">
-        <div class="empty-icon">📋</div>
-        <h2>No grants yet</h2>
-        <p>Add your first stock grant to get started tracking your compensation</p>
-        <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Your First Grant</a>
-    </div>
-    {% endif %}
+ {% if grants %}
+ <div class="table-container">
+ <table class="data-table sortable-table">
+ <thead>
+ <tr>
+ <th data-sort="date">Grant Date</th>
+ <th data-sort="text">Type</th>
+ <th data-sort="text">Share Type</th>
+ <th data-sort="number">Quantity</th>
+ <th data-sort="number">Price at Grant</th>
+ <th data-sort="number">Value at Grant**</th>
+ <th data-sort="number">Current Value*</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for grant in grants %}
+ <tr class="clickable-row" onclick="window.location='{{ url_for('grants.view_grant', grant_id=grant.id) }}';" style="cursor: pointer;">
+ <td>{{ grant.grant_date.strftime('%Y-%m-%d') }}</td>
+ <td><span class="badge badge-{{ grant.grant_type }}">{{ grant.grant_type.replace('_', ' ').title() }}</span></td>
+ <td><span class="badge badge-share">{{ grant.share_type.upper() }}</span></td>
+ <td>{{ "{:,.2f}".format(grant.share_quantity) }}</td>
+ <td>${{ "{:,.2f}".format(grant.share_price_at_grant) }}{% if grant.share_type.startswith('iso_') %} <small>(strike)</small>{% endif %}</td>
+ <td>${{ "{:,.2f}".format(grant.total_value_at_grant) }}</td>
+ <td class="highlight">${{ "{:,.2f}".format(grant.current_value) }}</td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ <p style="margin-top: 1rem; font-size: 0.9em; color: #666;">
+ <strong>*Current Value:</strong> For ISOs (stock options), this is the spread value: shares × (current price - strike price). For RSUs/RSAs, this is the full value: shares × current price.<br>
+ <strong>**Value at Grant:</strong> For ISOs, value at grant is $0 (options have no intrinsic value at grant, only strike price). For RSUs/RSAs, this is shares × price at grant.
+ </p>
+ </div>
+ {% else %}
+ <div class="empty-state-large">
+ <div class="empty-icon"></div>
+ <h2>No grants yet</h2>
+ <p>Add your first stock grant to get started tracking your compensation</p>
+ <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Your First Grant</a>
+ </div>
+ {% endif %}
 </div>
 {% endblock %}

@@ -4,943 +4,943 @@
 
 {% block content %}
 <div class="vest-detail-page">
-    <header class="page-header">
-        <div class="header-content">
-            <div>
-                <h1>🎯 Vest Event Details</h1>
-                <p class="subtitle">{{ vest_event.vest_date.strftime('%B %d, %Y') }}</p>
-            </div>
-            <a href="{{ url_for('grants.finance_deep_dive') }}" class="btn btn-secondary">← Back to Finance</a>
-        </div>
-    </header>
+ <header class="page-header">
+ <div class="header-content">
+ <div>
+ <h1> Vest Event Details</h1>
+ <p class="subtitle">{{ vest_event.vest_date.strftime('%B %d, %Y') }}</p>
+ </div>
+ <a href="{{ url_for('grants.finance_deep_dive') }}" class="btn btn-secondary">← Back to Finance</a>
+ </div>
+ </header>
 
-    <div class="detail-container">
-        <!-- Grant Information -->
-        <section class="detail-section">
-            <h2>📊 Grant Information</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <label>Grant Type:</label>
-                    <span class="grant-type-badge">{{ grant.share_type }}</span>
-                </div>
-                <div class="info-item">
-                    <label>Grant Date:</label>
-                    <span>{{ grant.grant_date.strftime('%b %d, %Y') }}</span>
-                </div>
-                <div class="info-item">
-                    <label>Vesting Schedule:</label>
-                    <span>{{ grant.vest_years }} years</span>
-                </div>
-                {% if vest_data.is_iso %}
-                <div class="info-item">
-                    <label>Strike Price:</label>
-                    <span>${{ "%.2f"|format(vest_data.strike_price) }}</span>
-                </div>
-                {% elif grant.share_price_at_grant %}
-                <div class="info-item">
-                    <label>Grant Price:</label>
-                    <span>${{ "%.2f"|format(grant.share_price_at_grant) }}</span>
-                </div>
-                {% endif %}
-            </div>
-        </section>
+ <div class="detail-container">
+ <!-- Grant Information -->
+ <section class="detail-section">
+ <h2> Grant Information</h2>
+ <div class="info-grid">
+ <div class="info-item">
+ <label>Grant Type:</label>
+ <span class="grant-type-badge">{{ grant.share_type }}</span>
+ </div>
+ <div class="info-item">
+ <label>Grant Date:</label>
+ <span>{{ grant.grant_date.strftime('%b %d, %Y') }}</span>
+ </div>
+ <div class="info-item">
+ <label>Vesting Schedule:</label>
+ <span>{{ grant.vest_years }} years</span>
+ </div>
+ {% if vest_data.is_iso %}
+ <div class="info-item">
+ <label>Strike Price:</label>
+ <span>${{ "%.2f"|format(vest_data.strike_price) }}</span>
+ </div>
+ {% elif grant.share_price_at_grant %}
+ <div class="info-item">
+ <label>Grant Price:</label>
+ <span>${{ "%.2f"|format(grant.share_price_at_grant) }}</span>
+ </div>
+ {% endif %}
+ </div>
+ </section>
 
-        <!-- Vest Event Details -->
-        <section class="detail-section">
-            <h2>📈 Vest Event</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <label>Vest Date:</label>
-                    <span class="{% if vest_event.has_vested %}vested{% else %}unvested{% endif %}">
-                        {{ vest_event.vest_date.strftime('%B %d, %Y') }}
-                        {% if vest_event.has_vested %}
-                            <span class="badge badge-success">Vested</span>
-                        {% else %}
-                            <span class="badge badge-warning">Unvested</span>
-                        {% endif %}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <label>Shares Vested:</label>
-                    <span class="highlight">{{ "%.4f"|format(vest_data.shares_vested) }}</span>
-                </div>
-                <div class="info-item">
-                    <label>Price at Vest:</label>
-                    <span>
-                        ${{ "%.2f"|format(vest_data.price_at_vest) }}
-                        {% if not vest_data.has_vested %}
-                        <small style="color: var(--text-secondary); font-style: italic;">(estimated)</small>
-                        {% endif %}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <label>Gross Value:</label>
-                    <span class="highlight">${{ "{:,.2f}".format(vest_data.gross_value) }}</span>
-                </div>
-                <div class="info-item">
-                    <label>Shares Received:</label>
-                    <span id="sharesReceivedDisplay">{{ "%.4f"|format(vest_data.shares_received) }}</span>
-                </div>
-                <div class="info-item">
-                    <label>Net Value:</label>
-                    <span id="netValueDisplay" class="highlight">${{ "{:,.2f}".format(vest_data.net_value) }}</span>
-                </div>
-            </div>
-        </section>
+ <!-- Vest Event Details -->
+ <section class="detail-section">
+ <h2> Vest Event</h2>
+ <div class="info-grid">
+ <div class="info-item">
+ <label>Vest Date:</label>
+ <span class="{% if vest_event.has_vested %}vested{% else %}unvested{% endif %}">
+ {{ vest_event.vest_date.strftime('%B %d, %Y') }}
+ {% if vest_event.has_vested %}
+ <span class="badge badge-success">Vested</span>
+ {% else %}
+ <span class="badge badge-warning">Unvested</span>
+ {% endif %}
+ </span>
+ </div>
+ <div class="info-item">
+ <label>Shares Vested:</label>
+ <span class="highlight">{{ "%.4f"|format(vest_data.shares_vested) }}</span>
+ </div>
+ <div class="info-item">
+ <label>Price at Vest:</label>
+ <span>
+ ${{ "%.2f"|format(vest_data.price_at_vest) }}
+ {% if not vest_data.has_vested %}
+ <small style="color: var(--text-secondary); font-style: italic;">(estimated)</small>
+ {% endif %}
+ </span>
+ </div>
+ <div class="info-item">
+ <label>Gross Value:</label>
+ <span class="highlight">${{ "{:,.2f}".format(vest_data.gross_value) }}</span>
+ </div>
+ <div class="info-item">
+ <label>Shares Received:</label>
+ <span id="sharesReceivedDisplay">{{ "%.4f"|format(vest_data.shares_received) }}</span>
+ </div>
+ <div class="info-item">
+ <label>Net Value:</label>
+ <span id="netValueDisplay" class="highlight">${{ "{:,.2f}".format(vest_data.net_value) }}</span>
+ </div>
+ </div>
+ </section>
 
-        <!-- Vest Details Section - Collapsible -->
-        {% if grant.grant_type not in ['espp', 'nqespp'] %}
-        <section class="detail-section">
-            <h2 class="collapsible-header" onclick="toggleSection('vestDetails')">
-                📊 Vest Details
-                <span class="expand-icon" id="vestDetailsIcon">▼</span>
-            </h2>
-            
-            <div id="vestDetails" class="collapsible-content" style="display: none;">
-                <!-- Tax at Vest Info -->
-                <div class="subsection-wrapper">
-                    <h3 style="margin-top: 0;">💰 Tax at Vest</h3>
-                    
-                    <!-- Estimated Tax at Vest -->
-                    {% if vest_data.tax_breakdown and vest_data.tax_breakdown.has_breakdown %}
-                    {% set tax_breakdown = vest_data.tax_breakdown %}
-                    <div class="tax-subsection">
-                        <h4>📊 Estimated Tax (System Calculated)</h4>
-                        {% if not vest_event.has_vested %}
-                        <p style="color: var(--warning); font-style: italic; margin-bottom: 1rem;">
-                            ⏰ This vest hasn't occurred yet - these are projected taxes.
-                        </p>
-                        {% endif %}
-                        
-                        <div class="tax-summary">
-                            <div class="tax-summary-row">
-                                <span>Gross Value:</span>
-                                <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
-                            </div>
-                            <div class="tax-summary-row tax-item">
-                                <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
-                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
-                            </div>
-                            <div class="tax-summary-row tax-item">
-                                <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
-                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
-                            </div>
-                            <div class="tax-summary-row tax-item">
-                                <span>Social Security ({{ "%.2f"|format(tax_breakdown.social_security_rate * 100) }}%):</span>
-                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.social_security_tax) }}</span>
-                            </div>
-                            <div class="tax-summary-row tax-item">
-                                <span>Medicare ({{ "%.2f"|format(tax_breakdown.medicare_rate * 100) }}%):</span>
-                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.medicare_tax) }}</span>
-                            </div>
-                            {% if tax_breakdown.additional_medicare_tax > 0 %}
-                            <div class="tax-summary-row tax-item">
-                                <span>Additional Medicare ({{ "%.2f"|format(tax_breakdown.additional_medicare_rate * 100) }}%):</span>
-                                <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.additional_medicare_tax) }}</span>
-                            </div>
-                            {% endif %}
-                            <div class="tax-summary-row total-row">
-                                <span><strong>Total Estimated Tax:</strong></span>
-                                <span class="amount"><strong>-${{ "{:,.2f}".format(tax_breakdown.total_tax) }}</strong></span>
-                            </div>
-                            <div class="tax-summary-row">
-                                <span><strong>Estimated Effective Rate:</strong></span>
-                                <span class="amount"><strong>{{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%</strong></span>
-                            </div>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="tax-subsection">
-                        <p style="color: var(--text-secondary); font-style: italic;">
-                            ℹ️ Tax estimates will appear here once you configure your tax settings.
-                        </p>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Tax Payment Method - Show for all vests -->
-                    <div class="tax-subsection" style="margin-top: 2rem;">
-                        <h4>💳 Tax Payment Method</h4>
-                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-                            {% if vest_event.has_vested %}
-                            Record how you actually paid taxes when this vest occurred.
-                            {% else %}
-                            Plan how you will pay taxes when this vest occurs.
-                            {% endif %}
-                        </p>
-                        
-                        <form id="taxPaymentForm" onsubmit="updateTaxPayment(event)">
-                            <div class="info-grid">
-                                <div class="info-item">
-                                    <label for="cashPaid">Cash Paid for Taxes:</label>
-                                    <input type="number" 
-                                           id="cashPaid" 
-                                           name="cash_paid"
-                                           value="{{ '{:.2f}'.format(vest_event.cash_paid) if vest_event.cash_paid else '' }}" 
-                                           step="0.01" 
-                                           min="0" 
-                                           placeholder="$0.00"
-                                           style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                                </div>
-                                
-                                <div class="info-item">
-                                    <label for="cashCoveredAll">Cash Fully Covered Taxes?</label>
-                                    <select id="cashCoveredAll" 
-                                            name="cash_covered_all"
-                                            onchange="toggleSharesSold()"
-                                            style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                                        <option value="true" {% if vest_event.cash_covered_all %}selected{% endif %}>Yes</option>
-                                        <option value="false" {% if not vest_event.cash_covered_all %}selected{% endif %}>No</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="info-item">
-                                    <label for="sharesSold">Shares Sold for Taxes:</label>
-                                    <input type="number" 
-                                           id="sharesSold" 
-                                           name="shares_sold"
-                                           value="{{ '{:.0f}'.format(vest_event.shares_sold) if vest_event.shares_sold else '' }}" 
-                                           step="1" 
-                                           min="0" 
-                                           max="{{ vest_data.shares_vested }}"
-                                           placeholder="0"
-                                           {% if vest_event.cash_covered_all %}disabled{% endif %}
-                                           style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
-                                    <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_data.shares_vested) }}</small>
-                                </div>
-                            </div>
-                            
-                            <div style="margin-top: 1.5rem;">
-                                <button type="submit" class="btn btn-primary">💾 Save Tax Payment Info</button>
-                            </div>
-                        </form>
-                        
-                        <!-- Summary of Tax Paid -->
-                        {% if vest_event.cash_paid > 0 or vest_event.shares_sold > 0 %}
-                        <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
-                            <h4 style="margin-bottom: 0.5rem;">Tax Payment Summary:</h4>
-                            <div class="info-grid">
-                                <div class="info-item">
-                                    <label>Cash Paid:</label>
-                                    <span>${{ "{:,.2f}".format(vest_event.cash_paid) }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Shares Sold:</label>
-                                    <span>{{ "%.4f"|format(vest_event.shares_sold) }}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Total Tax Withheld:</label>
-                                    <span class="highlight">${{ "{:,.2f}".format(vest_event.tax_withheld) }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </section>
-        {% endif %}
+ <!-- Vest Details Section - Collapsible -->
+ {% if grant.grant_type not in ['espp', 'nqespp'] %}
+ <section class="detail-section">
+ <h2 class="collapsible-header" onclick="toggleSection('vestDetails')">
+ Vest Details
+ <span class="expand-icon" id="vestDetailsIcon">▼</span>
+ </h2>
+ 
+ <div id="vestDetails" class="collapsible-content" style="display: none;">
+ <!-- Tax at Vest Info -->
+ <div class="subsection-wrapper">
+ <h3 style="margin-top: 0;"> Tax at Vest</h3>
+ 
+ <!-- Estimated Tax at Vest -->
+ {% if vest_data.tax_breakdown and vest_data.tax_breakdown.has_breakdown %}
+ {% set tax_breakdown = vest_data.tax_breakdown %}
+ <div class="tax-subsection">
+ <h4> Estimated Tax (System Calculated)</h4>
+ {% if not vest_event.has_vested %}
+ <p style="color: var(--warning); font-style: italic; margin-bottom: 1rem;">
+ ⏰ This vest hasn't occurred yet - these are projected taxes.
+ </p>
+ {% endif %}
+ 
+ <div class="tax-summary">
+ <div class="tax-summary-row">
+ <span>Gross Value:</span>
+ <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
+ </div>
+ <div class="tax-summary-row tax-item">
+ <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
+ </div>
+ <div class="tax-summary-row tax-item">
+ <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
+ </div>
+ <div class="tax-summary-row tax-item">
+ <span>Social Security ({{ "%.2f"|format(tax_breakdown.social_security_rate * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.social_security_tax) }}</span>
+ </div>
+ <div class="tax-summary-row tax-item">
+ <span>Medicare ({{ "%.2f"|format(tax_breakdown.medicare_rate * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.medicare_tax) }}</span>
+ </div>
+ {% if tax_breakdown.additional_medicare_tax > 0 %}
+ <div class="tax-summary-row tax-item">
+ <span>Additional Medicare ({{ "%.2f"|format(tax_breakdown.additional_medicare_rate * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.additional_medicare_tax) }}</span>
+ </div>
+ {% endif %}
+ <div class="tax-summary-row total-row">
+ <span><strong>Total Estimated Tax:</strong></span>
+ <span class="amount"><strong>-${{ "{:,.2f}".format(tax_breakdown.total_tax) }}</strong></span>
+ </div>
+ <div class="tax-summary-row">
+ <span><strong>Estimated Effective Rate:</strong></span>
+ <span class="amount"><strong>{{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%</strong></span>
+ </div>
+ </div>
+ </div>
+ {% else %}
+ <div class="tax-subsection">
+ <p style="color: var(--text-secondary); font-style: italic;">
+ ℹ Tax estimates will appear here once you configure your tax settings.
+ </p>
+ </div>
+ {% endif %}
+ 
+ <!-- Tax Payment Method - Show for all vests -->
+ <div class="tax-subsection" style="margin-top: 2rem;">
+ <h4>💳 Tax Payment Method</h4>
+ <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+ {% if vest_event.has_vested %}
+ Record how you actually paid taxes when this vest occurred.
+ {% else %}
+ Plan how you will pay taxes when this vest occurs.
+ {% endif %}
+ </p>
+ 
+ <form id="taxPaymentForm" onsubmit="updateTaxPayment(event)">
+ <div class="info-grid">
+ <div class="info-item">
+ <label for="cashPaid">Cash Paid for Taxes:</label>
+ <input type="number" 
+ id="cashPaid" 
+ name="cash_paid"
+ value="{{ '{:.2f}'.format(vest_event.cash_paid) if vest_event.cash_paid else '' }}" 
+ step="0.01" 
+ min="0" 
+ placeholder="$0.00"
+ style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+ </div>
+ 
+ <div class="info-item">
+ <label for="cashCoveredAll">Cash Fully Covered Taxes?</label>
+ <select id="cashCoveredAll" 
+ name="cash_covered_all"
+ onchange="toggleSharesSold()"
+ style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+ <option value="true" {% if vest_event.cash_covered_all %}selected{% endif %}>Yes</option>
+ <option value="false" {% if not vest_event.cash_covered_all %}selected{% endif %}>No</option>
+ </select>
+ </div>
+ 
+ <div class="info-item">
+ <label for="sharesSold">Shares Sold for Taxes:</label>
+ <input type="number" 
+ id="sharesSold" 
+ name="shares_sold"
+ value="{{ '{:.0f}'.format(vest_event.shares_sold) if vest_event.shares_sold else '' }}" 
+ step="1" 
+ min="0" 
+ max="{{ vest_data.shares_vested }}"
+ placeholder="0"
+ {% if vest_event.cash_covered_all %}disabled{% endif %}
+ style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+ <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_data.shares_vested) }}</small>
+ </div>
+ </div>
+ 
+ <div style="margin-top: 1.5rem;">
+ <button type="submit" class="btn btn-primary">💾 Save Tax Payment Info</button>
+ </div>
+ </form>
+ 
+ <!-- Summary of Tax Paid -->
+ {% if vest_event.cash_paid > 0 or vest_event.shares_sold > 0 %}
+ <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+ <h4 style="margin-bottom: 0.5rem;">Tax Payment Summary:</h4>
+ <div class="info-grid">
+ <div class="info-item">
+ <label>Cash Paid:</label>
+ <span>${{ "{:,.2f}".format(vest_event.cash_paid) }}</span>
+ </div>
+ <div class="info-item">
+ <label>Shares Sold:</label>
+ <span>{{ "%.4f"|format(vest_event.shares_sold) }}</span>
+ </div>
+ <div class="info-item">
+ <label>Total Tax Withheld:</label>
+ <span class="highlight">${{ "{:,.2f}".format(vest_event.tax_withheld) }}</span>
+ </div>
+ </div>
+ </div>
+ {% endif %}
+ </div>
+ </div>
+ </div>
+ </section>
+ {% endif %}
 
-        <!-- Sale Details Section - Collapsible -->
-        <section class="detail-section {{ 'disabled-section' if not vest_event.has_vested else '' }}">
-            <h2 class="collapsible-header {{ 'disabled' if not vest_event.has_vested else '' }}" onclick="{% if vest_event.has_vested %}toggleSection('saleDetails'){% endif %}">
-                💰 Sale Details
-                {% if not vest_event.has_vested %}
-                <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal;">(Available after vest date)</span>
-                {% endif %}
-                <span class="expand-icon" id="saleDetailsIcon">▼</span>
-            </h2>
-            
-            {% if vest_event.has_vested %}
-            <div id="saleDetails" class="collapsible-content" style="display: none;">
-                <!-- Estimated Tax at Sale (for remaining shares) - using CENTRALIZED backend calculation -->
-                {% if vest_data.shares_remaining > 0 and vest_data.sale_tax_projection and vest_data.sale_tax_projection.unrealized_gain > 0 %}
-                {% set proj = vest_data.sale_tax_projection %}
-                <div style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 8px;">
-                    <h3 style="margin-top: 0;">📊 Estimated Tax if Sold Today</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                        Estimated capital gains tax if you sold your {{ "%.4f"|format(proj.shares_held) }} remaining shares at current price.
-                    </p>
-                    
-                    <div class="tax-summary">
-                        <div class="tax-summary-row">
-                            <span>Remaining Shares:</span>
-                            <span class="amount">{{ "%.4f"|format(vest_data.shares_remaining) }}</span>
-                        </div>
-                        <div class="tax-summary-row">
-                            <span>Current Price:</span>
-                            <span class="amount">${{ "%.2f"|format(vest_data.current_price) }}</span>
-                        </div>
-                        <div class="tax-summary-row">
-                            <span>Cost Basis (per share):</span>
-                            <span class="amount">${{ "%.2f"|format(vest_data.cost_basis_per_share) }}</span>
-                        </div>
-                        <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
-                            <span><strong>Potential Capital Gain:</strong></span>
-                            <span class="amount" style="color: var(--success)">
-                                <strong>${{ "{:,.2f}".format(proj.unrealized_gain) }}</strong>
-                            </span>
-                        </div>
-                        <div class="tax-summary-row">
-                            <span>Holding Period:</span>
-                            <span class="amount">{{ proj.holding_period }} ({{ proj.is_long_term and "Long-term" or "Short-term" }})</span>
-                        </div>
-                        <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
-                            <span><strong>Estimated Tax:</strong></span>
-                            <span class="amount" style="color: var(--warning);">
-                                <strong>${{ "{:,.2f}".format(proj.estimated_tax) }}</strong>
-                            </span>
-                        </div>
-                        <div class="tax-summary-row">
-                            <span style="padding-left: 1rem; font-size: 0.9em;">Federal ({{ "%.1f"|format(proj.federal_rate * 100) }}%):</span>
-                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.federal_tax) }}</span>
-                        </div>
-                        {% if proj.niit_tax > 0 %}
-                        <div class="tax-summary-row">
-                            <span style="padding-left: 1rem; font-size: 0.9em;">NIIT (3.8%):</span>
-                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.niit_tax) }}</span>
-                        </div>
-                        {% endif %}
-                        {% if proj.state_tax > 0 %}
-                        <div class="tax-summary-row">
-                            <span style="padding-left: 1rem; font-size: 0.9em;">State ({{ "%.1f"|format(proj.state_rate * 100) }}%):</span>
-                            <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.state_tax) }}</span>
-                        </div>
-                        {% endif %}
-                        <div style="margin-top: 0.5rem;">
-                            <small style="color: var(--text-secondary);">
-                                💡 {{ proj.method == 'professional' and 'Professional-grade calculation using total annual income methodology.' or 'Simplified estimate - configure tax profile for professional calculation.' }}
-                            </small>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
+ <!-- Sale Details Section - Collapsible -->
+ <section class="detail-section {{ 'disabled-section' if not vest_event.has_vested else '' }}">
+ <h2 class="collapsible-header {{ 'disabled' if not vest_event.has_vested else '' }}" onclick="{% if vest_event.has_vested %}toggleSection('saleDetails'){% endif %}">
+ Sale Details
+ {% if not vest_event.has_vested %}
+ <span style="font-size: 0.9rem; color: var(--text-secondary); font-weight: normal;">(Available after vest date)</span>
+ {% endif %}
+ <span class="expand-icon" id="saleDetailsIcon">▼</span>
+ </h2>
+ 
+ {% if vest_event.has_vested %}
+ <div id="saleDetails" class="collapsible-content" style="display: none;">
+ <!-- Estimated Tax at Sale (for remaining shares) - using CENTRALIZED backend calculation -->
+ {% if vest_data.shares_remaining > 0 and vest_data.sale_tax_projection and vest_data.sale_tax_projection.unrealized_gain > 0 %}
+ {% set proj = vest_data.sale_tax_projection %}
+ <div style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 8px;">
+ <h3 style="margin-top: 0;"> Estimated Tax if Sold Today</h3>
+ <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+ Estimated capital gains tax if you sold your {{ "%.4f"|format(proj.shares_held) }} remaining shares at current price.
+ </p>
+ 
+ <div class="tax-summary">
+ <div class="tax-summary-row">
+ <span>Remaining Shares:</span>
+ <span class="amount">{{ "%.4f"|format(vest_data.shares_remaining) }}</span>
+ </div>
+ <div class="tax-summary-row">
+ <span>Current Price:</span>
+ <span class="amount">${{ "%.2f"|format(vest_data.current_price) }}</span>
+ </div>
+ <div class="tax-summary-row">
+ <span>Cost Basis (per share):</span>
+ <span class="amount">${{ "%.2f"|format(vest_data.cost_basis_per_share) }}</span>
+ </div>
+ <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
+ <span><strong>Potential Capital Gain:</strong></span>
+ <span class="amount" style="color: var(--success)">
+ <strong>${{ "{:,.2f}".format(proj.unrealized_gain) }}</strong>
+ </span>
+ </div>
+ <div class="tax-summary-row">
+ <span>Holding Period:</span>
+ <span class="amount">{{ proj.holding_period }} ({{ proj.is_long_term and "Long-term" or "Short-term" }})</span>
+ </div>
+ <div class="tax-summary-row" style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
+ <span><strong>Estimated Tax:</strong></span>
+ <span class="amount" style="color: var(--warning);">
+ <strong>${{ "{:,.2f}".format(proj.estimated_tax) }}</strong>
+ </span>
+ </div>
+ <div class="tax-summary-row">
+ <span style="padding-left: 1rem; font-size: 0.9em;">Federal ({{ "%.1f"|format(proj.federal_rate * 100) }}%):</span>
+ <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.federal_tax) }}</span>
+ </div>
+ {% if proj.niit_tax > 0 %}
+ <div class="tax-summary-row">
+ <span style="padding-left: 1rem; font-size: 0.9em;">NIIT (3.8%):</span>
+ <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.niit_tax) }}</span>
+ </div>
+ {% endif %}
+ {% if proj.state_tax > 0 %}
+ <div class="tax-summary-row">
+ <span style="padding-left: 1rem; font-size: 0.9em;">State ({{ "%.1f"|format(proj.state_rate * 100) }}%):</span>
+ <span class="amount" style="font-size: 0.9em;">${{ "{:,.2f}".format(proj.state_tax) }}</span>
+ </div>
+ {% endif %}
+ <div style="margin-top: 0.5rem;">
+ <small style="color: var(--text-secondary);">
+ {{ proj.method == 'professional' and 'Professional-grade calculation using total annual income methodology.' or 'Simplified estimate - configure tax profile for professional calculation.' }}
+ </small>
+ </div>
+ </div>
+ </div>
+ {% endif %}
 
-                <!-- Share Activity -->
-                <div style="margin-bottom: 2rem;">
-                    <h3>📦 Share Activity</h3>
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <label>Shares Received:</label>
-                            <span class="highlight">{{ "%.4f"|format(vest_data.shares_received) }}</span>
-                        </div>
-                        <div class="info-item">
-                            <label>Shares Sold:</label>
-                            <span>{{ "%.4f"|format(vest_data.shares_sold) }}</span>
-                        </div>
-                        {% if vest_data.is_iso %}
-                        <div class="info-item">
-                            <label>Shares Exercised:</label>
-                            <span>{{ "%.4f"|format(vest_data.shares_exercised) }}</span>
-                        </div>
-                        {% endif %}
-                        <div class="info-item">
-                            <label>Shares Remaining:</label>
-                            <span class="highlight">{{ "%.4f"|format(vest_data.shares_remaining) }}</span>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-                        <button class="btn btn-primary" onclick="toggleRecordSale()">📤 Record Sale</button>
-                        {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
-                        <button class="btn btn-primary" onclick="toggleRecordExercise()">🏋️ Record Exercise</button>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Record Stock Sale Form -->
-                    <div id="recordSaleForm" style="display: none; margin-top: 2rem; padding: 1.5rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
-                        <h4 style="margin-bottom: 1rem;">📤 Record Stock Sale</h4>
-                        <form id="saleForm" onsubmit="submitSale(event)">
-                            <div class="form-group">
-                                <label for="sale_date">Sale Date *</label>
-                                <input type="date" id="sale_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="shares_sold">Shares Sold *</label>
-                                    <input type="number" id="shares_sold" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                    <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="sale_price">Sale Price (per share) *</label>
-                                    <input type="number" id="sale_price" step="0.01" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                </div>
-                            </div>
-                            
-                            <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
-                                <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_data.cost_basis_per_share) }} per share
-                                <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
-                            </div>
-                            
-                            <div class="collapsible-section">
-                                <h4 class="section-toggle" onclick="toggleModalSection('actualTaxes')" style="cursor: pointer;">
-                                    💰 Actual Taxes Paid (Optional - Add After Filing)
-                                    <span class="expand-icon" id="actualTaxesIcon">▼</span>
-                                </h4>
-                                <div id="actualTaxes" class="collapsible-content" style="display: none;">
-                                    <div class="form-row">
-                                        <div class="form-group">
-                                            <label for="actual_federal_tax">Federal Tax Paid</label>
-                                            <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="actual_state_tax">State Tax Paid</label>
-                                            <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="actual_total_tax">Total Tax Paid</label>
-                                        <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                        <small>Or leave blank to auto-calculate from federal + state</small>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="sale_notes">Notes</label>
-                                <textarea id="sale_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
-                            </div>
-                            
-                            <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
-                                <button type="button" class="btn btn-secondary" onclick="toggleRecordSale()">Cancel</button>
-                                <button type="submit" class="btn btn-primary">Record Sale</button>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <!-- Record ISO Exercise Form -->
-                    {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
-                    <div id="recordExerciseForm" style="display: none; margin-top: 2rem; padding: 1.5rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
-                        <h4 style="margin-bottom: 1rem;">🏋️ Record ISO Exercise</h4>
-                        <form id="exerciseForm" onsubmit="submitExercise(event)">
-                            <div class="form-group">
-                                <label for="exercise_date">Exercise Date *</label>
-                                <input type="date" id="exercise_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="shares_exercised">Shares Exercised *</label>
-                                    <input type="number" id="shares_exercised" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                    <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="fmv_at_exercise">FMV at Exercise *</label>
-                                    <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ vest_data.current_price }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                </div>
-                            </div>
-                            
-                            <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
-                                <strong>Strike Price:</strong> ${{ "%.2f"|format(vest_data.strike_price) }} per share
-                                <br><small>Grant date: {{ grant.grant_date.strftime('%Y-%m-%d') }}</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="amt_triggered" onchange="toggleAMTFields()">
-                                    AMT Triggered by this exercise
-                                </label>
-                            </div>
-                            
-                            <div class="form-row" id="amtFields" style="display: none;">
-                                <div class="form-group">
-                                    <label for="amt_paid">AMT Paid</label>
-                                    <input type="number" id="amt_paid" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                </div>
-                                <div class="form-group">
-                                    <label for="amt_credit_generated">AMT Credit Generated</label>
-                                    <input type="number" id="amt_credit_generated" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="exercise_notes">Notes</label>
-                                <textarea id="exercise_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
-                            </div>
-                            
-                            <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
-                                <button type="button" class="btn btn-secondary" onclick="toggleRecordExercise()">Cancel</button>
-                                <button type="submit" class="btn btn-primary">Record Exercise</button>
-                            </div>
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
+ <!-- Share Activity -->
+ <div style="margin-bottom: 2rem;">
+ <h3>📦 Share Activity</h3>
+ <div class="info-grid">
+ <div class="info-item">
+ <label>Shares Received:</label>
+ <span class="highlight">{{ "%.4f"|format(vest_data.shares_received) }}</span>
+ </div>
+ <div class="info-item">
+ <label>Shares Sold:</label>
+ <span>{{ "%.4f"|format(vest_data.shares_sold) }}</span>
+ </div>
+ {% if vest_data.is_iso %}
+ <div class="info-item">
+ <label>Shares Exercised:</label>
+ <span>{{ "%.4f"|format(vest_data.shares_exercised) }}</span>
+ </div>
+ {% endif %}
+ <div class="info-item">
+ <label>Shares Remaining:</label>
+ <span class="highlight">{{ "%.4f"|format(vest_data.shares_remaining) }}</span>
+ </div>
+ </div>
+ 
+ <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+ <button class="btn btn-primary" onclick="toggleRecordSale()">📤 Record Sale</button>
+ {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
+ <button class="btn btn-primary" onclick="toggleRecordExercise()">🏋 Record Exercise</button>
+ {% endif %}
+ </div>
+ 
+ <!-- Record Stock Sale Form -->
+ <div id="recordSaleForm" style="display: none; margin-top: 2rem; padding: 1.5rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+ <h4 style="margin-bottom: 1rem;">📤 Record Stock Sale</h4>
+ <form id="saleForm" onsubmit="submitSale(event)">
+ <div class="form-group">
+ <label for="sale_date">Sale Date *</label>
+ <input type="date" id="sale_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ 
+ <div class="form-row">
+ <div class="form-group">
+ <label for="shares_sold">Shares Sold *</label>
+ <input type="number" id="shares_sold" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
+ </div>
+ <div class="form-group">
+ <label for="sale_price">Sale Price (per share) *</label>
+ <input type="number" id="sale_price" step="0.01" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ </div>
+ 
+ <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
+ <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_data.cost_basis_per_share) }} per share
+ <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
+ </div>
+ 
+ <div class="collapsible-section">
+ <h4 class="section-toggle" onclick="toggleModalSection('actualTaxes')" style="cursor: pointer;">
+ Actual Taxes Paid (Optional - Add After Filing)
+ <span class="expand-icon" id="actualTaxesIcon">▼</span>
+ </h4>
+ <div id="actualTaxes" class="collapsible-content" style="display: none;">
+ <div class="form-row">
+ <div class="form-group">
+ <label for="actual_federal_tax">Federal Tax Paid</label>
+ <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ <div class="form-group">
+ <label for="actual_state_tax">State Tax Paid</label>
+ <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ </div>
+ <div class="form-group">
+ <label for="actual_total_tax">Total Tax Paid</label>
+ <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <small>Or leave blank to auto-calculate from federal + state</small>
+ </div>
+ </div>
+ </div>
+ 
+ <div class="form-group">
+ <label for="sale_notes">Notes</label>
+ <textarea id="sale_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
+ </div>
+ 
+ <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+ <button type="button" class="btn btn-secondary" onclick="toggleRecordSale()">Cancel</button>
+ <button type="submit" class="btn btn-primary">Record Sale</button>
+ </div>
+ </form>
+ </div>
+ 
+ <!-- Record ISO Exercise Form -->
+ {% if grant.share_type in ['iso_5y', 'iso_6y'] %}
+ <div id="recordExerciseForm" style="display: none; margin-top: 2rem; padding: 1.5rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+ <h4 style="margin-bottom: 1rem;">🏋 Record ISO Exercise</h4>
+ <form id="exerciseForm" onsubmit="submitExercise(event)">
+ <div class="form-group">
+ <label for="exercise_date">Exercise Date *</label>
+ <input type="date" id="exercise_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ 
+ <div class="form-row">
+ <div class="form-group">
+ <label for="shares_exercised">Shares Exercised *</label>
+ <input type="number" id="shares_exercised" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
+ </div>
+ <div class="form-group">
+ <label for="fmv_at_exercise">FMV at Exercise *</label>
+ <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ vest_data.current_price }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ </div>
+ 
+ <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
+ <strong>Strike Price:</strong> ${{ "%.2f"|format(vest_data.strike_price) }} per share
+ <br><small>Grant date: {{ grant.grant_date.strftime('%Y-%m-%d') }}</small>
+ </div>
+ 
+ <div class="form-group">
+ <label>
+ <input type="checkbox" id="amt_triggered" onchange="toggleAMTFields()">
+ AMT Triggered by this exercise
+ </label>
+ </div>
+ 
+ <div class="form-row" id="amtFields" style="display: none;">
+ <div class="form-group">
+ <label for="amt_paid">AMT Paid</label>
+ <input type="number" id="amt_paid" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ <div class="form-group">
+ <label for="amt_credit_generated">AMT Credit Generated</label>
+ <input type="number" id="amt_credit_generated" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ </div>
+ </div>
+ 
+ <div class="form-group">
+ <label for="exercise_notes">Notes</label>
+ <textarea id="exercise_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
+ </div>
+ 
+ <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+ <button type="button" class="btn btn-secondary" onclick="toggleRecordExercise()">Cancel</button>
+ <button type="submit" class="btn btn-primary">Record Exercise</button>
+ </div>
+ </form>
+ </div>
+ {% endif %}
+ </div>
 
-                <!-- Stock Sales History -->
-                {% if sales %}
-                <div style="margin-top: 2rem;">
-                    <h3>💰 Stock Sales & Tax at Sale</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-                        Shares sold from this vest. Each sale shows estimated capital gains tax and actual tax paid.
-                    </p>
-            
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Shares</th>
-                            <th>Sale Price</th>
-                            <th>Proceeds</th>
-                            <th>Cost Basis</th>
-                            <th>Gain/Loss</th>
-                            <th>Est. Tax</th>
-                            <th>Actual Tax Paid</th>
-                            <th>Type</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for sale in sales %}
-                        <tr>
-                            <td>{{ sale.sale_date.strftime('%Y-%m-%d') }}</td>
-                            <td>{{ "%.4f"|format(sale.shares_sold) }}</td>
-                            <td>${{ "%.2f"|format(sale.sale_price) }}</td>
-                            <td>${{ "{:,.2f}".format(sale.total_proceeds) }}</td>
-                            <td>${{ "{:,.2f}".format(sale.total_cost_basis) }}</td>
-                            <td style="color: {{ 'var(--success)' if sale.capital_gain > 0 else 'var(--danger)' }}">
-                                ${{ "{:,.2f}".format(sale.capital_gain) }}
-                            </td>
-                            <td>
-                                {% if sale.estimated_tax and sale.capital_gain > 0 %}
-                                    ${{ "{:,.2f}".format(sale.estimated_tax['estimated_total']) }}
-                                    <br><small style="color: var(--text-secondary);">
-                                        ({{ sale.estimated_tax['is_long_term'] and 'LT' or 'ST' }}: 
-                                        Fed {{ "%.1f"|format(sale.estimated_tax['federal_rate'] * 100) }}%
-                                        {% if sale.estimated_tax['niit_rate'] > 0 %}
-                                            + NIIT {{ "%.1f"|format(sale.estimated_tax['niit_rate'] * 100) }}%
-                                        {% endif %}
-                                        {% if sale.estimated_tax['state_rate'] > 0 %}
-                                            + State {{ "%.1f"|format(sale.estimated_tax['state_rate'] * 100) }}%
-                                        {% endif %}
-                                        )
-                                    </small>
-                                {% elif sale.capital_gain > 0 %}
-                                    <span style="color: var(--text-secondary); font-style: italic;">
-                                        Tax profile needed
-                                    </span>
-                                {% else %}
-                                    $0
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if sale.actual_total_tax %}
-                                    <strong style="color: var(--accent);">${{ "{:,.2f}".format(sale.actual_total_tax) }}</strong>
-                                {% elif sale.actual_federal_tax or sale.actual_state_tax %}
-                                    <strong style="color: var(--accent);">${{ "{:,.2f}".format((sale.actual_federal_tax or 0) + (sale.actual_state_tax or 0)) }}</strong>
-                                {% else %}
-                                    <span style="color: var(--warning);">⚠️ Not entered</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <span class="badge {{ 'badge-success' if sale.is_long_term else 'badge-warning' }}">
-                                    {{ 'Long-term' if sale.is_long_term else 'Short-term' }}
-                                </span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-primary" onclick="editSale({{ sale.id }}, {{ sale.shares_sold }}, {{ sale.sale_price }}, '{{ sale.sale_date.strftime('%Y-%m-%d') }}', {{ sale.commission_fees or 0 }}, '{{ sale.notes or '' }}')">Edit</button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteSale({{ sale.id }})">Delete</button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            
-            <div style="margin-top: 1rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
-                <p style="color: var(--text-secondary); margin: 0;">
-                    <strong>📊 Estimated Tax:</strong> System-calculated estimate using simplified rates (15% long-term, 22% short-term).
-                    <br>
-                    <strong>💳 Actual Tax Paid:</strong> The real tax you paid when filing, entered by you.
-                </p>
-            </div>
-        </section>
-        {% endif %}
+ <!-- Stock Sales History -->
+ {% if sales %}
+ <div style="margin-top: 2rem;">
+ <h3> Stock Sales & Tax at Sale</h3>
+ <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+ Shares sold from this vest. Each sale shows estimated capital gains tax and actual tax paid.
+ </p>
+ 
+ <div class="table-container">
+ <table class="data-table">
+ <thead>
+ <tr>
+ <th>Date</th>
+ <th>Shares</th>
+ <th>Sale Price</th>
+ <th>Proceeds</th>
+ <th>Cost Basis</th>
+ <th>Gain/Loss</th>
+ <th>Est. Tax</th>
+ <th>Actual Tax Paid</th>
+ <th>Type</th>
+ <th>Actions</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for sale in sales %}
+ <tr>
+ <td>{{ sale.sale_date.strftime('%Y-%m-%d') }}</td>
+ <td>{{ "%.4f"|format(sale.shares_sold) }}</td>
+ <td>${{ "%.2f"|format(sale.sale_price) }}</td>
+ <td>${{ "{:,.2f}".format(sale.total_proceeds) }}</td>
+ <td>${{ "{:,.2f}".format(sale.total_cost_basis) }}</td>
+ <td style="color: {{ 'var(--success)' if sale.capital_gain > 0 else 'var(--danger)' }}">
+ ${{ "{:,.2f}".format(sale.capital_gain) }}
+ </td>
+ <td>
+ {% if sale.estimated_tax and sale.capital_gain > 0 %}
+ ${{ "{:,.2f}".format(sale.estimated_tax['estimated_total']) }}
+ <br><small style="color: var(--text-secondary);">
+ ({{ sale.estimated_tax['is_long_term'] and 'LT' or 'ST' }}: 
+ Fed {{ "%.1f"|format(sale.estimated_tax['federal_rate'] * 100) }}%
+ {% if sale.estimated_tax['niit_rate'] > 0 %}
+ + NIIT {{ "%.1f"|format(sale.estimated_tax['niit_rate'] * 100) }}%
+ {% endif %}
+ {% if sale.estimated_tax['state_rate'] > 0 %}
+ + State {{ "%.1f"|format(sale.estimated_tax['state_rate'] * 100) }}%
+ {% endif %}
+ )
+ </small>
+ {% elif sale.capital_gain > 0 %}
+ <span style="color: var(--text-secondary); font-style: italic;">
+ Tax profile needed
+ </span>
+ {% else %}
+ $0
+ {% endif %}
+ </td>
+ <td>
+ {% if sale.actual_total_tax %}
+ <strong style="color: var(--accent);">${{ "{:,.2f}".format(sale.actual_total_tax) }}</strong>
+ {% elif sale.actual_federal_tax or sale.actual_state_tax %}
+ <strong style="color: var(--accent);">${{ "{:,.2f}".format((sale.actual_federal_tax or 0) + (sale.actual_state_tax or 0)) }}</strong>
+ {% else %}
+ <span style="color: var(--warning);"> Not entered</span>
+ {% endif %}
+ </td>
+ <td>
+ <span class="badge {{ 'badge-success' if sale.is_long_term else 'badge-warning' }}">
+ {{ 'Long-term' if sale.is_long_term else 'Short-term' }}
+ </span>
+ </td>
+ <td>
+ <button class="btn btn-sm btn-primary" onclick="editSale({{ sale.id }}, {{ sale.shares_sold }}, {{ sale.sale_price }}, '{{ sale.sale_date.strftime('%Y-%m-%d') }}', {{ sale.commission_fees or 0 }}, '{{ sale.notes or '' }}')">Edit</button>
+ <button class="btn btn-sm btn-danger" onclick="deleteSale({{ sale.id }})">Delete</button>
+ </td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ </div>
+ 
+ <div style="margin-top: 1rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+ <p style="color: var(--text-secondary); margin: 0;">
+ <strong> Estimated Tax:</strong> System-calculated estimate using simplified rates (15% long-term, 22% short-term).
+ <br>
+ <strong>💳 Actual Tax Paid:</strong> The real tax you paid when filing, entered by you.
+ </p>
+ </div>
+ </section>
+ {% endif %}
 
-            <!-- ISO Exercises History -->
-            {% if exercises and grant.share_type in ['iso_5y', 'iso_6y'] %}
-            <div style="margin-top: 2rem;">
-                <h3>🏋️ ISO Exercises</h3>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Shares</th>
-                                <th>Strike</th>
-                                <th>FMV</th>
-                                <th>Bargain Element</th>
-                                <th>AMT Triggered</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for exercise in exercises %}
-                            <tr>
-                                <td>{{ exercise.exercise_date.strftime('%Y-%m-%d') }}</td>
-                                <td>{{ "%.4f"|format(exercise.shares_exercised) }}</td>
-                                <td>${{ "%.2f"|format(exercise.strike_price) }}</td>
-                                <td>${{ "%.2f"|format(exercise.fmv_at_exercise) }}</td>
-                                <td>${{ "{:,.2f}".format(exercise.total_bargain_element) }}</td>
-                                <td>
-                                    <span class="badge {{ 'badge-danger' if exercise.amt_triggered else 'badge-success' }}">
-                                        {{ 'Yes' if exercise.amt_triggered else 'No' }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteExercise({{ exercise.id }})">Delete</button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% endif %}
-        </div>
-        {% endif %}
-    </section>
+ <!-- ISO Exercises History -->
+ {% if exercises and grant.share_type in ['iso_5y', 'iso_6y'] %}
+ <div style="margin-top: 2rem;">
+ <h3>🏋 ISO Exercises</h3>
+ <div class="table-container">
+ <table class="data-table">
+ <thead>
+ <tr>
+ <th>Date</th>
+ <th>Shares</th>
+ <th>Strike</th>
+ <th>FMV</th>
+ <th>Bargain Element</th>
+ <th>AMT Triggered</th>
+ <th>Actions</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for exercise in exercises %}
+ <tr>
+ <td>{{ exercise.exercise_date.strftime('%Y-%m-%d') }}</td>
+ <td>{{ "%.4f"|format(exercise.shares_exercised) }}</td>
+ <td>${{ "%.2f"|format(exercise.strike_price) }}</td>
+ <td>${{ "%.2f"|format(exercise.fmv_at_exercise) }}</td>
+ <td>${{ "{:,.2f}".format(exercise.total_bargain_element) }}</td>
+ <td>
+ <span class="badge {{ 'badge-danger' if exercise.amt_triggered else 'badge-success' }}">
+ {{ 'Yes' if exercise.amt_triggered else 'No' }}
+ </span>
+ </td>
+ <td>
+ <button class="btn btn-sm btn-danger" onclick="deleteExercise({{ exercise.id }})">Delete</button>
+ </td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ {% endif %}
+ </div>
+ {% endif %}
+ </section>
 
-        <!-- Notes Section -->
-        <section class="detail-section notes-section">
-            <h2>📝 Notes</h2>
-            <form method="POST" class="notes-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <textarea 
-                    name="notes" 
-                    class="notes-textarea" 
-                    placeholder="Add notes about this vest event (e.g., special tax considerations, selling decisions, etc.)"
-                    rows="6">{{ vest_event.notes or '' }}</textarea>
-                <button type="submit" class="btn btn-primary">Save Notes</button>
-            </form>
-        </section>
-    </div>
+ <!-- Notes Section -->
+ <section class="detail-section notes-section">
+ <h2> Notes</h2>
+ <form method="POST" class="notes-form">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <textarea 
+ name="notes" 
+ class="notes-textarea" 
+ placeholder="Add notes about this vest event (e.g., special tax considerations, selling decisions, etc.)"
+ rows="6">{{ vest_event.notes or '' }}</textarea>
+ <button type="submit" class="btn btn-primary">Save Notes</button>
+ </form>
+ </section>
+ </div>
 </div>
 
 <style>
 .vest-detail-page {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 2rem;
+ max-width: 1000px;
+ margin: 0 auto;
+ padding: 2rem;
 }
 
 .page-header {
-    margin-bottom: 2rem;
+ margin-bottom: 2rem;
 }
 
 .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ flex-wrap: wrap;
+ gap: 1rem;
 }
 
 .page-header h1 {
-    margin: 0;
-    font-size: 2rem;
-    color: var(--text-primary);
+ margin: 0;
+ font-size: 2rem;
+ color: var(--text-primary);
 }
 
 .subtitle {
-    margin: 0.5rem 0 0 0;
-    color: var(--text-secondary);
-    font-size: 1.1rem;
+ margin: 0.5rem 0 0 0;
+ color: var(--text-secondary);
+ font-size: 1.1rem;
 }
 
 .detail-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+ display: flex;
+ flex-direction: column;
+ gap: 1.5rem;
 }
 
 .detail-section {
-    background: #2d3748;
-    border-radius: 12px;
-    padding: 2rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+ background: #2d3748;
+ border-radius: 12px;
+ padding: 2rem;
+ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .detail-section h2 {
-    margin: 0 0 1.5rem 0;
-    font-size: 1.5rem;
-    color: var(--primary);
-    border-bottom: 2px solid var(--primary-light);
-    padding-bottom: 0.5rem;
+ margin: 0 0 1.5rem 0;
+ font-size: 1.5rem;
+ color: var(--primary);
+ border-bottom: 2px solid var(--primary-light);
+ padding-bottom: 0.5rem;
 }
 
 .info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
+ display: grid;
+ grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+ gap: 1.5rem;
 }
 
 .info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+ display: flex;
+ flex-direction: column;
+ gap: 0.5rem;
 }
 
 .info-item label {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+ font-size: 0.875rem;
+ color: var(--text-secondary);
+ font-weight: 500;
+ text-transform: uppercase;
+ letter-spacing: 0.5px;
 }
 
 .info-item span {
-    font-size: 1.1rem;
-    color: var(--text-primary);
+ font-size: 1.1rem;
+ color: var(--text-primary);
 }
 
 .highlight {
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 1.25rem !important;
+ color: var(--accent);
+ font-weight: 600;
+ font-size: 1.25rem !important;
 }
 
 .grant-type-badge {
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    background: var(--primary-light);
-    color: var(--primary);
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.9rem !important;
+ display: inline-block;
+ padding: 0.5rem 1rem;
+ background: var(--primary-light);
+ color: var(--primary);
+ border-radius: 20px;
+ font-weight: 600;
+ font-size: 0.9rem !important;
 }
 
 .badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-left: 0.5rem;
+ display: inline-block;
+ padding: 0.25rem 0.75rem;
+ border-radius: 12px;
+ font-size: 0.75rem;
+ font-weight: 600;
+ margin-left: 0.5rem;
 }
 
 .badge-success {
-    background: #d4edda;
-    color: #155724;
+ background: #d4edda;
+ color: #155724;
 }
 
 .badge-warning {
-    background: #fff3cd;
-    color: #856404;
+ background: #fff3cd;
+ color: #856404;
 }
 
 .tax-summary {
-    background: #1a202c;
-    border-radius: 8px;
-    padding: 1.5rem;
+ background: #1a202c;
+ border-radius: 8px;
+ padding: 1.5rem;
 }
 
 .tax-summary-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid #4a5568;
+ display: flex;
+ justify-content: space-between;
+ padding: 0.75rem 0;
+ border-bottom: 1px solid #4a5568;
 }
 
 .tax-summary-row:last-child {
-    border-bottom: none;
+ border-bottom: none;
 }
 
 .tax-item {
-    color: var(--text-secondary);
-    font-size: 0.95rem;
+ color: var(--text-secondary);
+ font-size: 0.95rem;
 }
 
 .total-row {
-    margin-top: 0.5rem;
-    padding-top: 1rem;
-    border-top: 2px solid #4a5568 !important;
+ margin-top: 0.5rem;
+ padding-top: 1rem;
+ border-top: 2px solid #4a5568 !important;
 }
 
 .net-row {
-    background: #4a5568;
-    margin: 0.5rem -1.5rem -1.5rem -1.5rem;
-    padding: 1rem 1.5rem !important;
-    border-radius: 0 0 8px 8px;
-    border-bottom: none !important;
+ background: #4a5568;
+ margin: 0.5rem -1.5rem -1.5rem -1.5rem;
+ padding: 1rem 1.5rem !important;
+ border-radius: 0 0 8px 8px;
+ border-bottom: none !important;
 }
 
 .amount {
-    font-family: 'Courier New', monospace;
-    font-weight: 600;
+ font-family: 'Courier New', monospace;
+ font-weight: 600;
 }
 
 .effective-rate {
-    margin-top: 1.5rem;
-    padding: 1rem;
-    background: #4a5568;
-    border-left: 4px solid var(--accent);
-    border-radius: 4px;
-    font-size: 1.1rem;
+ margin-top: 1.5rem;
+ padding: 1rem;
+ background: #4a5568;
+ border-left: 4px solid var(--accent);
+ border-radius: 4px;
+ font-size: 1.1rem;
 }
 
 .notes-section {
-    background: #2d3748;
+ background: #2d3748;
 }
 
 .notes-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+ display: flex;
+ flex-direction: column;
+ gap: 1rem;
 }
 
 .notes-textarea {
-    width: 100%;
-    padding: 1rem;
-    border: 2px solid #4a5568;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-family: inherit;
-    resize: vertical;
-    min-height: 150px;
-    background: #1a202c;
-    color: white;
+ width: 100%;
+ padding: 1rem;
+ border: 2px solid #4a5568;
+ border-radius: 8px;
+ font-size: 1rem;
+ font-family: inherit;
+ resize: vertical;
+ min-height: 150px;
+ background: #1a202c;
+ color: white;
 }
 
 .notes-textarea:focus {
-    outline: none;
-    border-color: var(--accent);
+ outline: none;
+ border-color: var(--accent);
 }
 
 .notes-textarea::placeholder {
-    color: #a0aec0;
+ color: #a0aec0;
 }
 
 @media (max-width: 768px) {
-    .vest-detail-page {
-        padding: 1rem;
-    }
+ .vest-detail-page {
+ padding: 1rem;
+ }
 
-    .detail-section {
-        padding: 1.5rem;
-    }
+ .detail-section {
+ padding: 1.5rem;
+ }
 
-    .info-grid {
-        grid-template-columns: 1fr;
-    }
+ .info-grid {
+ grid-template-columns: 1fr;
+ }
 
-    .header-content {
-        flex-direction: column;
-        align-items: flex-start;
-    }
+ .header-content {
+ flex-direction: column;
+ align-items: flex-start;
+ }
 }
 </style>
 
 <style>
 .tax-subsection {
-    margin: 1.5rem 0;
-    padding: 1.5rem;
-    background: rgba(74, 85, 104, 0.15);
-    border-radius: 8px;
-    border-left: 4px solid var(--accent);
+ margin: 1.5rem 0;
+ padding: 1.5rem;
+ background: rgba(74, 85, 104, 0.15);
+ border-radius: 8px;
+ border-left: 4px solid var(--accent);
 }
 
 .tax-subsection h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    font-size: 1.1rem;
+ margin-top: 0;
+ margin-bottom: 1rem;
+ font-size: 1.1rem;
 }
 
 .collapsible-header {
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    transition: color 0.2s ease;
+ cursor: pointer;
+ user-select: none;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ padding: 0.5rem 0;
+ transition: color 0.2s ease;
 }
 
 .collapsible-header:hover {
-    color: var(--accent);
+ color: var(--accent);
 }
 
 .expand-icon {
-    font-size: 0.8rem;
-    transition: transform 0.2s ease;
+ font-size: 0.8rem;
+ transition: transform 0.2s ease;
 }
 
 .collapsible-content {
-    overflow: hidden;
-    transition: max-height 0.3s ease;
+ overflow: hidden;
+ transition: max-height 0.3s ease;
 }
 
 .estimate-note {
-    background: rgba(59, 130, 246, 0.1);
-    border-left: 4px solid #3b82f6;
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-    border-radius: 4px;
-    font-size: 0.9rem;
+ background: rgba(59, 130, 246, 0.1);
+ border-left: 4px solid #3b82f6;
+ padding: 0.75rem;
+ margin-bottom: 1rem;
+ border-radius: 4px;
+ font-size: 0.9rem;
 }
 
 .collapsible-section {
-    margin: 1rem 0;
-    padding: 1rem;
-    background: rgba(74, 85, 104, 0.3);
-    border-radius: 8px;
+ margin: 1rem 0;
+ padding: 1rem;
+ background: rgba(74, 85, 104, 0.3);
+ border-radius: 8px;
 }
 
 .section-toggle {
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 0;
-    font-size: 1rem;
-    color: var(--accent);
-    transition: opacity 0.2s ease;
+ cursor: pointer;
+ user-select: none;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin: 0;
+ font-size: 1rem;
+ color: var(--accent);
+ transition: opacity 0.2s ease;
 }
 
 .section-toggle:hover {
-    opacity: 0.8;
+ opacity: 0.8;
 }
 
 .info-box {
-    background: #4a5568;
-    padding: 1rem;
-    border-radius: 4px;
-    margin: 1rem 0;
-    border-left: 4px solid var(--accent);
+ background: #4a5568;
+ padding: 1rem;
+ border-radius: 4px;
+ margin: 1rem 0;
+ border-left: 4px solid var(--accent);
 }
 
 .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+ display: grid;
+ grid-template-columns: 1fr 1fr;
+ gap: 1rem;
 }
 
 .table-container {
-    overflow-x: auto;
+ overflow-x: auto;
 }
 
 .data-table {
-    width: 100%;
-    border-collapse: collapse;
+ width: 100%;
+ border-collapse: collapse;
 }
 
 .data-table th,
 .data-table td {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid #4a5568;
+ padding: 0.75rem;
+ text-align: left;
+ border-bottom: 1px solid #4a5568;
 }
 
 .data-table th {
-    background: #1a202c;
-    font-weight: 600;
-    color: var(--accent);
+ background: #1a202c;
+ font-weight: 600;
+ color: var(--accent);
 }
 
 .data-table tr:hover {
-    background: #3a4556;
+ background: #3a4556;
 }
 </style>
 
@@ -949,280 +949,280 @@ const CSRF_TOKEN = '{{ csrf_token() }}';
 const VEST_ID = {{ vest_event.id }};
 
 function toggleSharesSold() {
-    const cashCoveredAll = document.getElementById('cashCoveredAll').value === 'true';
-    const sharesSoldInput = document.getElementById('sharesSold');
-    
-    if (cashCoveredAll) {
-        sharesSoldInput.value = '';
-        sharesSoldInput.disabled = true;
-    } else {
-        sharesSoldInput.disabled = false;
-    }
+ const cashCoveredAll = document.getElementById('cashCoveredAll').value === 'true';
+ const sharesSoldInput = document.getElementById('sharesSold');
+ 
+ if (cashCoveredAll) {
+ sharesSoldInput.value = '';
+ sharesSoldInput.disabled = true;
+ } else {
+ sharesSoldInput.disabled = false;
+ }
 }
 
 async function updateTaxPayment(e) {
-    e.preventDefault();
-    
-    const formData = new FormData();
-    formData.append('cash_paid', document.getElementById('cashPaid').value || 0);
-    formData.append('cash_covered_all', document.getElementById('cashCoveredAll').value);
-    formData.append('shares_sold', document.getElementById('sharesSold').value || 0);
-    
-    try {
-        const response = await fetch(`/grants/vest-event/${VEST_ID}/update`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': CSRF_TOKEN
-            },
-            body: formData
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            
-            // Update displayed values
-            if (data.shares_received !== undefined) {
-                document.getElementById('sharesReceivedDisplay').textContent = parseFloat(data.shares_received).toFixed(4);
-            }
-            if (data.net_value !== undefined) {
-                document.getElementById('netValueDisplay').textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            }
-            
-            alert('Tax payment information updated successfully!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + (error.error || 'Failed to update'));
-        }
-    } catch (error) {
-        console.error('Error updating tax payment:', error);
-        alert('Error updating tax payment: ' + error.message);
-    }
+ e.preventDefault();
+ 
+ const formData = new FormData();
+ formData.append('cash_paid', document.getElementById('cashPaid').value || 0);
+ formData.append('cash_covered_all', document.getElementById('cashCoveredAll').value);
+ formData.append('shares_sold', document.getElementById('sharesSold').value || 0);
+ 
+ try {
+ const response = await fetch(`/grants/vest-event/${VEST_ID}/update`, {
+ method: 'POST',
+ headers: {
+ 'X-CSRFToken': CSRF_TOKEN
+ },
+ body: formData
+ });
+ 
+ if (response.ok) {
+ const data = await response.json();
+ 
+ // Update displayed values
+ if (data.shares_received !== undefined) {
+ document.getElementById('sharesReceivedDisplay').textContent = parseFloat(data.shares_received).toFixed(4);
+ }
+ if (data.net_value !== undefined) {
+ document.getElementById('netValueDisplay').textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+ }
+ 
+ alert('Tax payment information updated successfully!');
+ location.reload();
+ } else {
+ const error = await response.json();
+ alert('Error: ' + (error.error || 'Failed to update'));
+ }
+ } catch (error) {
+ console.error('Error updating tax payment:', error);
+ alert('Error updating tax payment: ' + error.message);
+ }
 }
 
 function toggleSection(sectionId) {
-    const content = document.getElementById(sectionId);
-    const icon = document.getElementById(sectionId + 'Icon');
-    
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        icon.textContent = '▲';
-    } else {
-        content.style.display = 'none';
-        icon.textContent = '▼';
-    }
+ const content = document.getElementById(sectionId);
+ const icon = document.getElementById(sectionId + 'Icon');
+ 
+ if (content.style.display === 'none') {
+ content.style.display = 'block';
+ icon.textContent = '▲';
+ } else {
+ content.style.display = 'none';
+ icon.textContent = '▼';
+ }
 }
 
 function toggleModalSection(sectionId) {
-    const content = document.getElementById(sectionId);
-    const icon = document.getElementById(sectionId + 'Icon');
-    
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        icon.textContent = '▲';
-    } else {
-        content.style.display = 'none';
-        icon.textContent = '▼';
-    }
+ const content = document.getElementById(sectionId);
+ const icon = document.getElementById(sectionId + 'Icon');
+ 
+ if (content.style.display === 'none') {
+ content.style.display = 'block';
+ icon.textContent = '▲';
+ } else {
+ content.style.display = 'none';
+ icon.textContent = '▼';
+ }
 }
 
 function toggleRecordExercise() {
-    const form = document.getElementById('recordExerciseForm');
-    if (form.style.display === 'none') {
-        form.style.display = 'block';
-        // Scroll to form
-        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } else {
-        form.style.display = 'none';
-        document.getElementById('exerciseForm').reset();
-    }
+ const form = document.getElementById('recordExerciseForm');
+ if (form.style.display === 'none') {
+ form.style.display = 'block';
+ // Scroll to form
+ form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+ } else {
+ form.style.display = 'none';
+ document.getElementById('exerciseForm').reset();
+ }
 }
 
 function toggleAMTFields() {
-    const checkbox = document.getElementById('amt_triggered');
-    document.getElementById('amtFields').style.display = checkbox.checked ? 'grid' : 'none';
+ const checkbox = document.getElementById('amt_triggered');
+ document.getElementById('amtFields').style.display = checkbox.checked ? 'grid' : 'none';
 }
 
 let editingSaleId = null;
 
 function editSale(id, shares, price, date, commissionFees, notes) {
-    // Populate the form with existing values
-    document.getElementById('shares_sold').value = shares;
-    document.getElementById('sale_price').value = price;
-    document.getElementById('sale_date').value = date;
-    document.getElementById('sale_notes').value = notes || '';
-    
-    // Store the sale ID we're editing
-    editingSaleId = id;
-    
-    // Change button text to indicate editing
-    const submitBtn = document.querySelector('#saleForm button[type="submit"]');
-    submitBtn.textContent = 'Update Sale';
-    
-    // Show the form
-    document.getElementById('recordSaleForm').style.display = 'block';
-    
-    // Scroll to form
-    document.getElementById('recordSaleForm').scrollIntoView({ behavior: 'smooth' });
+ // Populate the form with existing values
+ document.getElementById('shares_sold').value = shares;
+ document.getElementById('sale_price').value = price;
+ document.getElementById('sale_date').value = date;
+ document.getElementById('sale_notes').value = notes || '';
+ 
+ // Store the sale ID we're editing
+ editingSaleId = id;
+ 
+ // Change button text to indicate editing
+ const submitBtn = document.querySelector('#saleForm button[type="submit"]');
+ submitBtn.textContent = 'Update Sale';
+ 
+ // Show the form
+ document.getElementById('recordSaleForm').style.display = 'block';
+ 
+ // Scroll to form
+ document.getElementById('recordSaleForm').scrollIntoView({ behavior: 'smooth' });
 }
 
 async function submitSale(e) {
-    e.preventDefault();
-    
-    const actualFederal = document.getElementById('actual_federal_tax').value;
-    const actualState = document.getElementById('actual_state_tax').value;
-    const actualTotal = document.getElementById('actual_total_tax').value;
-    
-    const data = {
-        vest_event_id: VEST_ID,
-        sale_date: document.getElementById('sale_date').value,
-        shares_sold: document.getElementById('shares_sold').value,
-        sale_price: document.getElementById('sale_price').value,
-        cost_basis_per_share: {{ vest_data.cost_basis_per_share }},
-        commission_fees: 0,
-        actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
-        actual_state_tax: actualState ? parseFloat(actualState) : null,
-        actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
-        notes: document.getElementById('sale_notes').value
-    };
-    
-    try {
-        let url, method;
-        
-        if (editingSaleId) {
-            // Update existing sale
-            url = `/transactions/api/transactions/sales/${editingSaleId}`;
-            method = 'PUT';
-        } else {
-            // Create new sale
-            url = '/transactions/api/transactions/sales';
-            method = 'POST';
-        }
-        
-        const response = await fetch(url, {
-            method: method,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': CSRF_TOKEN
-            },
-            body: JSON.stringify(data)
-        });
-        
-        if (response.ok) {
-            alert(editingSaleId ? 'Stock sale updated successfully!' : 'Stock sale recorded successfully!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-        }
-    } catch (error) {
-        alert('Error: ' + error.message);
-    }
+ e.preventDefault();
+ 
+ const actualFederal = document.getElementById('actual_federal_tax').value;
+ const actualState = document.getElementById('actual_state_tax').value;
+ const actualTotal = document.getElementById('actual_total_tax').value;
+ 
+ const data = {
+ vest_event_id: VEST_ID,
+ sale_date: document.getElementById('sale_date').value,
+ shares_sold: document.getElementById('shares_sold').value,
+ sale_price: document.getElementById('sale_price').value,
+ cost_basis_per_share: {{ vest_data.cost_basis_per_share }},
+ commission_fees: 0,
+ actual_federal_tax: actualFederal ? parseFloat(actualFederal) : null,
+ actual_state_tax: actualState ? parseFloat(actualState) : null,
+ actual_total_tax: actualTotal ? parseFloat(actualTotal) : null,
+ notes: document.getElementById('sale_notes').value
+ };
+ 
+ try {
+ let url, method;
+ 
+ if (editingSaleId) {
+ // Update existing sale
+ url = `/transactions/api/transactions/sales/${editingSaleId}`;
+ method = 'PUT';
+ } else {
+ // Create new sale
+ url = '/transactions/api/transactions/sales';
+ method = 'POST';
+ }
+ 
+ const response = await fetch(url, {
+ method: method,
+ headers: {
+ 'Content-Type': 'application/json',
+ 'X-CSRFToken': CSRF_TOKEN
+ },
+ body: JSON.stringify(data)
+ });
+ 
+ if (response.ok) {
+ alert(editingSaleId ? 'Stock sale updated successfully!' : 'Stock sale recorded successfully!');
+ location.reload();
+ } else {
+ const error = await response.json();
+ alert('Error: ' + error.error);
+ }
+ } catch (error) {
+ alert('Error: ' + error.message);
+ }
 }
 
 function toggleRecordSale() {
-    const form = document.getElementById('recordSaleForm');
-    const isVisible = form.style.display !== 'none';
-    
-    if (isVisible) {
-        // Reset editing state
-        editingSaleId = null;
-        const submitBtn = document.querySelector('#saleForm button[type="submit"]');
-        submitBtn.textContent = 'Record Sale';
-        
-        // Clear form
-        document.getElementById('saleForm').reset();
-        form.style.display = 'none';
-    } else {
-        form.style.display = 'block';
-    }
+ const form = document.getElementById('recordSaleForm');
+ const isVisible = form.style.display !== 'none';
+ 
+ if (isVisible) {
+ // Reset editing state
+ editingSaleId = null;
+ const submitBtn = document.querySelector('#saleForm button[type="submit"]');
+ submitBtn.textContent = 'Record Sale';
+ 
+ // Clear form
+ document.getElementById('saleForm').reset();
+ form.style.display = 'none';
+ } else {
+ form.style.display = 'block';
+ }
 }
 
 async function submitExercise(e) {
-    e.preventDefault();
-    
-    const data = {
-        vest_event_id: VEST_ID,
-        exercise_date: document.getElementById('exercise_date').value,
-        shares_exercised: document.getElementById('shares_exercised').value,
-        fmv_at_exercise: document.getElementById('fmv_at_exercise').value,
-        amt_triggered: document.getElementById('amt_triggered').checked,
-        amt_paid: document.getElementById('amt_paid')?.value || null,
-        amt_credit_generated: document.getElementById('amt_credit_generated')?.value || null,
-        notes: document.getElementById('exercise_notes').value
-    };
-    
-    try {
-        const response = await fetch('/transactions/api/transactions/exercises', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': CSRF_TOKEN
-            },
-            body: JSON.stringify(data)
-        });
-        
-        if (response.ok) {
-            alert('ISO exercise recorded successfully!');
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-        }
-    } catch (error) {
-        alert('Error recording exercise: ' + error.message);
-    }
+ e.preventDefault();
+ 
+ const data = {
+ vest_event_id: VEST_ID,
+ exercise_date: document.getElementById('exercise_date').value,
+ shares_exercised: document.getElementById('shares_exercised').value,
+ fmv_at_exercise: document.getElementById('fmv_at_exercise').value,
+ amt_triggered: document.getElementById('amt_triggered').checked,
+ amt_paid: document.getElementById('amt_paid')?.value || null,
+ amt_credit_generated: document.getElementById('amt_credit_generated')?.value || null,
+ notes: document.getElementById('exercise_notes').value
+ };
+ 
+ try {
+ const response = await fetch('/transactions/api/transactions/exercises', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ 'X-CSRFToken': CSRF_TOKEN
+ },
+ body: JSON.stringify(data)
+ });
+ 
+ if (response.ok) {
+ alert('ISO exercise recorded successfully!');
+ location.reload();
+ } else {
+ const error = await response.json();
+ alert('Error: ' + error.error);
+ }
+ } catch (error) {
+ alert('Error recording exercise: ' + error.message);
+ }
 }
 
 async function deleteSale(id) {
-    if (!confirm('Are you sure you want to delete this sale?')) return;
-    
-    try {
-        const response = await fetch(`/transactions/api/transactions/sales/${id}`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': CSRF_TOKEN
-            }
-        });
-        
-        if (response.ok) {
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-        }
-    } catch (error) {
-        alert('Error deleting sale: ' + error.message);
-    }
+ if (!confirm('Are you sure you want to delete this sale?')) return;
+ 
+ try {
+ const response = await fetch(`/transactions/api/transactions/sales/${id}`, {
+ method: 'DELETE',
+ headers: {
+ 'X-CSRFToken': CSRF_TOKEN
+ }
+ });
+ 
+ if (response.ok) {
+ location.reload();
+ } else {
+ const error = await response.json();
+ alert('Error: ' + error.error);
+ }
+ } catch (error) {
+ alert('Error deleting sale: ' + error.message);
+ }
 }
 
 async function deleteExercise(id) {
-    if (!confirm('Are you sure you want to delete this exercise?')) return;
-    
-    try {
-        const response = await fetch(`/transactions/api/transactions/exercises/${id}`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': CSRF_TOKEN
-            }
-        });
-        
-        if (response.ok) {
-            location.reload();
-        } else {
-            const error = await response.json();
-            alert('Error: ' + error.error);
-        }
-    } catch (error) {
-        alert('Error deleting exercise: ' + error.message);
-    }
+ if (!confirm('Are you sure you want to delete this exercise?')) return;
+ 
+ try {
+ const response = await fetch(`/transactions/api/transactions/exercises/${id}`, {
+ method: 'DELETE',
+ headers: {
+ 'X-CSRFToken': CSRF_TOKEN
+ }
+ });
+ 
+ if (response.ok) {
+ location.reload();
+ } else {
+ const error = await response.json();
+ alert('Error: ' + error.error);
+ }
+ } catch (error) {
+ alert('Error deleting exercise: ' + error.message);
+ }
 }
 
 // Close modals when clicking outside
 window.onclick = function(event) {
-    if (event.target.classList.contains('modal')) {
-        event.target.style.display = 'none';
-    }
+ if (event.target.classList.contains('modal')) {
+ event.target.style.display = 'none';
+ }
 }
 </script>
 {% endblock %}

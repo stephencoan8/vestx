@@ -3,111 +3,102 @@
 {% block title %}Dashboard - VestX{% endblock %}
 
 {% block content %}
-<div class="dashboard">
+<div class="dashboard page">
     <header class="page-header">
         <h1>Dashboard</h1>
-        <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Grant</a>
+        <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">Add grant</a>
     </header>
 
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-icon">📊</div>
             <div class="stat-content">
-                <div class="stat-label">Total Grants</div>
+                <div class="stat-label">Total grants</div>
                 <div class="stat-value">{{ total_grants }}</div>
             </div>
         </div>
 
         <div class="stat-card">
-            <div class="stat-icon">📈</div>
             <div class="stat-content">
-                <div class="stat-label">Total Shares</div>
+                <div class="stat-label">Total shares</div>
                 <div class="stat-value">{{ "{:,.0f}".format(total_shares) }}</div>
             </div>
         </div>
 
         <div class="stat-card accent">
-            <div class="stat-icon">💰</div>
             <div class="stat-content">
-                <div class="stat-label">Total Value</div>
+                <div class="stat-label">Portfolio value</div>
                 <div class="stat-value">${{ "{:,.2f}".format(total_value) }}</div>
             </div>
         </div>
 
         <div class="stat-card success">
-            <div class="stat-icon">✅</div>
             <div class="stat-content">
-                <div class="stat-label">Shares Received (Net)</div>
+                <div class="stat-label">Shares received</div>
                 <div class="stat-value">{{ "{:,.0f}".format(vested_shares_net) }}</div>
-                <small style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                    After tax withholding
-                </small>
+                <small>After tax withholding</small>
             </div>
         </div>
-        
+
         <div class="stat-card success">
-            <div class="stat-icon">💎</div>
             <div class="stat-content">
-                <div class="stat-label">Vested Inventory Value</div>
+                <div class="stat-label">Vested inventory</div>
                 <div class="stat-value">${{ "{:,.2f}".format(vested_value_net) }}</div>
-                <small style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                    Current value of received shares
-                </small>
+                <small>Current value of received shares</small>
             </div>
         </div>
-        
-        <div class="stat-card {% if needs_info_count > 0 %}warning{% else %}info{% endif %} clickable" onclick="window.location.href='{{ url_for('grants.needs_tax_info') }}';" style="cursor: pointer;">
-            <div class="stat-icon">{% if needs_info_count > 0 %}⚠️{% else %}✅{% endif %}</div>
+
+        <div class="stat-card {% if needs_info_count > 0 %}warning{% else %}info{% endif %} clickable"
+             onclick="window.location.href='{{ url_for('grants.needs_tax_info') }}';"
+             role="link"
+             tabindex="0">
             <div class="stat-content">
-                <div class="stat-label">{% if needs_info_count > 0 %}Needs Tax Info{% else %}Tax Info Status{% endif %}</div>
+                <div class="stat-label">{% if needs_info_count > 0 %}Needs tax info{% else %}Tax info status{% endif %}</div>
                 <div class="stat-value">{{ needs_info_count }}</div>
-                <small style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                <small>
                     {% if needs_info_count > 0 %}Click to update vested events{% else %}All vests updated{% endif %}
                 </small>
             </div>
         </div>
     </div>
 
-    <!-- Vesting Timeline Chart -->
     <div class="chart-section">
         <div class="chart-header">
-            <h2>Vesting Timeline</h2>
+            <h2>Vesting timeline</h2>
             <div class="chart-toggle">
-                <button class="toggle-btn active" data-view="value">Value ($)</button>
-                <button class="toggle-btn" data-view="shares">Shares</button>
+                <button type="button" class="toggle-btn active" data-view="value">Value ($)</button>
+                <button type="button" class="toggle-btn" data-view="shares">Shares</button>
             </div>
         </div>
-        
-        <!-- Chart Controls -->
+
         <div class="chart-controls">
             <div class="control-group">
-                <label for="xZoom">📅 Time Range</label>
+                <label for="xZoom">Time range</label>
                 <input type="range" id="xZoom" min="0.1" max="1" step="0.05" value="1">
                 <span id="xZoomLabel">100%</span>
             </div>
             <div class="control-group">
-                <label for="yZoom">💰 Value Range</label>
+                <label for="yZoom">Value range</label>
                 <input type="range" id="yZoom" min="0.1" max="1" step="0.05" value="1">
                 <span id="yZoomLabel">100%</span>
             </div>
-            <button class="btn btn-sm btn-secondary" id="resetZoom">Reset View</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="resetZoom">Reset view</button>
         </div>
-        
-        <div class="chart-container">
+
+        <div class="chart-container" style="border: none; padding: 0; margin: 0; background: transparent; height: 400px;">
             <canvas id="vestingChart"></canvas>
         </div>
         <div class="chart-legend">
-            <span class="legend-item"><span class="legend-line solid"></span> Past (Already Vested)</span>
-            <span class="legend-item"><span class="legend-line dashed"></span> Future (Projected)</span>
-            <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-                Shows total equity value at each date (both lines show cumulative total, split at today's date)
-            </div>
+            <span class="legend-item"><span class="legend-line solid"></span> Past (vested)</span>
+            <span class="legend-item"><span class="legend-line dashed"></span> Future (projected)</span>
         </div>
+        <p style="margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
+            Cumulative equity value at each date, split at today
+        </p>
     </div>
 
     <div class="dashboard-content">
         <div class="dashboard-section">
-            <h2>Upcoming Vests</h2>
+            <h2>Upcoming vests</h2>
             {% if upcoming_vests %}
             <div class="vest-list">
                 {% for vest in upcoming_vests %}
@@ -121,16 +112,16 @@
             {% else %}
             <p class="empty-state">No upcoming vests</p>
             {% endif %}
-            <a href="{{ url_for('grants.vest_schedule') }}" class="link-more">View full schedule →</a>
+            <a href="{{ url_for('grants.vest_schedule') }}" class="link-more">View full schedule</a>
         </div>
 
         <div class="dashboard-section">
-            <h2>Stock Price</h2>
+            <h2>Share price</h2>
             <div class="price-display">
                 <div class="current-price">${{ "{:,.2f}".format(current_price) }}</div>
                 <div class="price-label">per share</div>
             </div>
-            <div class="mini-chart-container" style="margin-top: 1.5rem; height: 150px;">
+            <div class="mini-chart-container" style="margin-top: 1.25rem; height: 150px;">
                 <canvas id="stockPriceChart"></canvas>
             </div>
         </div>
@@ -140,54 +131,47 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script>
-// Vesting timeline data from server
 const vestingData = {{ vesting_timeline | tojson | safe }};
 const currentPrice = {{ current_price }};
 
-console.log('Vesting data:', vestingData);
-console.log('Current price:', currentPrice);
+const COLORS = {
+    green: '#2d6b52',
+    greenFill: 'rgba(45, 107, 82, 0.12)',
+    copper: '#b87333',
+    copperFill: 'rgba(184, 115, 51, 0.12)',
+    muted: '#6b665c',
+    grid: 'rgba(232, 228, 220, 0.06)',
+    text: '#9a958a',
+    tooltipBg: 'rgba(12, 13, 11, 0.95)',
+    tooltipBorder: 'rgba(184, 115, 51, 0.45)',
+    body: '#e8e4dc'
+};
 
-let currentView = 'value'; // 'value' or 'shares'
+let currentView = 'value';
 let chartInstance = null;
-
-// Find the index where vested transitions to unvested
 const transitionIndex = vestingData.findIndex(d => !d.is_vested);
-
-console.log('Transition index:', transitionIndex);
 
 function createChart(view) {
     const ctx = document.getElementById('vestingChart');
-    if (!ctx) {
-        console.error('Canvas element not found');
-        return;
-    }
-    
+    if (!ctx) return;
+
     if (!vestingData || vestingData.length === 0) {
-        console.warn('No vesting data available');
-        ctx.getContext('2d').fillStyle = '#9ca3af';
-        ctx.getContext('2d').font = '16px sans-serif';
-        ctx.getContext('2d').fillText('No vesting data available', 50, 200);
+        const c = ctx.getContext('2d');
+        c.fillStyle = COLORS.text;
+        c.font = '14px sans-serif';
+        c.fillText('No vesting data available', 24, 80);
         return;
     }
-    
-    console.log('Creating chart with view:', view);
-    
-    // Parse dates to Date objects for proper time scale
+
     const dates = vestingData.map(d => new Date(d.date));
-    // Use pre-calculated values from backend (already includes historical prices)
     const totalData = vestingData.map(d => view === 'value' ? d.total_value : d.total_shares);
-    
-    // Split data into past (vested) and future (unvested) portions for styling
     const vestedDates = dates.slice(0, transitionIndex >= 0 ? transitionIndex : dates.length);
     const unvestedDates = transitionIndex >= 0 ? dates.slice(transitionIndex - 1) : [];
-    
     const vestedValues = totalData.slice(0, transitionIndex >= 0 ? transitionIndex : totalData.length);
     const unvestedValues = transitionIndex >= 0 ? totalData.slice(transitionIndex - 1) : [];
-    
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
-    
+
+    if (chartInstance) chartInstance.destroy();
+
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
@@ -196,66 +180,56 @@ function createChart(view) {
                 {
                     label: 'Vested (Past)',
                     data: vestedDates.map((date, idx) => ({x: date, y: vestedValues[idx]})),
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    borderWidth: 3,
+                    borderColor: COLORS.green,
+                    backgroundColor: COLORS.greenFill,
+                    borderWidth: 2,
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
+                    tension: 0.35,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: COLORS.green
                 },
                 {
                     label: 'Unvested (Future)',
                     data: unvestedDates.map((date, idx) => ({x: date, y: unvestedValues[idx]})),
-                    borderColor: '#9ca3af',
-                    backgroundColor: 'rgba(156, 163, 175, 0.05)',
-                    borderWidth: 3,
-                    borderDash: [10, 5],
+                    borderColor: COLORS.copper,
+                    backgroundColor: COLORS.copperFill,
+                    borderWidth: 2,
+                    borderDash: [6, 4],
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                    pointStyle: 'circle',
-                    pointBorderColor: '#9ca3af'
+                    tension: 0.35,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: COLORS.copper
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            },
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(10, 14, 20, 0.95)',
-                    titleColor: '#e6e9f0',
-                    bodyColor: '#e6e9f0',
-                    borderColor: '#00d4ff',
+                    backgroundColor: COLORS.tooltipBg,
+                    titleColor: COLORS.body,
+                    bodyColor: COLORS.body,
+                    borderColor: COLORS.tooltipBorder,
                     borderWidth: 1,
                     padding: 12,
                     displayColors: false,
                     callbacks: {
                         title: function(items) {
-                            // Use parsed x value which is a timestamp
-                            const date = new Date(items[0].parsed.x);
-                            return date.toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric'
+                            return new Date(items[0].parsed.x).toLocaleDateString('en-US', {
+                                year: 'numeric', month: 'short', day: 'numeric'
                             });
                         },
                         label: function(context) {
                             const value = context.parsed.y;
                             if (view === 'value') {
                                 return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            } else {
-                                return value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' shares';
                             }
+                            return value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' shares';
                         }
                     }
                 }
@@ -263,34 +237,20 @@ function createChart(view) {
             scales: {
                 x: {
                     type: 'time',
-                    time: {
-                        unit: 'month',
-                        displayFormats: {
-                            month: 'MMM yyyy'
-                        }
-                    },
-                    grid: {
-                        color: 'rgba(45, 55, 72, 0.5)',
-                        drawBorder: false
-                    },
-                    ticks: {
-                        color: '#9ca3af'
-                    }
+                    time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
+                    grid: { color: COLORS.grid, drawBorder: false },
+                    ticks: { color: COLORS.text, maxRotation: 0 }
                 },
                 y: {
                     beginAtZero: true,
-                    grid: {
-                        color: 'rgba(45, 55, 72, 0.5)',
-                        drawBorder: false
-                    },
+                    grid: { color: COLORS.grid, drawBorder: false },
                     ticks: {
-                        color: '#9ca3af',
+                        color: COLORS.text,
                         callback: function(value) {
                             if (view === 'value') {
-                                return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
-                            } else {
-                                return value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                                return '$' + value.toLocaleString('en-US', {maximumFractionDigits: 0});
                             }
+                            return value.toLocaleString('en-US', {maximumFractionDigits: 0});
                         }
                     }
                 }
@@ -299,21 +259,15 @@ function createChart(view) {
     });
 }
 
-// Toggle button handlers
 document.querySelectorAll('.toggle-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         currentView = this.dataset.view;
-        try {
-            createChart(currentView);
-        } catch (error) {
-            console.error('Error creating chart:', error);
-        }
+        createChart(currentView);
     });
 });
 
-// Zoom controls
 let xZoomValue = 1;
 let yZoomValue = 1;
 
@@ -341,40 +295,22 @@ document.getElementById('resetZoom').addEventListener('click', function() {
 
 function updateChartZoom() {
     if (!chartInstance || !vestingData || vestingData.length === 0) return;
-    
     const dates = vestingData.map(d => new Date(d.date));
     const values = vestingData.map(d => currentView === 'value' ? d.total_value : d.total_shares);
-    
-    // Calculate date range
     const minDate = dates[0];
     const maxDate = dates[dates.length - 1];
     const dateRange = maxDate - minDate;
-    const zoomedDateRange = dateRange * xZoomValue;
-    const newMaxDate = new Date(minDate.getTime() + zoomedDateRange);
-    
-    // Calculate value range
+    const newMaxDate = new Date(minDate.getTime() + dateRange * xZoomValue);
     const maxValue = Math.max(...values);
-    const zoomedMaxValue = maxValue * yZoomValue;
-    
-    // Update chart scales
     chartInstance.options.scales.x.max = newMaxDate;
-    chartInstance.options.scales.y.max = zoomedMaxValue;
+    chartInstance.options.scales.y.max = maxValue * yZoomValue;
     chartInstance.update();
 }
 
-// Create initial chart when page loads
-try {
-    if (typeof Chart !== 'undefined') {
-        console.log('Chart.js loaded successfully');
-        createChart(currentView);
-    } else {
-        console.error('Chart.js not loaded');
-    }
-} catch (error) {
-    console.error('Error initializing chart:', error);
+if (typeof Chart !== 'undefined') {
+    createChart(currentView);
 }
 
-// Stock Price Mini Chart
 fetch('{{ url_for("main.stock_price_chart_data") }}')
     .then(response => response.json())
     .then(data => {
@@ -386,16 +322,14 @@ fetch('{{ url_for("main.stock_price_chart_data") }}')
                 datasets: [{
                     label: 'Stock Price',
                     data: data.prices,
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    borderColor: COLORS.copper,
+                    backgroundColor: COLORS.copperFill,
                     borderWidth: 2,
-                    tension: 0.3,
+                    tension: 0.35,
                     fill: true,
                     pointRadius: 0,
                     pointHoverRadius: 4,
-                    pointBackgroundColor: '#00d4ff',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2
+                    pointBackgroundColor: COLORS.copper
                 }]
             },
             options: {
@@ -403,16 +337,19 @@ fetch('{{ url_for("main.stock_price_chart_data") }}')
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
-                    title: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        backgroundColor: COLORS.tooltipBg,
+                        borderColor: COLORS.tooltipBorder,
+                        borderWidth: 1,
                         padding: 8,
-                        titleColor: '#00d4ff',
-                        bodyColor: '#fff',
+                        titleColor: COLORS.body,
+                        bodyColor: COLORS.body,
                         displayColors: false,
                         callbacks: {
                             label: function(context) {
-                                return '$' + context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                return '$' + context.parsed.y.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2, maximumFractionDigits: 2
+                                });
                             }
                         }
                     }
@@ -420,166 +357,21 @@ fetch('{{ url_for("main.stock_price_chart_data") }}')
                 scales: {
                     y: {
                         beginAtZero: false,
-                        grid: {
-                            color: 'rgba(45, 55, 72, 0.5)',
-                            drawBorder: false
-                        },
-                        ticks: { 
-                            color: '#9ca3af',
+                        grid: { color: COLORS.grid, drawBorder: false },
+                        ticks: {
+                            color: COLORS.text,
+                            maxTicksLimit: 4,
                             callback: function(value) {
-                                return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
-                            },
-                            maxTicksLimit: 4
+                                return '$' + value.toLocaleString('en-US', {maximumFractionDigits: 0});
+                            }
                         }
                     },
-                    x: {
-                        display: false
-                    }
+                    x: { display: false }
                 },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                }
+                interaction: { intersect: false, mode: 'index' }
             }
         });
     })
-    .catch(error => console.error('Error loading stock price chart:', error));
+    .catch(function() {});
 </script>
-
-<style>
-.chart-section {
-    background: var(--bg-card);
-    border-radius: 12px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-    box-shadow: 0 4px 6px var(--shadow);
-}
-
-.chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
-
-.chart-controls {
-    display: flex;
-    gap: 2rem;
-    align-items: center;
-    margin-bottom: 1.5rem;
-    padding: 1rem;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-}
-
-.control-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.control-group label {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    white-space: nowrap;
-    min-width: 100px;
-}
-
-.control-group input[type="range"] {
-    width: 150px;
-    cursor: pointer;
-}
-
-.control-group input[type="range"]::-webkit-slider-thumb {
-    background: var(--accent-color);
-}
-
-.control-group input[type="range"]::-moz-range-thumb {
-    background: var(--accent-color);
-}
-
-.control-group span {
-    color: var(--text-primary);
-    font-weight: 600;
-    min-width: 50px;
-    font-size: 0.9rem;
-}
-
-#resetZoom {
-    margin-left: auto;
-}
-
-
-.chart-header h2 {
-    margin: 0;
-    color: var(--text-primary);
-}
-
-.chart-toggle {
-    display: flex;
-    gap: 0.5rem;
-    background: var(--bg-secondary);
-    padding: 0.25rem;
-    border-radius: 8px;
-}
-
-.toggle-btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.toggle-btn:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
-
-.toggle-btn.active {
-    background: var(--accent);
-    color: white;
-}
-
-.chart-container {
-    height: 400px;
-    position: relative;
-}
-
-.chart-legend {
-    display: flex;
-    gap: 2rem;
-    justify-content: center;
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-
-.legend-line {
-    width: 40px;
-    height: 3px;
-    display: inline-block;
-}
-
-.legend-line.solid {
-    background: #10b981;
-}
-
-.legend-line.dashed {
-    background: linear-gradient(to right, #9ca3af 50%, transparent 50%);
-    background-size: 10px 3px;
-}
-</style>
 {% endblock %}

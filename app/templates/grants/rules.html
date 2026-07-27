@@ -4,356 +4,356 @@
 
 {% block content %}
 <div class="rules-page">
-    <header class="page-header">
-        <h1>📋 Grant Rules & Calculation Logic</h1>
-    </header>
+ <header class="page-header">
+ <h1> Grant Rules & Calculation Logic</h1>
+ </header>
 
-    <p class="lead">Click each section to expand a precise, example-driven breakdown of how vesting, cliffing, and payout math is calculated for each grant type.</p>
+ <p class="lead">Click each section to expand a precise, example-driven breakdown of how vesting, cliffing, and payout math is calculated for each grant type.</p>
 
-    <div class="accordion">
+ <div class="accordion">
 
-        <!-- New Hire RSU -->
-        <div class="accordion-item">
-            <div class="accordion-header">
-                <h3>📦 New Hire RSU (preset 5-year)</h3>
-                <span class="accordion-icon">▼</span>
-            </div>
-            <div class="accordion-content">
-                <p><strong>Preset Schedule:</strong> New hire RSUs use a 5-year vest schedule by default (not 5-6 years).</p>
-                
-                <h4>Core Parameters</h4>
-                <ul>
-                    <li><strong>Total Duration:</strong> 5 years</li>
-                    <li><strong>Cliff:</strong> 1 year — first vest equals the entire first-year allocation (20%)</li>
-                    <li><strong>Subsequent Vesting:</strong> Biannual (every 6 months) after cliff until 5-year completion</li>
-                </ul>
+ <!-- New Hire RSU -->
+ <div class="accordion-item">
+ <div class="accordion-header">
+ <h3>📦 New Hire RSU (preset 5-year)</h3>
+ <span class="accordion-icon">▼</span>
+ </div>
+ <div class="accordion-content">
+ <p><strong>Preset Schedule:</strong> New hire RSUs use a 5-year vest schedule by default (not 5-6 years).</p>
+ 
+ <h4>Core Parameters</h4>
+ <ul>
+ <li><strong>Total Duration:</strong> 5 years</li>
+ <li><strong>Cliff:</strong> 1 year — first vest equals the entire first-year allocation (20%)</li>
+ <li><strong>Subsequent Vesting:</strong> Biannual (every 6 months) after cliff until 5-year completion</li>
+ </ul>
 
-                <h4>Why first-vest timing varies</h4>
-                <p>The app calculates the 1-year cliff anniversary, then <strong>snaps to the closest company vest date</strong> (May 15 or Nov 15). Depending on your grant date:</p>
-                <ul>
-                    <li>Grant on Feb 15 → 1yr anniversary = Feb 15 → closest vest date = <strong>May 15</strong> (~3 months after, total ~15 months)</li>
-                    <li>Grant on Aug 15 → 1yr anniversary = Aug 15 → closest vest date = <strong>Nov 15</strong> (~3 months after, total ~15 months)</li>
-                    <li>Grant on May 20 → 1yr anniversary = May 20 → closest vest date = <strong>May 15</strong> (~3 months before next year, total ~12 months)</li>
-                </ul>
-                <p><em>The app uses a 3-month look-back/look-ahead window to find the nearest May 15 or Nov 15. Percentages remain constant; only calendar dates shift.</em></p>
+ <h4>Why first-vest timing varies</h4>
+ <p>The app calculates the 1-year cliff anniversary, then <strong>snaps to the closest company vest date</strong> (May 15 or Nov 15). Depending on your grant date:</p>
+ <ul>
+ <li>Grant on Feb 15 → 1yr anniversary = Feb 15 → closest vest date = <strong>May 15</strong> (~3 months after, total ~15 months)</li>
+ <li>Grant on Aug 15 → 1yr anniversary = Aug 15 → closest vest date = <strong>Nov 15</strong> (~3 months after, total ~15 months)</li>
+ <li>Grant on May 20 → 1yr anniversary = May 20 → closest vest date = <strong>May 15</strong> (~3 months before next year, total ~12 months)</li>
+ </ul>
+ <p><em>The app uses a 3-month look-back/look-ahead window to find the nearest May 15 or Nov 15. Percentages remain constant; only calendar dates shift.</em></p>
 
-                <h4>Math Example (1,000 shares)</h4>
-                <ul>
-                    <li><strong>Year 1 cliff:</strong> 20% = 200 shares</li>
-                    <li><strong>Each 6-month vest thereafter:</strong> 800 shares ÷ 8 events = 100 shares (10% each)</li>
-                </ul>
-            </div>
-        </div>
+ <h4>Math Example (1,000 shares)</h4>
+ <ul>
+ <li><strong>Year 1 cliff:</strong> 20% = 200 shares</li>
+ <li><strong>Each 6-month vest thereafter:</strong> 800 shares ÷ 8 events = 100 shares (10% each)</li>
+ </ul>
+ </div>
+ </div>
 
-        <!-- Annual Performance Bonus -->
-        <div class="accordion-item">
-            <div class="accordion-header">
-                <h3>🎯 Annual Performance Bonus</h3>
-                <span class="accordion-icon">▼</span>
-            </div>
-            <div class="accordion-content">
-                <p>This category splits into <strong>Short Term Incentive (STI)</strong> and <strong>Long Term Incentive (LTI)</strong>.</p>
+ <!-- Annual Performance Bonus -->
+ <div class="accordion-item">
+ <div class="accordion-header">
+ <h3> Annual Performance Bonus</h3>
+ <span class="accordion-icon">▼</span>
+ </div>
+ <div class="accordion-content">
+ <p>This category splits into <strong>Short Term Incentive (STI)</strong> and <strong>Long Term Incentive (LTI)</strong>.</p>
 
-                <div class="sub-section">
-                    <h4>Short Term Incentive (STI)</h4>
-                    <ul>
-                        <li><strong>Payment options:</strong> Cash or RSU (chosen at grant)</li>
-                        <li><strong>Vesting (if RSU):</strong> All at once with 1-year cliff (100% vests at first event after 1 year)</li>
-                    </ul>
-                    <p><strong>Example:</strong> 100 RSU STI with 1-year cliff → 100 shares vest at cliff date.</p>
-                </div>
+ <div class="sub-section">
+ <h4>Short Term Incentive (STI)</h4>
+ <ul>
+ <li><strong>Payment options:</strong> Cash or RSU (chosen at grant)</li>
+ <li><strong>Vesting (if RSU):</strong> All at once with 1-year cliff (100% vests at first event after 1 year)</li>
+ </ul>
+ <p><strong>Example:</strong> 100 RSU STI with 1-year cliff → 100 shares vest at cliff date.</p>
+ </div>
 
-                <div class="sub-section">
-                    <h4>Long Term Incentive (LTI)</h4>
-                    <p>LTI has three implementation variants:</p>
+ <div class="sub-section">
+ <h4>Long Term Incentive (LTI)</h4>
+ <p>LTI has three implementation variants:</p>
 
-                    <h5>1. LTI as RSU (5-year)</h5>
-                    <ul>
-                        <li><strong>Total Duration:</strong> 5 years (60 months)</li>
-                        <li><strong>Vesting Periods:</strong> 10 biannual events (every 6 months)</li>
-                        <li><strong>Cliff:</strong> 1.5 years — theoretical cliff date snapped to closest May 15 or Nov 15</li>
-                        <li><strong>First vest:</strong> 10% (1/10 of total, or 1 biannual period worth)</li>
-                        <li><strong>Subsequent vests:</strong> 10% each, biannually (May 15 & Nov 15) for remaining 9 events</li>
-                    </ul>
-                    <p><strong>Example (1,000 shares):</strong> First vest @ ~18mo = 100 shares (10%); then 100 shares every 6 months on May 15 & Nov 15 for 9 more events.</p>
+ <h5>1. LTI as RSU (5-year)</h5>
+ <ul>
+ <li><strong>Total Duration:</strong> 5 years (60 months)</li>
+ <li><strong>Vesting Periods:</strong> 10 biannual events (every 6 months)</li>
+ <li><strong>Cliff:</strong> 1.5 years — theoretical cliff date snapped to closest May 15 or Nov 15</li>
+ <li><strong>First vest:</strong> 10% (1/10 of total, or 1 biannual period worth)</li>
+ <li><strong>Subsequent vests:</strong> 10% each, biannually (May 15 & Nov 15) for remaining 9 events</li>
+ </ul>
+ <p><strong>Example (1,000 shares):</strong> First vest @ ~18mo = 100 shares (10%); then 100 shares every 6 months on May 15 & Nov 15 for 9 more events.</p>
 
-                    <h5>2. LTI as ISO (5-year)</h5>
-                    <ul>
-                        <li><strong>Total Duration:</strong> 5 years from grant</li>
-                        <li><strong>Vesting Period:</strong> 4 years (48 months) starting 1 year after grant</li>
-                        <li><strong>Cliff/Intro:</strong> Vesting starts 1 year after grant, first vest happens 6 months later (1.5 years total) = 12.5% (6/48 months)</li>
-                        <li><strong>Vest Dates:</strong> Monthly on the 15th (snapped to closest 15th from theoretical date)</li>
-                        <li><strong>After cliff:</strong> Monthly vests for remaining 42 months (each = 1/48 = ~2.08%)</li>
-                    </ul>
-                    <p><strong>Example (1,000 shares, grant Jan 15, 2024):</strong></p>
-                    <ul>
-                        <li>Vesting starts: Jan 15, 2025 (1 year after grant)</li>
-                        <li>First vest (cliff): Jul 15, 2025 = 125 shares (6/48 = 12.5%)</li>
-                        <li>Aug 15, 2025: ~20.83 shares (1/48)</li>
-                        <li>Sep 15, 2025: ~20.83 shares (1/48)</li>
-                        <li>...continues monthly on 15th through Dec 15, 2028 (42 more months)</li>
-                    </ul>
-                    <p><em>App computes spread at vest: vest price - grant strike price.</em></p>
+ <h5>2. LTI as ISO (5-year)</h5>
+ <ul>
+ <li><strong>Total Duration:</strong> 5 years from grant</li>
+ <li><strong>Vesting Period:</strong> 4 years (48 months) starting 1 year after grant</li>
+ <li><strong>Cliff/Intro:</strong> Vesting starts 1 year after grant, first vest happens 6 months later (1.5 years total) = 12.5% (6/48 months)</li>
+ <li><strong>Vest Dates:</strong> Monthly on the 15th (snapped to closest 15th from theoretical date)</li>
+ <li><strong>After cliff:</strong> Monthly vests for remaining 42 months (each = 1/48 = ~2.08%)</li>
+ </ul>
+ <p><strong>Example (1,000 shares, grant Jan 15, 2024):</strong></p>
+ <ul>
+ <li>Vesting starts: Jan 15, 2025 (1 year after grant)</li>
+ <li>First vest (cliff): Jul 15, 2025 = 125 shares (6/48 = 12.5%)</li>
+ <li>Aug 15, 2025: ~20.83 shares (1/48)</li>
+ <li>Sep 15, 2025: ~20.83 shares (1/48)</li>
+ <li>...continues monthly on 15th through Dec 15, 2028 (42 more months)</li>
+ </ul>
+ <p><em>App computes spread at vest: vest price - grant strike price.</em></p>
 
-                    <h5>3. LTI as ISO (6-year)</h5>
-                    <ul>
-                        <li><strong>Total Duration:</strong> 6 years from grant</li>
-                        <li><strong>Vesting Period:</strong> 4 years (48 months) starting 2 years after grant</li>
-                        <li><strong>Cliff/Intro:</strong> Vesting starts 2 years after grant, first vest 6 months later (2.5 years total) = 12.5% (6/48 months)</li>
-                        <li><strong>Vest Dates:</strong> Monthly on the 15th (snapped to closest 15th)</li>
-                        <li><strong>After cliff:</strong> Monthly vests for remaining 42 months (each = 1/48 = ~2.08%)</li>
-                    </ul>
-                    <p><strong>Example (1,000 shares, grant Jan 15, 2024):</strong></p>
-                    <ul>
-                        <li>Vesting starts: Jan 15, 2026 (2 years after grant)</li>
-                        <li>First vest (cliff): Jul 15, 2026 = 125 shares (6/48 = 12.5%)</li>
-                        <li>Aug 15, 2026: ~20.83 shares (1/48)</li>
-                        <li>...continues monthly on 15th through Dec 15, 2029 (42 more months)</li>
-                    </ul>
-                    <p><em>App computes spread at vest: vest price - grant strike price.</em></p>
-                </div>
-            </div>
-        </div>
+ <h5>3. LTI as ISO (6-year)</h5>
+ <ul>
+ <li><strong>Total Duration:</strong> 6 years from grant</li>
+ <li><strong>Vesting Period:</strong> 4 years (48 months) starting 2 years after grant</li>
+ <li><strong>Cliff/Intro:</strong> Vesting starts 2 years after grant, first vest 6 months later (2.5 years total) = 12.5% (6/48 months)</li>
+ <li><strong>Vest Dates:</strong> Monthly on the 15th (snapped to closest 15th)</li>
+ <li><strong>After cliff:</strong> Monthly vests for remaining 42 months (each = 1/48 = ~2.08%)</li>
+ </ul>
+ <p><strong>Example (1,000 shares, grant Jan 15, 2024):</strong></p>
+ <ul>
+ <li>Vesting starts: Jan 15, 2026 (2 years after grant)</li>
+ <li>First vest (cliff): Jul 15, 2026 = 125 shares (6/48 = 12.5%)</li>
+ <li>Aug 15, 2026: ~20.83 shares (1/48)</li>
+ <li>...continues monthly on 15th through Dec 15, 2029 (42 more months)</li>
+ </ul>
+ <p><em>App computes spread at vest: vest price - grant strike price.</em></p>
+ </div>
+ </div>
+ </div>
 
-        <!-- ESPP -->
-        <div class="accordion-item">
-            <div class="accordion-header">
-                <h3>💰 ESPP (Employee Stock Purchase Plan)</h3>
-                <span class="accordion-icon">▼</span>
-            </div>
-            <div class="accordion-content">
-                <p><strong>Immediate Vest:</strong> ESPP shares vest immediately on the grant/purchase date (no cliff or vesting period).</p>
-                
-                <h4>Core Parameters</h4>
-                <ul>
-                    <li><strong>Purchase Dates:</strong> Typically May 15 and October 15</li>
-                    <li><strong>Discount:</strong> 15% discount from market price (configurable)</li>
-                    <li><strong>Vesting:</strong> Immediate — shares are yours on purchase date</li>
-                </ul>
+ <!-- ESPP -->
+ <div class="accordion-item">
+ <div class="accordion-header">
+ <h3> ESPP (Employee Stock Purchase Plan)</h3>
+ <span class="accordion-icon">▼</span>
+ </div>
+ <div class="accordion-content">
+ <p><strong>Immediate Vest:</strong> ESPP shares vest immediately on the grant/purchase date (no cliff or vesting period).</p>
+ 
+ <h4>Core Parameters</h4>
+ <ul>
+ <li><strong>Purchase Dates:</strong> Typically May 15 and October 15</li>
+ <li><strong>Discount:</strong> 15% discount from market price (configurable)</li>
+ <li><strong>Vesting:</strong> Immediate — shares are yours on purchase date</li>
+ </ul>
 
-                <h4>How it works</h4>
-                <p>You purchase shares at a discounted price (e.g., 85% of FMV if 15% discount). The shares are immediately vested and you can sell them right away (subject to blackout periods and tax implications).</p>
+ <h4>How it works</h4>
+ <p>You purchase shares at a discounted price (e.g., 85% of FMV if 15% discount). The shares are immediately vested and you can sell them right away (subject to blackout periods and tax implications).</p>
 
-                <h4>Tax Treatment</h4>
-                <ul>
-                    <li><strong>Discount portion:</strong> Taxed as ordinary income (the 15% discount)</li>
-                    <li><strong>Additional gains:</strong> If you sell later at a higher price, the gain beyond the discount is capital gains (short or long-term depending on holding period)</li>
-                </ul>
+ <h4>Tax Treatment</h4>
+ <ul>
+ <li><strong>Discount portion:</strong> Taxed as ordinary income (the 15% discount)</li>
+ <li><strong>Additional gains:</strong> If you sell later at a higher price, the gain beyond the discount is capital gains (short or long-term depending on holding period)</li>
+ </ul>
 
-                <h4>Math Example</h4>
-                <ul>
-                    <li><strong>Market price:</strong> $100/share</li>
-                    <li><strong>Purchase price (15% discount):</strong> $85/share</li>
-                    <li><strong>Immediate taxable income:</strong> $15/share (the discount)</li>
-                    <li><strong>Cost basis for future gains:</strong> $100/share (FMV at purchase)</li>
-                </ul>
-            </div>
-        </div>
+ <h4>Math Example</h4>
+ <ul>
+ <li><strong>Market price:</strong> $100/share</li>
+ <li><strong>Purchase price (15% discount):</strong> $85/share</li>
+ <li><strong>Immediate taxable income:</strong> $15/share (the discount)</li>
+ <li><strong>Cost basis for future gains:</strong> $100/share (FMV at purchase)</li>
+ </ul>
+ </div>
+ </div>
 
-        <!-- Kickass Awards -->
-        <div class="accordion-item">
-            <div class="accordion-header">
-                <h3>⚡ Kickass Awards (user-entered duration)</h3>
-                <span class="accordion-icon">▼</span>
-            </div>
-            <div class="accordion-content">
-                <p>Kickass awards support arbitrary user-entered durations. The app applies a <strong>1-year cliff</strong> by default.</p>
+ <!-- Kickass Awards -->
+ <div class="accordion-item">
+ <div class="accordion-header">
+ <h3>⚡ Kickass Awards (user-entered duration)</h3>
+ <span class="accordion-icon">▼</span>
+ </div>
+ <div class="accordion-content">
+ <p>Kickass awards support arbitrary user-entered durations. The app applies a <strong>1-year cliff</strong> by default.</p>
 
-                <h4>Default Cliff</h4>
-                <p>1 year — the first vest equals the entire first-year portion of the grant.</p>
+ <h4>Default Cliff</h4>
+ <p>1 year — the first vest equals the entire first-year portion of the grant.</p>
 
-                <h4>Math Examples</h4>
-                <ul>
-                    <li><strong>2-year vest:</strong> First (@ 1yr) = 50%; then two biannual events @ 25% each</li>
-                    <li><strong>3-year vest:</strong> First (@ 1yr) = 33.33%; remaining split across biannual events</li>
-                    <li><strong>4-year vest:</strong> First (@ 1yr) = 25%; remainder split across events</li>
-                </ul>
+ <h4>Math Examples</h4>
+ <ul>
+ <li><strong>2-year vest:</strong> First (@ 1yr) = 50%; then two biannual events @ 25% each</li>
+ <li><strong>3-year vest:</strong> First (@ 1yr) = 33.33%; remaining split across biannual events</li>
+ <li><strong>4-year vest:</strong> First (@ 1yr) = 25%; remainder split across events</li>
+ </ul>
 
-                <p>When creating a Kickass award, specify the total vest duration; the app computes vest event dates and per-event percentages as shown.</p>
-            </div>
-        </div>
+ <p>When creating a Kickass award, specify the total vest duration; the app computes vest event dates and per-event percentages as shown.</p>
+ </div>
+ </div>
 
-        <!-- Mapping to code -->
-        <div class="accordion-item">
-            <div class="accordion-header">
-                <h3>🔗 How these rules map to the app</h3>
-                <span class="accordion-icon">▼</span>
-            </div>
-            <div class="accordion-content">
-                <ul>
-                    <li>Preset durations (New Hire RSU = 5 years) are encoded in <code>get_grant_configuration</code> and the vest schedule generator.</li>
-                    <li>Cliffs are applied first; initial vest = full allocation for cliff period (e.g., 1y → 1st year %; 1.5y → 1st 1.5yr %).</li>
-                    <li>After cliff, remaining shares divided by cadence (biannual or monthly) to sum to 100%.</li>
-                    <li>Exact event dates align to preset company vesting dates where applicable — which is why first vest may move by a few months relative to grant date.</li>
-                </ul>
-            </div>
-        </div>
+ <!-- Mapping to code -->
+ <div class="accordion-item">
+ <div class="accordion-header">
+ <h3>🔗 How these rules map to the app</h3>
+ <span class="accordion-icon">▼</span>
+ </div>
+ <div class="accordion-content">
+ <ul>
+ <li>Preset durations (New Hire RSU = 5 years) are encoded in <code>get_grant_configuration</code> and the vest schedule generator.</li>
+ <li>Cliffs are applied first; initial vest = full allocation for cliff period (e.g., 1y → 1st year %; 1.5y → 1st 1.5yr %).</li>
+ <li>After cliff, remaining shares divided by cadence (biannual or monthly) to sum to 100%.</li>
+ <li>Exact event dates align to preset company vesting dates where applicable — which is why first vest may move by a few months relative to grant date.</li>
+ </ul>
+ </div>
+ </div>
 
-    </div>
+ </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const headers = document.querySelectorAll('.accordion-header');
-    
-    headers.forEach(header => {
-        header.addEventListener('click', function() {
-            const item = this.parentElement;
-            const content = this.nextElementSibling;
-            const icon = this.querySelector('.accordion-icon');
-            const isActive = item.classList.contains('active');
-            
-            // Close all items
-            document.querySelectorAll('.accordion-item').forEach(otherItem => {
-                otherItem.classList.remove('active');
-                const otherContent = otherItem.querySelector('.accordion-content');
-                const otherIcon = otherItem.querySelector('.accordion-icon');
-                if (otherContent) otherContent.style.maxHeight = null;
-                if (otherIcon) otherIcon.style.transform = 'rotate(0deg)';
-            });
-            
-            // If wasn't active, open it
-            if (!isActive) {
-                item.classList.add('active');
-                content.style.maxHeight = content.scrollHeight + 'px';
-                icon.style.transform = 'rotate(180deg)';
-            }
-        });
-    });
+ const headers = document.querySelectorAll('.accordion-header');
+ 
+ headers.forEach(header => {
+ header.addEventListener('click', function() {
+ const item = this.parentElement;
+ const content = this.nextElementSibling;
+ const icon = this.querySelector('.accordion-icon');
+ const isActive = item.classList.contains('active');
+ 
+ // Close all items
+ document.querySelectorAll('.accordion-item').forEach(otherItem => {
+ otherItem.classList.remove('active');
+ const otherContent = otherItem.querySelector('.accordion-content');
+ const otherIcon = otherItem.querySelector('.accordion-icon');
+ if (otherContent) otherContent.style.maxHeight = null;
+ if (otherIcon) otherIcon.style.transform = 'rotate(0deg)';
+ });
+ 
+ // If wasn't active, open it
+ if (!isActive) {
+ item.classList.add('active');
+ content.style.maxHeight = content.scrollHeight + 'px';
+ icon.style.transform = 'rotate(180deg)';
+ }
+ });
+ });
 });
 </script>
 
 <style>
 .rules-page {
-    padding: 2rem;
-    max-width: 1100px;
-    margin: 0 auto;
+ padding: 2rem;
+ max-width: 1100px;
+ margin: 0 auto;
 }
 
 .page-header {
-    margin-bottom: 2rem;
+ margin-bottom: 2rem;
 }
 
 .page-header h1 {
-    font-size: 2.5rem;
-    margin-bottom: 0.5rem;
-    color: var(--text-primary);
+ font-size: 2.5rem;
+ margin-bottom: 0.5rem;
+ color: var(--text-primary);
 }
 
 .subtitle {
-    color: var(--text-secondary);
-    font-size: 1.2rem;
+ color: var(--text-secondary);
+ font-size: 1.2rem;
 }
 
 .lead {
-    color: var(--text-secondary);
-    margin-bottom: 2rem;
-    font-size: 1.05rem;
+ color: var(--text-secondary);
+ margin-bottom: 2rem;
+ font-size: 1.05rem;
 }
 
 .accordion {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+ display: flex;
+ flex-direction: column;
+ gap: 1rem;
 }
 
 .accordion-item {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: all 0.3s ease;
+ background: var(--surface);
+ border: 2px solid var(--border);
+ border-radius: 12px;
+ overflow: hidden;
+ transition: all 0.3s ease;
 }
 
 .accordion-item.active {
-    border-color: var(--accent);
-    box-shadow: 0 4px 20px rgba(79, 70, 229, 0.1);
+ border-color: var(--accent);
+ box-shadow: 0 4px 20px rgba(79, 70, 229, 0.1);
 }
 
 .accordion-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.25rem 1.5rem;
-    cursor: pointer;
-    user-select: none;
-    background: var(--surface);
-    transition: background 0.2s ease;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ padding: 1.25rem 1.5rem;
+ cursor: pointer;
+ user-select: none;
+ background: var(--surface);
+ transition: background 0.2s ease;
 }
 
 .accordion-header:hover {
-    background: var(--bg-secondary);
+ background: var(--bg-secondary);
 }
 
 .accordion-header h3 {
-    margin: 0;
-    font-size: 1.25rem;
-    color: var(--text-primary);
-    font-weight: 600;
+ margin: 0;
+ font-size: 1.25rem;
+ color: var(--text-primary);
+ font-weight: 600;
 }
 
 .accordion-icon {
-    font-size: 1.2rem;
-    transition: transform 0.3s ease;
-    color: var(--accent);
-    font-weight: bold;
+ font-size: 1.2rem;
+ transition: transform 0.3s ease;
+ color: var(--accent);
+ font-weight: bold;
 }
 
 .accordion-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-    padding: 0 1.5rem;
+ max-height: 0;
+ overflow: hidden;
+ transition: max-height 0.3s ease;
+ padding: 0 1.5rem;
 }
 
 .accordion-item.active .accordion-content {
-    padding: 0 1.5rem 1.5rem 1.5rem;
+ padding: 0 1.5rem 1.5rem 1.5rem;
 }
 
 .accordion-content h4 {
-    color: var(--accent);
-    margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
-    font-size: 1.15rem;
+ color: var(--accent);
+ margin-top: 1.5rem;
+ margin-bottom: 0.75rem;
+ font-size: 1.15rem;
 }
 
 .accordion-content h5 {
-    color: var(--text-primary);
-    margin-top: 1.25rem;
-    margin-bottom: 0.5rem;
-    font-size: 1.05rem;
-    font-weight: 600;
+ color: var(--text-primary);
+ margin-top: 1.25rem;
+ margin-bottom: 0.5rem;
+ font-size: 1.05rem;
+ font-weight: 600;
 }
 
 .accordion-content ul {
-    margin-left: 1.5rem;
-    margin-bottom: 1rem;
+ margin-left: 1.5rem;
+ margin-bottom: 1rem;
 }
 
 .accordion-content li {
-    margin-bottom: 0.5rem;
-    line-height: 1.6;
+ margin-bottom: 0.5rem;
+ line-height: 1.6;
 }
 
 .accordion-content code {
-    background: var(--bg-secondary);
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    color: var(--accent);
-    font-size: 0.9em;
+ background: var(--bg-secondary);
+ padding: 0.2rem 0.5rem;
+ border-radius: 4px;
+ font-family: 'Courier New', monospace;
+ color: var(--accent);
+ font-size: 0.9em;
 }
 
 .sub-section {
-    background: var(--bg-secondary);
-    border-left: 3px solid var(--accent);
-    padding: 1rem;
-    margin: 1rem 0;
-    border-radius: 6px;
+ background: var(--bg-secondary);
+ border-left: 3px solid var(--accent);
+ padding: 1rem;
+ margin: 1rem 0;
+ border-radius: 6px;
 }
 
 .sub-section h4 {
-    margin-top: 0;
+ margin-top: 0;
 }
 </style>
 

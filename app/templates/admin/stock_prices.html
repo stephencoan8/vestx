@@ -4,159 +4,159 @@
 
 {% block content %}
 <div class="page">
-    <header class="page-header">
-        <h1>Stock Price Management</h1>
-        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">← Back</a>
-    </header>
+ <header class="page-header">
+ <h1>Stock Price Management</h1>
+ <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">← Back</a>
+ </header>
 
-    {% if prices %}
-    <div class="stats-grid" style="margin-bottom: 2rem;">
-        <div class="stat-card">
-            <div class="stat-label">Current Stock Price</div>
-            <div class="stat-value" style="font-size: 2.5rem; color: var(--accent-color);">${{ "{:,.2f}".format(prices[0].price_per_share) }}</div>
-            <div class="stat-meta">As of {{ prices[0].valuation_date.strftime('%B %d, %Y') }}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Price History</div>
-            <div class="stat-value">{{ prices|length }}</div>
-            <div class="stat-meta">Total valuations recorded</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Latest Update</div>
-            <div class="stat-value" style="font-size: 1.5rem;">{{ prices[0].created_at.strftime('%b %d') }}</div>
-            <div class="stat-meta">{{ prices[0].created_at.strftime('%I:%M %p') }}</div>
-        </div>
-    </div>
-    {% endif %}
+ {% if prices %}
+ <div class="stats-grid" style="margin-bottom: 2rem;">
+ <div class="stat-card">
+ <div class="stat-label">Current Stock Price</div>
+ <div class="stat-value" style="font-size: 2.5rem; color: var(--accent-color);">${{ "{:,.2f}".format(prices[0].price_per_share) }}</div>
+ <div class="stat-meta">As of {{ prices[0].valuation_date.strftime('%B %d, %Y') }}</div>
+ </div>
+ <div class="stat-card">
+ <div class="stat-label">Price History</div>
+ <div class="stat-value">{{ prices|length }}</div>
+ <div class="stat-meta">Total valuations recorded</div>
+ </div>
+ <div class="stat-card">
+ <div class="stat-label">Latest Update</div>
+ <div class="stat-value" style="font-size: 1.5rem;">{{ prices[0].created_at.strftime('%b %d') }}</div>
+ <div class="stat-meta">{{ prices[0].created_at.strftime('%I:%M %p') }}</div>
+ </div>
+ </div>
+ {% endif %}
 
-    <div class="form-card">
-        <h2>Add New Stock Price</h2>
-        <form method="POST" action="{{ url_for('admin.add_stock_price') }}" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="valuation_date">Valuation Date</label>
-                    <input type="date" id="valuation_date" name="valuation_date" required>
-                </div>
-                <div class="form-group">
-                    <label for="price">Price per Share</label>
-                    <input type="number" id="price" name="price" step="0.01" required>
-                </div>
-                <div class="form-group">
-                    <label for="notes">Notes</label>
-                    <input type="text" id="notes" name="notes">
-                </div>
-                <div class="form-group">
-                    <label>&nbsp;</label>
-                    <button type="submit" class="btn btn-primary">Add Price</button>
-                </div>
-            </div>
-        </form>
-    </div>
+ <div class="form-card">
+ <h2>Add New Stock Price</h2>
+ <form method="POST" action="{{ url_for('admin.add_stock_price') }}" class="inline-form">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <div class="form-row">
+ <div class="form-group">
+ <label for="valuation_date">Valuation Date</label>
+ <input type="date" id="valuation_date" name="valuation_date" required>
+ </div>
+ <div class="form-group">
+ <label for="price">Price per Share</label>
+ <input type="number" id="price" name="price" step="0.01" required>
+ </div>
+ <div class="form-group">
+ <label for="notes">Notes</label>
+ <input type="text" id="notes" name="notes">
+ </div>
+ <div class="form-group">
+ <label>&nbsp;</label>
+ <button type="submit" class="btn btn-primary">Add Price</button>
+ </div>
+ </div>
+ </form>
+ </div>
 
-    <div class="chart-container">
-        <h2>Price History</h2>
-        <canvas id="priceChart"></canvas>
-    </div>
+ <div class="chart-container">
+ <h2>Price History</h2>
+ <canvas id="priceChart"></canvas>
+ </div>
 
-    <div class="table-container">
-        <h2>Price History Table</h2>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Price</th>
-                    <th>Notes</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for price in prices %}
-                <tr>
-                    <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
-                    <td class="highlight">${{ "{:,.2f}".format(price.price_per_share) }}</td>
-                    <td>{{ price.notes or '-' }}</td>
-                    <td>{{ price.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                    <td>
-                        <form method="POST" action="{{ url_for('admin.delete_stock_price', price_id=price.id) }}" style="display:inline;" onsubmit="return confirm('Delete this price?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+ <div class="table-container">
+ <h2>Price History Table</h2>
+ <table class="data-table">
+ <thead>
+ <tr>
+ <th>Date</th>
+ <th>Price</th>
+ <th>Notes</th>
+ <th>Created</th>
+ <th>Actions</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for price in prices %}
+ <tr>
+ <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
+ <td class="highlight">${{ "{:,.2f}".format(price.price_per_share) }}</td>
+ <td>{{ price.notes or '-' }}</td>
+ <td>{{ price.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+ <td>
+ <form method="POST" action="{{ url_for('admin.delete_stock_price', price_id=price.id) }}" style="display:inline;" onsubmit="return confirm('Delete this price?');">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+ </form>
+ </td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 fetch('{{ url_for("admin.stock_price_chart_data") }}')
-    .then(response => response.json())
-    .then(data => {
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.dates,
-                datasets: [{
-                    label: 'Stock Price',
-                    data: data.prices,
-                    borderColor: '#00d4ff',
-                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    fill: true,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                    pointBackgroundColor: '#00d4ff',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                aspectRatio: 2.5,
-                plugins: {
-                    legend: { display: false },
-                    title: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        padding: 12,
-                        titleColor: '#00d4ff',
-                        bodyColor: '#fff',
-                        callbacks: {
-                            label: function(context) {
-                                return 'Price: $' + context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        ticks: { 
-                            color: '#999',
-                            callback: function(value) {
-                                return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
-                            }
-                        },
-                        grid: { color: '#333' }
-                    },
-                    x: {
-                        ticks: { 
-                            color: '#999',
-                            maxRotation: 45,
-                            minRotation: 45
-                        },
-                        grid: { color: '#333' }
-                    }
-                }
-            }
-        });
-    });
+ .then(response => response.json())
+ .then(data => {
+ const ctx = document.getElementById('priceChart').getContext('2d');
+ new Chart(ctx, {
+ type: 'line',
+ data: {
+ labels: data.dates,
+ datasets: [{
+ label: 'Stock Price',
+ data: data.prices,
+ borderColor: '#b87333',
+ backgroundColor: 'rgba(0, 212, 255, 0.1)',
+ borderWidth: 2,
+ tension: 0.3,
+ fill: true,
+ pointRadius: 4,
+ pointHoverRadius: 6,
+ pointBackgroundColor: '#b87333',
+ pointBorderColor: '#fff',
+ pointBorderWidth: 2
+ }]
+ },
+ options: {
+ responsive: true,
+ maintainAspectRatio: true,
+ aspectRatio: 2.5,
+ plugins: {
+ legend: { display: false },
+ title: { display: false },
+ tooltip: {
+ backgroundColor: 'rgba(0, 0, 0, 0.8)',
+ padding: 12,
+ titleColor: '#b87333',
+ bodyColor: '#fff',
+ callbacks: {
+ label: function(context) {
+ return 'Price: $' + context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+ }
+ }
+ }
+ },
+ scales: {
+ y: {
+ beginAtZero: false,
+ ticks: { 
+ color: '#999',
+ callback: function(value) {
+ return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+ }
+ },
+ grid: { color: '#333' }
+ },
+ x: {
+ ticks: { 
+ color: '#999',
+ maxRotation: 45,
+ minRotation: 45
+ },
+ grid: { color: '#333' }
+ }
+ }
+ }
+ });
+ });
 </script>
 {% endblock %}

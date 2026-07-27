@@ -4,37 +4,37 @@
 
 {% block content %}
 <div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8 text-center">
-            <div class="error-page">
-                <h1 class="display-1 text-danger">403</h1>
-                <h2 class="mb-4">Access Forbidden</h2>
-                <p class="lead text-muted">
-                    You don't have permission to access this resource.
-                </p>
-                <div class="mt-4">
-                    <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">
-                        <i class="fas fa-home"></i> Return to Dashboard
-                    </a>
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary">
-                        <i class="fas fa-sign-out-alt"></i> Logout
-                    </a>
-                </div>
-                <div class="mt-4 text-muted">
-                    <small>If you believe this is an error, please contact your administrator.</small>
-                </div>
-            </div>
-        </div>
-    </div>
+ <div class="row justify-content-center">
+ <div class="col-md-8 text-center">
+ <div class="error-page">
+ <h1 class="display-1 text-danger">403</h1>
+ <h2 class="mb-4">Access Forbidden</h2>
+ <p class="lead text-muted">
+ You don't have permission to access this resource.
+ </p>
+ <div class="mt-4">
+ <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">
+ <i class="fas fa-home"></i> Return to Dashboard
+ </a>
+ <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary">
+ <i class="fas fa-sign-out-alt"></i> Logout
+ </a>
+ </div>
+ <div class="mt-4 text-muted">
+ <small>If you believe this is an error, please contact your administrator.</small>
+ </div>
+ </div>
+ </div>
+ </div>
 </div>
 
 <style>
 .error-page {
-    padding: 60px 0;
+ padding: 60px 0;
 }
 .error-page .display-1 {
-    font-size: 8rem;
-    font-weight: 700;
+ font-size: 8rem;
+ font-weight: 700;
 }
 </style>
 {% endblock %}

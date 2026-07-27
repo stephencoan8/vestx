@@ -4,269 +4,269 @@
 
 {% block content %}
 <div class="content-header">
-    <h1>✏️ Edit Grant</h1>
-    <p class="subtitle">Update grant details and recalculate vest schedule</p>
+ <h1> Edit Grant</h1>
+ <p class="subtitle">Update grant details and recalculate vest schedule</p>
 </div>
 
 <div class="card">
-    <form method="POST" class="grant-form" onsubmit="console.log('Form submitting...'); return true;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-grid">
-            <!-- Grant Date -->
-            <div class="form-group">
-                <label for="grant_date">Grant Date</label>
-                <input type="date" id="grant_date" name="grant_date" 
-                       value="{{ grant.grant_date.strftime('%Y-%m-%d') }}" required>
-            </div>
+ <form method="POST" class="grant-form" onsubmit="console.log('Form submitting...'); return true;">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <div class="form-grid">
+ <!-- Grant Date -->
+ <div class="form-group">
+ <label for="grant_date">Grant Date</label>
+ <input type="date" id="grant_date" name="grant_date" 
+ value="{{ grant.grant_date.strftime('%Y-%m-%d') }}" required>
+ </div>
 
-            <!-- Grant Type -->
-            <div class="form-group">
-                <label for="grant_type">Grant Type</label>
-                <select id="grant_type" name="grant_type" required>
-                    <option value="">Select type...</option>
-                    <option value="new_hire" {% if grant.grant_type == 'new_hire' %}selected{% endif %}>New Hire</option>
-                    <option value="annual_performance" {% if grant.grant_type == 'annual_performance' %}selected{% endif %}>Annual Performance (Bonus)</option>
-                    <option value="promotion" {% if grant.grant_type == 'promotion' %}selected{% endif %}>Promotion</option>
-                    <option value="kickass" {% if grant.grant_type == 'kickass' %}selected{% endif %}>Kickass Bonus</option>
-                    <option value="espp" {% if grant.grant_type == 'espp' %}selected{% endif %}>ESPP</option>
-                    <option value="nqespp" {% if grant.grant_type == 'nqespp' %}selected{% endif %}>nqESPP</option>
-                </select>
-            </div>
+ <!-- Grant Type -->
+ <div class="form-group">
+ <label for="grant_type">Grant Type</label>
+ <select id="grant_type" name="grant_type" required>
+ <option value="">Select type...</option>
+ <option value="new_hire" {% if grant.grant_type == 'new_hire' %}selected{% endif %}>New Hire</option>
+ <option value="annual_performance" {% if grant.grant_type == 'annual_performance' %}selected{% endif %}>Annual Performance (Bonus)</option>
+ <option value="promotion" {% if grant.grant_type == 'promotion' %}selected{% endif %}>Promotion</option>
+ <option value="kickass" {% if grant.grant_type == 'kickass' %}selected{% endif %}>Kickass Bonus</option>
+ <option value="espp" {% if grant.grant_type == 'espp' %}selected{% endif %}>ESPP</option>
+ <option value="nqespp" {% if grant.grant_type == 'nqespp' %}selected{% endif %}>nqESPP</option>
+ </select>
+ </div>
 
-            <!-- Share Type -->
-            <div class="form-group" id="share_type_group">
-                <label for="share_type">Share Type</label>
-                <select id="share_type" name="share_type" required>
-                    <option value="">Select type...</option>
-                    <option value="rsu" {% if grant.share_type == 'rsu' %}selected{% endif %}>RSU</option>
-                    <option value="iso_5y" {% if grant.share_type == 'iso_5y' %}selected{% endif %}>ISO (5 Year)</option>
-                    <option value="iso_6y" {% if grant.share_type == 'iso_6y' %}selected{% endif %}>ISO (6 Year)</option>
-                    <option value="cash" {% if grant.share_type == 'cash' %}selected{% endif %}>Cash</option>
-                </select>
-            </div>
+ <!-- Share Type -->
+ <div class="form-group" id="share_type_group">
+ <label for="share_type">Share Type</label>
+ <select id="share_type" name="share_type" required>
+ <option value="">Select type...</option>
+ <option value="rsu" {% if grant.share_type == 'rsu' %}selected{% endif %}>RSU</option>
+ <option value="iso_5y" {% if grant.share_type == 'iso_5y' %}selected{% endif %}>ISO (5 Year)</option>
+ <option value="iso_6y" {% if grant.share_type == 'iso_6y' %}selected{% endif %}>ISO (6 Year)</option>
+ <option value="cash" {% if grant.share_type == 'cash' %}selected{% endif %}>Cash</option>
+ </select>
+ </div>
 
-            <!-- Share Quantity -->
-            <div class="form-group">
-                <label for="share_quantity">Share Quantity</label>
-                <input type="number" id="share_quantity" name="share_quantity" 
-                       value="{{ grant.share_quantity }}" 
-                       step="0.01" min="0" required>
-                <small class="form-help">Enter the exact number of shares (no auto-multiplication)</small>
-            </div>
+ <!-- Share Quantity -->
+ <div class="form-group">
+ <label for="share_quantity">Share Quantity</label>
+ <input type="number" id="share_quantity" name="share_quantity" 
+ value="{{ grant.share_quantity }}" 
+ step="0.01" min="0" required>
+ <small class="form-help">Enter the exact number of shares (no auto-multiplication)</small>
+ </div>
 
-            <!-- Bonus Type (conditional) -->
-            <div class="form-group" id="bonus_type_group" style="display: none;">
-                <label for="bonus_type">Bonus Type</label>
-                <select id="bonus_type" name="bonus_type">
-                    <option value="">Not applicable</option>
-                    <option value="short_term" {% if grant.bonus_type == 'short_term' %}selected{% endif %}>Short Term</option>
-                    <option value="long_term" {% if grant.bonus_type == 'long_term' %}selected{% endif %}>Long Term</option>
-                </select>
-            </div>
-            
-            <!-- ESPP Discount (conditional) -->
-            <div class="form-group" id="espp_discount_group" style="display: none;">
-                <label for="espp_discount">ESPP Discount %</label>
-                <input type="number" id="espp_discount" name="espp_discount" 
-                       value="{{ grant.espp_discount or 0.15 }}" 
-                       step="0.01" min="0" max="0.25">
-                <small class="form-help">Standard is 15% (0.15). IRS max is 15%.</small>
-            </div>
+ <!-- Bonus Type (conditional) -->
+ <div class="form-group" id="bonus_type_group" style="display: none;">
+ <label for="bonus_type">Bonus Type</label>
+ <select id="bonus_type" name="bonus_type">
+ <option value="">Not applicable</option>
+ <option value="short_term" {% if grant.bonus_type == 'short_term' %}selected{% endif %}>Short Term</option>
+ <option value="long_term" {% if grant.bonus_type == 'long_term' %}selected{% endif %}>Long Term</option>
+ </select>
+ </div>
+ 
+ <!-- ESPP Discount (conditional) -->
+ <div class="form-group" id="espp_discount_group" style="display: none;">
+ <label for="espp_discount">ESPP Discount %</label>
+ <input type="number" id="espp_discount" name="espp_discount" 
+ value="{{ grant.espp_discount or 0.15 }}" 
+ step="0.01" min="0" max="0.25">
+ <small class="form-help">Standard is 15% (0.15). IRS max is 15%.</small>
+ </div>
 
-            <!-- Vest Years (for Kickass) -->
-            <div class="form-group" id="vest_years_group" style="display: none;">
-                <label for="vest_years">Vest Years</label>
-                <input type="number" id="vest_years" name="vest_years" 
-                       value="{{ grant.vest_years }}" 
-                       min="1" max="5" step="1">
-                <small class="form-help">For Kickass bonus only (1-5 years)</small>
-            </div>
+ <!-- Vest Years (for Kickass) -->
+ <div class="form-group" id="vest_years_group" style="display: none;">
+ <label for="vest_years">Vest Years</label>
+ <input type="number" id="vest_years" name="vest_years" 
+ value="{{ grant.vest_years }}" 
+ min="1" max="5" step="1">
+ <small class="form-help">For Kickass bonus only (1-5 years)</small>
+ </div>
 
-            <!-- Notes -->
-            <div class="form-group full-width">
-                <label for="notes">Notes (Optional)</label>
-                <textarea id="notes" name="notes" rows="3">{{ grant.notes or '' }}</textarea>
-            </div>
-        </div>
+ <!-- Notes -->
+ <div class="form-group full-width">
+ <label for="notes">Notes (Optional)</label>
+ <textarea id="notes" name="notes" rows="3">{{ grant.notes or '' }}</textarea>
+ </div>
+ </div>
 
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary" onclick="console.log('Button clicked!'); console.log('Form action:', this.form.action); console.log('Form method:', this.form.method);">💾 Update Grant</button>
-            <a href="{{ url_for('grants.view_grant', grant_id=grant.id) }}" class="btn btn-secondary">Cancel</a>
-        </div>
-    </form>
+ <div class="form-actions">
+ <button type="submit" class="btn btn-primary" onclick="console.log('Button clicked!'); console.log('Form action:', this.form.action); console.log('Form method:', this.form.method);">💾 Update Grant</button>
+ <a href="{{ url_for('grants.view_grant', grant_id=grant.id) }}" class="btn btn-secondary">Cancel</a>
+ </div>
+ </form>
 </div>
 
 <div class="info-box" style="margin-top: 2rem;">
-    <h3>ℹ️ Grant Structure Reference</h3>
-    <ul>
-        <li><strong>New Hire:</strong> 5 year RSU, 1 year cliff, semi-annual vesting</li>
-        <li><strong>Promotion:</strong> Same as New Hire</li>
-        <li><strong>Annual Performance:</strong>
-            <ul>
-                <li>Short Term: 1 year cliff, RSU or Cash</li>
-                <li>Long Term RSU: 0.5 year cliff (after short term), semi-annual</li>
-                <li>Long Term ISO 5Y: 2x shares, 0.5 year cliff, monthly vesting</li>
-                <li>Long Term ISO 6Y: 3x shares, 2.5 year cliff total, monthly vesting</li>
-            </ul>
-        </li>
-        <li><strong>Kickass:</strong> 1-5 years, 1 year cliff, semi-annual</li>
-        <li><strong>ESPP:</strong> Immediate, 15% discount</li>
-        <li><strong>nqESPP:</strong> Immediate, no discount</li>
-    </ul>
+ <h3>ℹ Grant Structure Reference</h3>
+ <ul>
+ <li><strong>New Hire:</strong> 5 year RSU, 1 year cliff, semi-annual vesting</li>
+ <li><strong>Promotion:</strong> Same as New Hire</li>
+ <li><strong>Annual Performance:</strong>
+ <ul>
+ <li>Short Term: 1 year cliff, RSU or Cash</li>
+ <li>Long Term RSU: 0.5 year cliff (after short term), semi-annual</li>
+ <li>Long Term ISO 5Y: 2x shares, 0.5 year cliff, monthly vesting</li>
+ <li>Long Term ISO 6Y: 3x shares, 2.5 year cliff total, monthly vesting</li>
+ </ul>
+ </li>
+ <li><strong>Kickass:</strong> 1-5 years, 1 year cliff, semi-annual</li>
+ <li><strong>ESPP:</strong> Immediate, 15% discount</li>
+ <li><strong>nqESPP:</strong> Immediate, no discount</li>
+ </ul>
 </div>
 
 <script>
-    // Show/hide conditional fields based on grant type
-    const grantTypeSelect = document.getElementById('grant_type');
-    const bonusTypeGroup = document.getElementById('bonus_type_group');
-    const bonusTypeSelect = document.getElementById('bonus_type');
-    const vestYearsGroup = document.getElementById('vest_years_group');
-    const vestYearsInput = document.getElementById('vest_years');
-    const shareTypeGroup = document.getElementById('share_type_group');
-    const shareTypeSelect = document.getElementById('share_type');
-    const esppDiscountGroup = document.getElementById('espp_discount_group');
-    const esppDiscountInput = document.getElementById('espp_discount');
+ // Show/hide conditional fields based on grant type
+ const grantTypeSelect = document.getElementById('grant_type');
+ const bonusTypeGroup = document.getElementById('bonus_type_group');
+ const bonusTypeSelect = document.getElementById('bonus_type');
+ const vestYearsGroup = document.getElementById('vest_years_group');
+ const vestYearsInput = document.getElementById('vest_years');
+ const shareTypeGroup = document.getElementById('share_type_group');
+ const shareTypeSelect = document.getElementById('share_type');
+ const esppDiscountGroup = document.getElementById('espp_discount_group');
+ const esppDiscountInput = document.getElementById('espp_discount');
 
-    function updateFormFields() {
-        const grantType = grantTypeSelect.value;
-        
-        // Show bonus type for annual performance
-        if (grantType === 'annual_performance') {
-            bonusTypeGroup.style.display = 'block';
-            bonusTypeSelect.removeAttribute('disabled');
-        } else {
-            bonusTypeGroup.style.display = 'none';
-            bonusTypeSelect.setAttribute('disabled', 'disabled');
-        }
-        
-        // Show vest years for kickass
-        if (grantType === 'kickass') {
-            vestYearsGroup.style.display = 'block';
-            vestYearsInput.setAttribute('required', 'required');
-            vestYearsInput.removeAttribute('disabled');
-        } else {
-            vestYearsGroup.style.display = 'none';
-            vestYearsInput.removeAttribute('required');
-            vestYearsInput.setAttribute('disabled', 'disabled');
-        }
-        
-        // Hide share type for ESPP
-        if (grantType === 'espp' || grantType === 'nqespp') {
-            shareTypeGroup.style.display = 'none';
-            shareTypeSelect.setAttribute('disabled', 'disabled');
-        } else {
-            shareTypeGroup.style.display = 'block';
-            shareTypeSelect.removeAttribute('disabled');
-        }
-        
-        // Show ESPP discount for ESPP grants
-        if (grantType === 'espp') {
-            esppDiscountGroup.style.display = 'block';
-            esppDiscountInput.removeAttribute('disabled');
-        } else {
-            esppDiscountGroup.style.display = 'none';
-            esppDiscountInput.setAttribute('disabled', 'disabled');
-        }
+ function updateFormFields() {
+ const grantType = grantTypeSelect.value;
+ 
+ // Show bonus type for annual performance
+ if (grantType === 'annual_performance') {
+ bonusTypeGroup.style.display = 'block';
+ bonusTypeSelect.removeAttribute('disabled');
+ } else {
+ bonusTypeGroup.style.display = 'none';
+ bonusTypeSelect.setAttribute('disabled', 'disabled');
+ }
+ 
+ // Show vest years for kickass
+ if (grantType === 'kickass') {
+ vestYearsGroup.style.display = 'block';
+ vestYearsInput.setAttribute('required', 'required');
+ vestYearsInput.removeAttribute('disabled');
+ } else {
+ vestYearsGroup.style.display = 'none';
+ vestYearsInput.removeAttribute('required');
+ vestYearsInput.setAttribute('disabled', 'disabled');
+ }
+ 
+ // Hide share type for ESPP
+ if (grantType === 'espp' || grantType === 'nqespp') {
+ shareTypeGroup.style.display = 'none';
+ shareTypeSelect.setAttribute('disabled', 'disabled');
+ } else {
+ shareTypeGroup.style.display = 'block';
+ shareTypeSelect.removeAttribute('disabled');
+ }
+ 
+ // Show ESPP discount for ESPP grants
+ if (grantType === 'espp') {
+ esppDiscountGroup.style.display = 'block';
+ esppDiscountInput.removeAttribute('disabled');
+ } else {
+ esppDiscountGroup.style.display = 'none';
+ esppDiscountInput.setAttribute('disabled', 'disabled');
+ }
 
-        // Show ESPP discount for ESPP grants
-        if (grantType === 'espp') {
-            esppDiscountGroup.style.display = 'block';
-            esppDiscountInput.setAttribute('required', 'required');
-            esppDiscountInput.removeAttribute('disabled');
-        } else {
-            esppDiscountGroup.style.display = 'none';
-            esppDiscountInput.removeAttribute('required');
-            esppDiscountInput.setAttribute('disabled', 'disabled');
-        }
-    }
+ // Show ESPP discount for ESPP grants
+ if (grantType === 'espp') {
+ esppDiscountGroup.style.display = 'block';
+ esppDiscountInput.setAttribute('required', 'required');
+ esppDiscountInput.removeAttribute('disabled');
+ } else {
+ esppDiscountGroup.style.display = 'none';
+ esppDiscountInput.removeAttribute('required');
+ esppDiscountInput.setAttribute('disabled', 'disabled');
+ }
+ }
 
-    grantTypeSelect.addEventListener('change', updateFormFields);
-    
-    // Initialize on page load
-    updateFormFields();
+ grantTypeSelect.addEventListener('change', updateFormFields);
+ 
+ // Initialize on page load
+ updateFormFields();
 </script>
 
 <style>
-    .grant-form {
-        max-width: 100%;
-    }
-    
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
-    }
-    
-    .form-group {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .form-group.full-width {
-        grid-column: 1 / -1;
-    }
-    
-    .form-group label {
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        color: var(--text-primary);
-    }
-    
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-        padding: 0.75rem;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        background: var(--bg-secondary);
-        color: var(--text-primary);
-        font-size: 1rem;
-    }
-    
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-        outline: none;
-        border-color: var(--accent-color);
-    }
-    
-    .form-help {
-        margin-top: 0.25rem;
-        font-size: 0.875rem;
-        color: var(--text-secondary);
-    }
-    
-    .form-actions {
-        display: flex;
-        gap: 1rem;
-        justify-content: flex-start;
-    }
-    
-    .info-box {
-        background: var(--bg-secondary);
-        border-left: 4px solid var(--accent-color);
-        padding: 1.5rem;
-        border-radius: 8px;
-    }
-    
-    .info-box h3 {
-        margin-top: 0;
-        color: var(--text-primary);
-    }
-    
-    .info-box ul {
-        margin: 1rem 0 0 0;
-        padding-left: 1.5rem;
-    }
-    
-    .info-box li {
-        margin: 0.5rem 0;
-        color: var(--text-secondary);
-    }
-    
-    .info-box strong {
-        color: var(--text-primary);
-    }
+ .grant-form {
+ max-width: 100%;
+ }
+ 
+ .form-grid {
+ display: grid;
+ grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+ gap: 1.5rem;
+ margin-bottom: 2rem;
+ }
+ 
+ .form-group {
+ display: flex;
+ flex-direction: column;
+ }
+ 
+ .form-group.full-width {
+ grid-column: 1 / -1;
+ }
+ 
+ .form-group label {
+ font-weight: 600;
+ margin-bottom: 0.5rem;
+ color: var(--text-primary);
+ }
+ 
+ .form-group input,
+ .form-group select,
+ .form-group textarea {
+ padding: 0.75rem;
+ border: 1px solid var(--border-color);
+ border-radius: 8px;
+ background: var(--bg-secondary);
+ color: var(--text-primary);
+ font-size: 1rem;
+ }
+ 
+ .form-group input:focus,
+ .form-group select:focus,
+ .form-group textarea:focus {
+ outline: none;
+ border-color: var(--accent-color);
+ }
+ 
+ .form-help {
+ margin-top: 0.25rem;
+ font-size: 0.875rem;
+ color: var(--text-secondary);
+ }
+ 
+ .form-actions {
+ display: flex;
+ gap: 1rem;
+ justify-content: flex-start;
+ }
+ 
+ .info-box {
+ background: var(--bg-secondary);
+ border-left: 4px solid var(--accent-color);
+ padding: 1.5rem;
+ border-radius: 8px;
+ }
+ 
+ .info-box h3 {
+ margin-top: 0;
+ color: var(--text-primary);
+ }
+ 
+ .info-box ul {
+ margin: 1rem 0 0 0;
+ padding-left: 1.5rem;
+ }
+ 
+ .info-box li {
+ margin: 0.5rem 0;
+ color: var(--text-secondary);
+ }
+ 
+ .info-box strong {
+ color: var(--text-primary);
+ }
 </style>
 {% endblock %}

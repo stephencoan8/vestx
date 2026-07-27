@@ -4,102 +4,102 @@
 
 {% block content %}
 <div class="page">
-    <header class="page-header">
-        <h1>Add New Grant</h1>
-        <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">← Back</a>
-    </header>
+ <header class="page-header">
+ <h1>Add New Grant</h1>
+ <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">← Back</a>
+ </header>
 
-    <div class="form-card">
-        <form method="POST" class="grant-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="grant_date">Grant Date *</label>
-                    <input type="date" id="grant_date" name="grant_date" required>
-                </div>
+ <div class="form-card">
+ <form method="POST" class="grant-form">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <div class="form-row">
+ <div class="form-group">
+ <label for="grant_date">Grant Date *</label>
+ <input type="date" id="grant_date" name="grant_date" required>
+ </div>
 
-                <div class="form-group">
-                    <label for="grant_type">Grant Type *</label>
-                    <select id="grant_type" name="grant_type" required onchange="updateFormFields()">
-                        <option value="">Select type...</option>
-                        <option value="new_hire">New Hire</option>
-                        <option value="annual_performance">Annual Performance (Bonus)</option>
-                        <option value="promotion">Promotion</option>
-                        <option value="kickass">Kickass Bonus</option>
-                        <option value="espp">ESPP</option>
-                        <option value="nqespp">nqESPP</option>
-                    </select>
-                </div>
-            </div>
+ <div class="form-group">
+ <label for="grant_type">Grant Type *</label>
+ <select id="grant_type" name="grant_type" required onchange="updateFormFields()">
+ <option value="">Select type...</option>
+ <option value="new_hire">New Hire</option>
+ <option value="annual_performance">Annual Performance (Bonus)</option>
+ <option value="promotion">Promotion</option>
+ <option value="kickass">Kickass Bonus</option>
+ <option value="espp">ESPP</option>
+ <option value="nqespp">nqESPP</option>
+ </select>
+ </div>
+ </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="share_type">Share Type *</label>
-                    <select id="share_type" name="share_type" required>
-                        <option value="">Select type...</option>
-                        <option value="rsu">RSU</option>
-                        <option value="iso_5y">ISO (5 Year) - 2x shares</option>
-                        <option value="iso_6y">ISO (6 Year) - 3x shares</option>
-                        <option value="cash">Cash</option>
-                    </select>
-                </div>
+ <div class="form-row">
+ <div class="form-group">
+ <label for="share_type">Share Type *</label>
+ <select id="share_type" name="share_type" required>
+ <option value="">Select type...</option>
+ <option value="rsu">RSU</option>
+ <option value="iso_5y">ISO (5 Year) - 2x shares</option>
+ <option value="iso_6y">ISO (6 Year) - 3x shares</option>
+ <option value="cash">Cash</option>
+ </select>
+ </div>
 
-                <div class="form-group">
-                    <label for="share_quantity">Share Quantity *</label>
-                    <input type="number" id="share_quantity" name="share_quantity" step="0.01" required>
-                    <small class="form-hint">Enter base quantity (multiplier auto-applied for ISOs)</small>
-                </div>
-            </div>
+ <div class="form-group">
+ <label for="share_quantity">Share Quantity *</label>
+ <input type="number" id="share_quantity" name="share_quantity" step="0.01" required>
+ <small class="form-hint">Enter base quantity (multiplier auto-applied for ISOs)</small>
+ </div>
+ </div>
 
-            <div class="form-row" id="bonus_type_row" style="display:none;">
-                <div class="form-group">
-                    <label for="bonus_type">Bonus Type</label>
-                    <select id="bonus_type" name="bonus_type">
-                        <option value="">Select bonus type...</option>
-                        <option value="short_term">Short Term (1yr cliff, paid at once)</option>
-                        <option value="long_term">Long Term</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="form-row" id="espp_discount_row" style="display:none;">
-                <div class="form-group">
-                    <label for="espp_discount">ESPP Discount %</label>
-                    <input type="number" id="espp_discount" name="espp_discount" step="0.01" min="0" max="0.25" value="0.15">
-                    <small class="form-hint">Standard ESPP discount is 15% (0.15). Max allowed by IRS is 15%.</small>
-                </div>
-            </div>
+ <div class="form-row" id="bonus_type_row" style="display:none;">
+ <div class="form-group">
+ <label for="bonus_type">Bonus Type</label>
+ <select id="bonus_type" name="bonus_type">
+ <option value="">Select bonus type...</option>
+ <option value="short_term">Short Term (1yr cliff, paid at once)</option>
+ <option value="long_term">Long Term</option>
+ </select>
+ </div>
+ </div>
+ 
+ <div class="form-row" id="espp_discount_row" style="display:none;">
+ <div class="form-group">
+ <label for="espp_discount">ESPP Discount %</label>
+ <input type="number" id="espp_discount" name="espp_discount" step="0.01" min="0" max="0.25" value="0.15">
+ <small class="form-hint">Standard ESPP discount is 15% (0.15). Max allowed by IRS is 15%.</small>
+ </div>
+ </div>
 
-            <div class="form-row" id="vest_years_row" style="display:none;">
-                <div class="form-group">
-                    <label for="vest_years">Vest Years (for Kickass)</label>
-                    <input type="number" id="vest_years" name="vest_years" min="1" max="5">
-                </div>
-            </div>
+ <div class="form-row" id="vest_years_row" style="display:none;">
+ <div class="form-group">
+ <label for="vest_years">Vest Years (for Kickass)</label>
+ <input type="number" id="vest_years" name="vest_years" min="1" max="5">
+ </div>
+ </div>
 
-            <div class="form-group">
-                <label for="notes">Notes (Optional)</label>
-                <textarea id="notes" name="notes" rows="3"></textarea>
-            </div>
+ <div class="form-group">
+ <label for="notes">Notes (Optional)</label>
+ <textarea id="notes" name="notes" rows="3"></textarea>
+ </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Add Grant</button>
-                <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">Cancel</a>
-            </div>
-        </form>
-    </div>
+ <div class="form-actions">
+ <button type="submit" class="btn btn-primary">Add Grant</button>
+ <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">Cancel</a>
+ </div>
+ </form>
+ </div>
 </div>
 
 <script>
 function updateFormFields() {
-    const grantType = document.getElementById('grant_type').value;
-    const bonusRow = document.getElementById('bonus_type_row');
-    const esppRow = document.getElementById('espp_discount_row');
-    const vestRow = document.getElementById('vest_years_row');
-    
-    bonusRow.style.display = grantType === 'annual_performance' ? 'flex' : 'none';
-    esppRow.style.display = grantType === 'espp' ? 'flex' : 'none';
-    vestRow.style.display = grantType === 'kickass' ? 'flex' : 'none';
+ const grantType = document.getElementById('grant_type').value;
+ const bonusRow = document.getElementById('bonus_type_row');
+ const esppRow = document.getElementById('espp_discount_row');
+ const vestRow = document.getElementById('vest_years_row');
+ 
+ bonusRow.style.display = grantType === 'annual_performance' ? 'flex' : 'none';
+ esppRow.style.display = grantType === 'espp' ? 'flex' : 'none';
+ vestRow.style.display = grantType === 'kickass' ? 'flex' : 'none';
 }
 </script>
 {% endblock %}

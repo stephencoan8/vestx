@@ -4,40 +4,40 @@
 
 {% block content %}
 <div class="page">
-    <header class="page-header">
-        <h1>User Management</h1>
-        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">← Back</a>
-    </header>
+ <header class="page-header">
+ <h1>User Management</h1>
+ <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">← Back</a>
+ </header>
 
-    <div class="table-container">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Admin</th>
-                    <th>Created</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>{{ user.id }}</td>
-                    <td>{{ user.username }}</td>
-                    <td>{{ user.email }}</td>
-                    <td>
-                        {% if user.is_admin %}
-                        <span class="badge badge-admin">Admin</span>
-                        {% else %}
-                        <span class="badge badge-user">User</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+ <div class="table-container">
+ <table class="data-table">
+ <thead>
+ <tr>
+ <th>ID</th>
+ <th>Username</th>
+ <th>Email</th>
+ <th>Admin</th>
+ <th>Created</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for user in users %}
+ <tr>
+ <td>{{ user.id }}</td>
+ <td>{{ user.username }}</td>
+ <td>{{ user.email }}</td>
+ <td>
+ {% if user.is_admin %}
+ <span class="badge badge-admin">Admin</span>
+ {% else %}
+ <span class="badge badge-user">User</span>
+ {% endif %}
+ </td>
+ <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ </div>
 </div>
 {% endblock %}

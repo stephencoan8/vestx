@@ -5,30 +5,28 @@
 {% block content %}
 <div class="page">
     <header class="page-header">
-        <h1>Admin Dashboard</h1>
+        <h1>Admin</h1>
     </header>
 
     <div class="stats-grid">
         <div class="stat-card accent">
-            <div class="stat-icon">👥</div>
             <div class="stat-content">
-                <div class="stat-label">Total Users</div>
+                <div class="stat-label">Total users</div>
                 <div class="stat-value">{{ user_count }}</div>
             </div>
         </div>
 
         <div class="stat-card success">
-            <div class="stat-icon">💵</div>
             <div class="stat-content">
-                <div class="stat-label">Current Stock Price</div>
+                <div class="stat-label">Admin stock price</div>
                 <div class="stat-value">${{ "{:,.2f}".format(latest_price.price_per_share if latest_price else 0) }}</div>
             </div>
         </div>
     </div>
 
     <div class="admin-links">
-        <a href="{{ url_for('admin.stock_prices') }}" class="btn btn-primary">Manage Stock Prices</a>
-        <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">View Users</a>
+        <a href="{{ url_for('admin.stock_prices') }}" class="btn btn-primary">Manage stock prices</a>
+        <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">View users</a>
     </div>
 </div>
 {% endblock %}

@@ -4,330 +4,330 @@
 
 {% block content %}
 <div class="page">
-    <header class="page-header">
-        <h1>Grant Details</h1>
-        <div style="display: flex; gap: 1rem;">
-            <a href="{{ url_for('grants.edit_grant', grant_id=grant.id) }}" class="btn btn-primary">✏️ Edit Grant</a>
-            <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">← Back</a>
-            <form method="POST" action="{{ url_for('grants.delete_grant', grant_id=grant.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this grant and all its vesting events?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-danger">🗑️ Delete Grant</button>
-            </form>
-        </div>
-    </header>
+ <header class="page-header">
+ <h1>Grant Details</h1>
+ <div style="display: flex; gap: 1rem;">
+ <a href="{{ url_for('grants.edit_grant', grant_id=grant.id) }}" class="btn btn-primary"> Edit Grant</a>
+ <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">← Back</a>
+ <form method="POST" action="{{ url_for('grants.delete_grant', grant_id=grant.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this grant and all its vesting events?');">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <button type="submit" class="btn btn-danger"> Delete Grant</button>
+ </form>
+ </div>
+ </header>
 
-    <div class="grant-detail">
-        <div class="detail-card">
-            <h2>Grant Information</h2>
-            <div class="detail-grid">
-                <div class="detail-item">
-                    <span class="detail-label">Grant Date</span>
-                    <span class="detail-value">{{ grant.grant_date.strftime('%B %d, %Y') }}</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Grant Type</span>
-                    <span class="detail-value"><span class="badge badge-{{ grant.grant_type }}">{{ grant.grant_type.replace('_', ' ').title() }}</span></span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Share Type</span>
-                    <span class="detail-value"><span class="badge badge-share">{{ grant.share_type.upper() }}</span></span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Total Shares</span>
-                    <span class="detail-value highlight">{{ "{:,.0f}".format(grant.share_quantity) }}</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Price at Grant</span>
-                    <span class="detail-value">${{ "{:,.2f}".format(grant.share_price_at_grant) }}</span>
-                </div>
-                {% if grant.grant_type == 'espp' and grant.espp_discount %}
-                <div class="detail-item">
-                    <span class="detail-label">ESPP Discount</span>
-                    <span class="detail-value highlight">{{ "{:.0f}".format(grant.espp_discount * 100) }}%</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Actual Cost Basis</span>
-                    <span class="detail-value">${{ "{:,.2f}".format(grant.actual_cost_basis) }} per share</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Discount Gain</span>
-                    <span class="detail-value highlight">${{ "{:,.2f}".format(grant.espp_discount_gain) }}</span>
-                </div>
-                {% endif %}
-                <div class="detail-item">
-                    <span class="detail-label">Total Value</span>
-                    <span class="detail-value highlight">${{ "{:,.2f}".format(grant.total_value_at_grant) }}</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Vest Period</span>
-                    <span class="detail-value">{{ grant.vest_years }} years</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Cliff Period</span>
-                    <span class="detail-value">{{ grant.cliff_years }} years</span>
-                </div>
-            </div>
-            {% if grant.notes %}
-            <div class="detail-notes">
-                <strong>Notes:</strong> {{ grant.notes }}
-            </div>
-            {% endif %}
-        </div>
+ <div class="grant-detail">
+ <div class="detail-card">
+ <h2>Grant Information</h2>
+ <div class="detail-grid">
+ <div class="detail-item">
+ <span class="detail-label">Grant Date</span>
+ <span class="detail-value">{{ grant.grant_date.strftime('%B %d, %Y') }}</span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Grant Type</span>
+ <span class="detail-value"><span class="badge badge-{{ grant.grant_type }}">{{ grant.grant_type.replace('_', ' ').title() }}</span></span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Share Type</span>
+ <span class="detail-value"><span class="badge badge-share">{{ grant.share_type.upper() }}</span></span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Total Shares</span>
+ <span class="detail-value highlight">{{ "{:,.0f}".format(grant.share_quantity) }}</span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Price at Grant</span>
+ <span class="detail-value">${{ "{:,.2f}".format(grant.share_price_at_grant) }}</span>
+ </div>
+ {% if grant.grant_type == 'espp' and grant.espp_discount %}
+ <div class="detail-item">
+ <span class="detail-label">ESPP Discount</span>
+ <span class="detail-value highlight">{{ "{:.0f}".format(grant.espp_discount * 100) }}%</span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Actual Cost Basis</span>
+ <span class="detail-value">${{ "{:,.2f}".format(grant.actual_cost_basis) }} per share</span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Discount Gain</span>
+ <span class="detail-value highlight">${{ "{:,.2f}".format(grant.espp_discount_gain) }}</span>
+ </div>
+ {% endif %}
+ <div class="detail-item">
+ <span class="detail-label">Total Value</span>
+ <span class="detail-value highlight">${{ "{:,.2f}".format(grant.total_value_at_grant) }}</span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Vest Period</span>
+ <span class="detail-value">{{ grant.vest_years }} years</span>
+ </div>
+ <div class="detail-item">
+ <span class="detail-label">Cliff Period</span>
+ <span class="detail-value">{{ grant.cliff_years }} years</span>
+ </div>
+ </div>
+ {% if grant.notes %}
+ <div class="detail-notes">
+ <strong>Notes:</strong> {{ grant.notes }}
+ </div>
+ {% endif %}
+ </div>
 
-        <div class="detail-card">
-            <h2>Vesting Schedule</h2>
-            <p class="help-text">For vested events, enter how you covered taxes. Save each row after entering info.</p>
-            <div class="table-container">
-                <table class="data-table vest-schedule-table">
-                    <thead>
-                        <tr>
-                            <th>Vest Date</th>
-                            <th>Shares</th>
-                            <th>Value at Vest</th>
-                            {% if grant.grant_type not in ['espp', 'nqespp'] %}
-                            <th>Cash Paid</th>
-                            <th>Fully Covered?</th>
-                            <th>Shares Sold</th>
-                            {% endif %}
-                            <th>Shares Received</th>
-                            <th>Net Value</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for vest in vest_events %}
-                        <tr data-vest-id="{{ vest.id }}" class="vest-row clickable-vest-row" onclick="window.location.href='{{ url_for('grants.vest_detail', vest_id=vest.id) }}'">
-                            <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
-                            <td class="shares-vesting">{{ "{:,.0f}".format(vest.shares_vested) }}</td>
-                            <td class="vest-value">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
-                            {% if grant.grant_type not in ['espp', 'nqespp'] %}
-                            <td>
-                                {% if vest.has_vested %}
-                                <input type="number" class="cash-paid-input" data-vest-id="{{ vest.id }}"
-                                       value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
-                                       step="0.01" min="0" placeholder="$0.00" onclick="event.stopPropagation();">
-                                {% else %}
-                                <span style="color: #999;">—</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if vest.has_vested %}
-                                <select class="cash-covered-select" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">
-                                    <option value="yes" {% if vest.cash_covered_all %}selected{% endif %}>Yes</option>
-                                    <option value="no" {% if not vest.cash_covered_all %}selected{% endif %}>No</option>
-                                </select>
-                                {% else %}
-                                <span style="color: #999;">—</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if vest.has_vested %}
-                                <input type="number" class="shares-sold-input" data-vest-id="{{ vest.id }}"
-                                       value="{{ '{:.0f}'.format(vest.shares_sold) if vest.shares_sold else '' }}" 
-                                       step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
-                                       {% if vest.cash_covered_all %}disabled{% endif %} onclick="event.stopPropagation();">
-                                {% else %}
-                                <span style="color: #999;">—</span>
-                                {% endif %}
-                            </td>
-                            {% endif %}
-                            <td class="shares-received highlight">{{ "{:,.0f}".format(vest.shares_received) }}</td>
-                            <td class="net-value">${{ "{:,.2f}".format(vest.net_value) }}</td>
-                            <td class="status-cell">
-                                {% if vest.has_vested %}
-                                    {% if vest.needs_tax_info %}
-                                        <span class="badge badge-warning">⚠️ Needs Info</span>
-                                    {% else %}
-                                        <span class="badge badge-success">✓ Vested</span>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="badge badge-pending">⏳ Pending</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-primary save-vest-btn" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">Save</button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+ <div class="detail-card">
+ <h2>Vesting Schedule</h2>
+ <p class="help-text">For vested events, enter how you covered taxes. Save each row after entering info.</p>
+ <div class="table-container">
+ <table class="data-table vest-schedule-table">
+ <thead>
+ <tr>
+ <th>Vest Date</th>
+ <th>Shares</th>
+ <th>Value at Vest</th>
+ {% if grant.grant_type not in ['espp', 'nqespp'] %}
+ <th>Cash Paid</th>
+ <th>Fully Covered?</th>
+ <th>Shares Sold</th>
+ {% endif %}
+ <th>Shares Received</th>
+ <th>Net Value</th>
+ <th>Status</th>
+ <th>Actions</th>
+ </tr>
+ </thead>
+ <tbody>
+ {% for vest in vest_events %}
+ <tr data-vest-id="{{ vest.id }}" class="vest-row clickable-vest-row" onclick="window.location.href='{{ url_for('grants.vest_detail', vest_id=vest.id) }}'">
+ <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
+ <td class="shares-vesting">{{ "{:,.0f}".format(vest.shares_vested) }}</td>
+ <td class="vest-value">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
+ {% if grant.grant_type not in ['espp', 'nqespp'] %}
+ <td>
+ {% if vest.has_vested %}
+ <input type="number" class="cash-paid-input" data-vest-id="{{ vest.id }}"
+ value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
+ step="0.01" min="0" placeholder="$0.00" onclick="event.stopPropagation();">
+ {% else %}
+ <span style="color: #999;">—</span>
+ {% endif %}
+ </td>
+ <td>
+ {% if vest.has_vested %}
+ <select class="cash-covered-select" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">
+ <option value="yes" {% if vest.cash_covered_all %}selected{% endif %}>Yes</option>
+ <option value="no" {% if not vest.cash_covered_all %}selected{% endif %}>No</option>
+ </select>
+ {% else %}
+ <span style="color: #999;">—</span>
+ {% endif %}
+ </td>
+ <td>
+ {% if vest.has_vested %}
+ <input type="number" class="shares-sold-input" data-vest-id="{{ vest.id }}"
+ value="{{ '{:.0f}'.format(vest.shares_sold) if vest.shares_sold else '' }}" 
+ step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
+ {% if vest.cash_covered_all %}disabled{% endif %} onclick="event.stopPropagation();">
+ {% else %}
+ <span style="color: #999;">—</span>
+ {% endif %}
+ </td>
+ {% endif %}
+ <td class="shares-received highlight">{{ "{:,.0f}".format(vest.shares_received) }}</td>
+ <td class="net-value">${{ "{:,.2f}".format(vest.net_value) }}</td>
+ <td class="status-cell">
+ {% if vest.has_vested %}
+ {% if vest.needs_tax_info %}
+ <span class="badge badge-warning"> Needs Info</span>
+ {% else %}
+ <span class="badge badge-success">✓ Vested</span>
+ {% endif %}
+ {% else %}
+ <span class="badge badge-pending">⏳ Pending</span>
+ {% endif %}
+ </td>
+ <td>
+ <button class="btn btn-sm btn-primary save-vest-btn" data-vest-id="{{ vest.id }}" onclick="event.stopPropagation();">Save</button>
+ </td>
+ </tr>
+ {% endfor %}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ </div>
 </div>
 
 <script>
 // CSRF token for AJAX requests
 const VESTX_CSRF_TOKEN = '{{ csrf_token() }}';
 
-// Handle "Fully Covered?" dropdown changes  
+// Handle "Fully Covered?" dropdown changes 
 document.querySelectorAll('.cash-covered-select').forEach(select => {
-    select.addEventListener('change', function() {
-        const vestId = this.dataset.vestId;
-        const row = document.querySelector(`tr[data-vest-id="${vestId}"]`);
-        const sharesSoldInput = row.querySelector('.shares-sold-input');
-        
-        if (this.value === 'no') {
-            sharesSoldInput.disabled = false;
-            sharesSoldInput.focus();
-        } else {
-            sharesSoldInput.disabled = true;
-            sharesSoldInput.value = '';
-        }
-    });
+ select.addEventListener('change', function() {
+ const vestId = this.dataset.vestId;
+ const row = document.querySelector(`tr[data-vest-id="${vestId}"]`);
+ const sharesSoldInput = row.querySelector('.shares-sold-input');
+ 
+ if (this.value === 'no') {
+ sharesSoldInput.disabled = false;
+ sharesSoldInput.focus();
+ } else {
+ sharesSoldInput.disabled = true;
+ sharesSoldInput.value = '';
+ }
+ });
 });
 
 // Handle save button clicks
 document.querySelectorAll('.save-vest-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-        const vestId = this.dataset.vestId;
-        const row = document.querySelector(`tr[data-vest-id="${vestId}"]`);
-        const cashPaidInput = row.querySelector('.cash-paid-input');
-        const cashCoveredSelect = row.querySelector('.cash-covered-select');
-        const sharesSoldInput = row.querySelector('.shares-sold-input');
-        const sharesReceivedCell = row.querySelector('.shares-received');
-        const netValueCell = row.querySelector('.net-value');
-        const statusCell = row.querySelector('.status-cell');
-        
-        const cashPaidRaw = cashPaidInput.value || '';
-        const sharesSoldRaw = sharesSoldInput.value || '';
+ btn.addEventListener('click', async function() {
+ const vestId = this.dataset.vestId;
+ const row = document.querySelector(`tr[data-vest-id="${vestId}"]`);
+ const cashPaidInput = row.querySelector('.cash-paid-input');
+ const cashCoveredSelect = row.querySelector('.cash-covered-select');
+ const sharesSoldInput = row.querySelector('.shares-sold-input');
+ const sharesReceivedCell = row.querySelector('.shares-received');
+ const netValueCell = row.querySelector('.net-value');
+ const statusCell = row.querySelector('.status-cell');
+ 
+ const cashPaidRaw = cashPaidInput.value || '';
+ const sharesSoldRaw = sharesSoldInput.value || '';
 
-        // Sanitize numeric inputs (remove commas, dollar signs, parentheses, etc.)
-        const sanitizeNumber = (raw) => {
-            if (!raw) return '0';
-            // Remove common formatting characters, keep digits, dot, minus
-            const cleaned = raw.toString().replace(/[^0-9.\-]/g, '').trim();
-            return cleaned === '' ? '0' : cleaned;
-        };
+ // Sanitize numeric inputs (remove commas, dollar signs, parentheses, etc.)
+ const sanitizeNumber = (raw) => {
+ if (!raw) return '0';
+ // Remove common formatting characters, keep digits, dot, minus
+ const cleaned = raw.toString().replace(/[^0-9.\-]/g, '').trim();
+ return cleaned === '' ? '0' : cleaned;
+ };
 
-        const cashPaidSanitized = sanitizeNumber(cashPaidRaw);
-        const sharesSoldSanitized = sanitizeNumber(sharesSoldRaw);
+ const cashPaidSanitized = sanitizeNumber(cashPaidRaw);
+ const sharesSoldSanitized = sanitizeNumber(sharesSoldRaw);
 
-        const cashPaid = cashPaidSanitized;
-        const cashCoveredAll = cashCoveredSelect.value === 'yes';
-        const sharesSold = sharesSoldSanitized;
+ const cashPaid = cashPaidSanitized;
+ const cashCoveredAll = cashCoveredSelect.value === 'yes';
+ const sharesSold = sharesSoldSanitized;
 
-        console.log('Saving vest event:', vestId, 'Cash:', cashPaid, 'Covered:', cashCoveredAll, 'Sold:', sharesSold);
+ console.log('Saving vest event:', vestId, 'Cash:', cashPaid, 'Covered:', cashCoveredAll, 'Sold:', sharesSold);
 
-        const formData = new FormData();
-        formData.append('csrf_token', VESTX_CSRF_TOKEN);
-        formData.append('cash_paid', cashPaid);
-        formData.append('cash_covered_all', cashCoveredAll ? 'true' : 'false');
-        formData.append('shares_sold', sharesSold);
-        
-        try {
-            btn.textContent = 'Saving...';
-            btn.disabled = true;
+ const formData = new FormData();
+ formData.append('csrf_token', VESTX_CSRF_TOKEN);
+ formData.append('cash_paid', cashPaid);
+ formData.append('cash_covered_all', cashCoveredAll ? 'true' : 'false');
+ formData.append('shares_sold', sharesSold);
+ 
+ try {
+ btn.textContent = 'Saving...';
+ btn.disabled = true;
 
-            const response = await fetch(`/grants/vest-event/${vestId}/update`, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRFToken': VESTX_CSRF_TOKEN
-                }
-            });
+ const response = await fetch(`/grants/vest-event/${vestId}/update`, {
+ method: 'POST',
+ body: formData,
+ headers: {
+ 'X-CSRFToken': VESTX_CSRF_TOKEN
+ }
+ });
 
-            // Always attempt to read JSON body for helpful error messages
-            let data;
-            try {
-                data = await response.json();
-            } catch (e) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+ // Always attempt to read JSON body for helpful error messages
+ let data;
+ try {
+ data = await response.json();
+ } catch (e) {
+ throw new Error(`HTTP error! status: ${response.status}`);
+ }
 
-            if (!response.ok) {
-                const errMsg = data.error || data.message || (`HTTP ${response.status}`);
-                // Include trace if available for debugging
-                const detail = data.trace ? `\n${data.trace}` : '';
-                throw new Error(errMsg + detail);
-            }
+ if (!response.ok) {
+ const errMsg = data.error || data.message || (`HTTP ${response.status}`);
+ // Include trace if available for debugging
+ const detail = data.trace ? `\n${data.trace}` : '';
+ throw new Error(errMsg + detail);
+ }
 
-            console.log('Server response:', data);
+ console.log('Server response:', data);
 
-            if (data.success) {
-                // Update inputs with saved values
-                if (data.cash_paid !== undefined) {
-                    cashPaidInput.value = parseFloat(data.cash_paid) > 0 ? parseFloat(data.cash_paid).toFixed(2) : '';
-                }
+ if (data.success) {
+ // Update inputs with saved values
+ if (data.cash_paid !== undefined) {
+ cashPaidInput.value = parseFloat(data.cash_paid) > 0 ? parseFloat(data.cash_paid).toFixed(2) : '';
+ }
 
-                cashCoveredSelect.value = data.cash_covered_all ? 'yes' : 'no';
+ cashCoveredSelect.value = data.cash_covered_all ? 'yes' : 'no';
 
-                if (data.cash_covered_all) {
-                    sharesSoldInput.disabled = true;
-                    sharesSoldInput.value = '';
-                } else {
-                    sharesSoldInput.disabled = false;
-                    if (data.shares_sold !== undefined && parseFloat(data.shares_sold) > 0) {
-                        sharesSoldInput.value = parseFloat(data.shares_sold).toFixed(0);
-                    }
-                }
+ if (data.cash_covered_all) {
+ sharesSoldInput.disabled = true;
+ sharesSoldInput.value = '';
+ } else {
+ sharesSoldInput.disabled = false;
+ if (data.shares_sold !== undefined && parseFloat(data.shares_sold) > 0) {
+ sharesSoldInput.value = parseFloat(data.shares_sold).toFixed(0);
+ }
+ }
 
-                // Update calculated fields
-                if (data.shares_received !== undefined) {
-                    sharesReceivedCell.textContent = parseFloat(data.shares_received).toLocaleString('en-US', {maximumFractionDigits: 0});
-                }
+ // Update calculated fields
+ if (data.shares_received !== undefined) {
+ sharesReceivedCell.textContent = parseFloat(data.shares_received).toLocaleString('en-US', {maximumFractionDigits: 0});
+ }
 
-                if (data.net_value !== undefined) {
-                    netValueCell.textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                }
+ if (data.net_value !== undefined) {
+ netValueCell.textContent = '$' + parseFloat(data.net_value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+ }
 
-                // Update status to "Vested" if tax info was provided
-                if (parseFloat(cashPaid) > 0 || parseFloat(sharesSold) > 0) {
-                    statusCell.innerHTML = '<span class="badge badge-success">✓ Vested</span>';
-                }
+ // Update status to "Vested" if tax info was provided
+ if (parseFloat(cashPaid) > 0 || parseFloat(sharesSold) > 0) {
+ statusCell.innerHTML = '<span class="badge badge-success">✓ Vested</span>';
+ }
 
-                // Show success
-                btn.textContent = '✓ Saved';
-                btn.classList.add('btn-success');
-                row.classList.add('vest-row-saved');
+ // Show success
+ btn.textContent = '✓ Saved';
+ btn.classList.add('btn-success');
+ row.classList.add('vest-row-saved');
 
-                setTimeout(() => {
-                    btn.textContent = 'Save';
-                    btn.classList.remove('btn-success');
-                    btn.disabled = false;
-                    row.classList.remove('vest-row-saved');
-                }, 2000);
-            } else {
-                alert('Error saving: ' + (data.error || data.message || 'Unknown error'));
-                btn.textContent = 'Save';
-                btn.disabled = false;
-            }
-        } catch (error) {
-            console.error('Save error:', error);
-            // Show the detailed error message if available
-            alert('Error saving vest event: ' + (error.message || error));
-            btn.textContent = 'Save';
-            btn.disabled = false;
-        }
-    });
+ setTimeout(() => {
+ btn.textContent = 'Save';
+ btn.classList.remove('btn-success');
+ btn.disabled = false;
+ row.classList.remove('vest-row-saved');
+ }, 2000);
+ } else {
+ alert('Error saving: ' + (data.error || data.message || 'Unknown error'));
+ btn.textContent = 'Save';
+ btn.disabled = false;
+ }
+ } catch (error) {
+ console.error('Save error:', error);
+ // Show the detailed error message if available
+ alert('Error saving vest event: ' + (error.message || error));
+ btn.textContent = 'Save';
+ btn.disabled = false;
+ }
+ });
 });
 </script>
 
 <style>
 .help-text {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
+ color: var(--text-secondary);
+ font-size: 0.9rem;
+ margin-bottom: 1rem;
 }
 
 .vest-schedule-table {
-    width: 100%;
+ width: 100%;
 }
 
 .vest-schedule-table input[type="number"],
 .vest-schedule-table select {
-    padding: 0.4rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.85rem;
+ padding: 0.4rem;
+ border: 1px solid var(--border-color);
+ border-radius: 4px;
+ background: var(--bg-primary);
+ color: var(--text-primary);
+ font-size: 0.85rem;
 }
 
 .vest-schedule-table input[type="number"]:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+ opacity: 0.4;
+ cursor: not-allowed;
 }
 
 .save-vest-btn.btn-success { background: #22c55e !important; }
@@ -336,45 +336,45 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 .detail-item { display: flex; flex-direction: column; gap: 0.5rem; }
 
 .vest-row-saved {
-    background-color: rgba(16, 185, 129, 0.1) !important;
-    animation: flash-success 0.5s ease-in-out;
+ background-color: rgba(16, 185, 129, 0.1) !important;
+ animation: flash-success 0.5s ease-in-out;
 }
 
 @keyframes flash-success {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0.7; }
 }
 
 .shares-received { font-weight: bold; color: var(--success) !important; }
 .vest-schedule-table th { 
-    font-size: 0.8rem; 
-    white-space: nowrap;
-    padding: 0.75rem;
+ font-size: 0.8rem; 
+ white-space: nowrap;
+ padding: 0.75rem;
 }
 .vest-schedule-table td { 
-    font-size: 0.85rem;
-    padding: 0.75rem;
-    vertical-align: middle;
+ font-size: 0.85rem;
+ padding: 0.75rem;
+ vertical-align: middle;
 }
 
 .badge-warning {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
+ background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+ color: white;
 }
 
 .badge-pending {
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
+ background: var(--bg-secondary);
+ color: var(--text-secondary);
+ border: 1px solid var(--border-color);
 }
 
 .clickable-vest-row {
-    cursor: pointer;
-    transition: background-color 0.2s;
+ cursor: pointer;
+ transition: background-color 0.2s;
 }
 
 .clickable-vest-row:hover {
-    background-color: rgba(59, 130, 246, 0.05) !important;
+ background-color: rgba(59, 130, 246, 0.05) !important;
 }
 </style>
 {% endblock %}
