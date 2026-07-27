@@ -84,20 +84,31 @@ def create_app():
     
     # Create database tables
     with app.app_context():
+        # Register models without rebinding local name `app` (import app.models would)
+        from app.models import market_price as _market_price  # noqa: F401
+
         db.create_all()
-        
+
         # Run migrations
         from app.utils.migrate_transactions import migrate_transactions
         migrate_transactions(app)
-        
+
         from app.utils.migrate_ss_wage_base import migrate_ss_wage_base
         migrate_ss_wage_base(app)
-        
-        from app.models.user import User
+
         from app.utils.init_db import init_admin_user
         init_admin_user()
-    
+
+        # Best-effort public market sync (SPCX); failures must not block boot
+        try:
+            from app.utils.market_data import sync_market_prices
+            sync_market_prices(force=False)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Initial market price sync skipped: %s', e)
+
     return app
+
 
 
 def register_error_handlers(app):

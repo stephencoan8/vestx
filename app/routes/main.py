@@ -24,11 +24,7 @@ def index():
 @login_required
 def dashboard():
     """User dashboard showing grant summary."""
-    from app.utils.price_utils import get_latest_user_price
-    from app.models.user_price import UserPrice
-    from app.utils.encryption import decrypt_for_user
-
-    from app.utils.price_utils import warm_user_price_history
+    from app.utils.price_utils import get_latest_user_price, warm_user_price_history
 
     grants = Grant.query.filter_by(user_id=current_user.id).all()
 
@@ -75,27 +71,12 @@ def dashboard():
     vested_value_net = vested_shares_net * current_price
     needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
 
-    # Decrypt all user prices once for timeline + chart
-    all_user_prices = (
-        UserPrice.query
-        .filter_by(user_id=current_user.id)
-        .order_by(UserPrice.valuation_date)
-        .all()
-    )
-    all_stock_prices = []
-    try:
-        user_key = current_user.get_decrypted_user_key()
-        for price_entry in all_user_prices:
-            try:
-                price_val = float(decrypt_for_user(user_key, price_entry.encrypted_price))
-                all_stock_prices.append({
-                    'valuation_date': price_entry.valuation_date,
-                    'price_per_share': price_val,
-                })
-            except Exception:
-                continue
-    except Exception:
-        all_stock_prices = []
+    # Merged private pre-IPO + public SPCX history for timeline price points
+    from app.utils.price_utils import get_merged_price_series
+    all_stock_prices = [
+        {'valuation_date': d, 'price_per_share': p}
+        for d, p in get_merged_price_series(current_user.id)
+    ]
 
     timeline_events = []
     for vest in all_vest_events:
@@ -193,29 +174,12 @@ def dashboard():
 @main_bp.route('/stock-price-chart-data')
 @login_required
 def stock_price_chart_data():
-    """Get stock price data for dashboard chart."""
-    from app.models.user_price import UserPrice
-    from app.utils.encryption import decrypt_for_user
+    """Merged price series: private pre-IPO + public SPCX post-IPO."""
+    from app.utils.price_utils import get_merged_price_series, warm_user_price_history
 
-    price_entries = (
-        UserPrice.query
-        .filter_by(user_id=current_user.id)
-        .order_by(UserPrice.valuation_date)
-        .all()
-    )
-
-    dates = []
-    prices = []
-    try:
-        user_key = current_user.get_decrypted_user_key()
-        for price_entry in price_entries:
-            try:
-                price_val = float(decrypt_for_user(user_key, price_entry.encrypted_price))
-                dates.append(price_entry.valuation_date.strftime('%Y-%m-%d'))
-                prices.append(price_val)
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    return jsonify({'dates': dates, 'prices': prices})
+    warm_user_price_history(current_user.id)
+    series = get_merged_price_series(current_user.id)
+    return jsonify({
+        'dates': [d.strftime('%Y-%m-%d') for d, _ in series],
+        'prices': [p for _, p in series],
+    })

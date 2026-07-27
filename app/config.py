@@ -25,12 +25,24 @@ class Config:
             print("⚠️  Set SECRET_KEY in .env for production!")
     
     # Database
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///stonks.db')
+    _db_url = os.getenv('DATABASE_URL', 'sqlite:///stonks.db')
+    # Railway / Heroku sometimes provide postgres:// which SQLAlchemy rejects
+    if _db_url.startswith('postgres://'):
+        _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = _db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,  # Verify connections before using
         'pool_recycle': 300,     # Recycle connections every 5 minutes
     }
+
+    # Public market prices (SpaceX IPO cutover)
+    # From first trading day forward, valuations use live/public market data.
+    # Manual encrypted user prices remain the source of truth before this date.
+    STOCK_TICKER = os.getenv('STOCK_TICKER', 'SPCX')
+    PUBLIC_MARKET_START = os.getenv('PUBLIC_MARKET_START', '2026-06-12')  # first SPCX trading day
+    MARKET_SYNC_MINUTES = int(os.getenv('MARKET_SYNC_MINUTES', '15'))
+
     
     # Session Security
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in prod

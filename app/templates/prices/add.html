@@ -1,43 +1,37 @@
 {% extends "base.html" %}
 
-{% block title %}Add Price - VestX{% endblock %}
+{% block title %}Add pre-IPO price - VestX{% endblock %}
 
 {% block content %}
 <div class="page">
- <header class="page-header">
- <h1>Add Stock Price Entry</h1>
- </header>
+    <header class="page-header">
+        <h1>Add pre-IPO price</h1>
+    </header>
 
- <div class="form-container">
- <div class="form-card">
- <div class="form-intro">
- <p>Enter the date and price for your stock. This information is encrypted and only visible to you.</p>
- </div>
+    <div class="form-card">
+        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+            Private encrypted valuations for dates <strong>before {{ cutover.isoformat() }}</strong>
+            (first {{ ticker }} trading day). From that date onward, prices come from the public market automatically.
+        </p>
 
- <form method="post" action="{{ url_for('prices.add_price') }}" class="modern-form">
- <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
- 
- <div class="form-group">
- <label for="date" class="form-label">Valuation Date</label>
- <input type="date" class="form-input" id="date" name="date" required>
- </div>
+        <form method="post" action="{{ url_for('prices.add_price') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
- <div class="form-group">
- <label for="price" class="form-label">Stock Price (USD)</label>
- <div class="input-with-prefix">
- <span class="input-prefix">$</span>
- <input type="number" step="0.01" class="form-input with-prefix" id="price" name="price" placeholder="0.00" required>
- </div>
- </div>
+            <div class="form-group">
+                <label for="date">Valuation date</label>
+                <input type="date" id="date" name="date" required max="{{ cutover.isoformat() }}">
+            </div>
 
- <div class="form-actions">
- <button type="submit" class="btn btn-primary">
- <span></span> Add Price Entry
- </button>
- <a href="{{ url_for('prices.list_prices') }}" class="btn btn-secondary">Cancel</a>
- </div>
- </form>
- </div>
- </div>
+            <div class="form-group">
+                <label for="price">Stock price (USD)</label>
+                <input type="number" step="0.01" id="price" name="price" placeholder="0.00" required>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Add price</button>
+                <a href="{{ url_for('prices.list_prices') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
