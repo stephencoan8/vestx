@@ -176,10 +176,17 @@ def dashboard():
 def stock_price_chart_data():
     """Merged price series: private pre-IPO + public SPCX post-IPO."""
     from app.utils.price_utils import get_merged_price_series, warm_user_price_history
+    from app.utils.market_data import public_market_start
 
     warm_user_price_history(current_user.id)
     series = get_merged_price_series(current_user.id)
+    cutover = public_market_start()
     return jsonify({
         'dates': [d.strftime('%Y-%m-%d') for d, _ in series],
         'prices': [p for _, p in series],
+        'cutover': cutover.isoformat(),
+        'sources': [
+            'private' if d < cutover else 'public'
+            for d, _ in series
+        ],
     })

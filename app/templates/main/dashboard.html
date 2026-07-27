@@ -330,15 +330,21 @@ if (typeof Chart !== 'undefined') {
     createChart(currentView);
 }
 
-/* ——— Share price chart: ranges + drag-to-measure (compact tile) ——— */
+/* ——— Share price: step pre-IPO, smooth public, drag measure ——— */
 (function () {
-    let fullSeries = []; // {x: number (ms), y: number}[]
+    let fullSeries = []; // {x: ms, y, source}
+    let cutoverMs = null;
     let priceChart = null;
     let activeRange = 'all';
-    let drag = null;
+    let dragging = false;
+    let dragStartX = 0;
+    let dragEndX = 0;
+    let viewSeries = []; // currently plotted points (for measure)
 
+    const wrap = document.getElementById('priceChartWrap');
     const canvas = document.getElementById('stockPriceChart');
-    if (!canvas) return;
+    if (!wrap || !canvas) return;
+
     const overlay = document.getElementById('priceSelectionOverlay');
     const badge = document.getElementById('priceMeasureBadge');
     const crosshair = document.getElementById('priceCrosshair');
@@ -350,60 +356,80 @@ if (typeof Chart !== 'undefined') {
             minimumFractionDigits: 2, maximumFractionDigits: 2
         });
     }
-
     function fmtPct(n) {
-        const sign = n > 0 ? '+' : '';
-        return sign + n.toFixed(2) + '%';
+        return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
     }
-
     function fmtDate(ms) {
         return new Date(ms).toLocaleDateString('en-US', {
             year: 'numeric', month: 'short', day: 'numeric'
         });
     }
 
-    function timeUnitForRange(range, spanMs) {
-        if (range === '1d' || range === '1w') return 'day';
-        if (range === '1m') return 'day';
-        if (range === 'ytd' || range === '1y') return spanMs > 120 * 86400000 ? 'month' : 'day';
-        return spanMs > 400 * 86400000 ? 'month' : 'day';
-    }
-
     function filterByRange(series, range) {
         if (!series.length) return series;
         const end = series[series.length - 1].x;
         const endDate = new Date(end);
-        let startMs = null;
         const day = 86400000;
-
+        let startMs;
         switch (range) {
-            case '1d':
-                return series.slice(-Math.min(5, series.length));
-            case '1w':
-                startMs = end - 7 * day;
-                break;
-            case '1m':
-                startMs = end - 31 * day;
-                break;
-            case 'ytd':
-                startMs = new Date(endDate.getFullYear(), 0, 1).getTime();
-                break;
-            case '1y':
-                startMs = end - 365 * day;
-                break;
-            case '5y':
-                startMs = end - 5 * 365 * day;
-                break;
-            case 'all':
-            default:
-                return series.slice();
+            case '1d': return series.slice(-Math.min(5, series.length));
+            case '1w': startMs = end - 7 * day; break;
+            case '1m': startMs = end - 31 * day; break;
+            case 'ytd': startMs = new Date(endDate.getFullYear(), 0, 1).getTime(); break;
+            case '1y': startMs = end - 365 * day; break;
+            case '5y': startMs = end - 5 * 365 * day; break;
+            default: return series.slice();
         }
         const filtered = series.filter(function (p) { return p.x >= startMs; });
         return filtered.length ? filtered : series.slice(-1);
     }
 
+    /** Expand private revals into a continuous step series (hold value until next reval). */
+    function toStepSeries(points) {
+        if (!points.length) return [];
+        const out = [];
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            if (i === 0) {
+                out.push({ x: p.x, y: p.y });
+            } else {
+                const prev = points[i - 1];
+                // horizontal hold at previous price until this reval
+                out.push({ x: p.x, y: prev.y });
+                out.push({ x: p.x, y: p.y });
+            }
+        }
+        // extend step to cutover or next public point if last private before cutover
+        return out;
+    }
+
+    function splitPrivatePublic(view) {
+        const priv = [];
+        const pub = [];
+        view.forEach(function (p) {
+            if (cutoverMs != null && p.x < cutoverMs) priv.push(p);
+            else pub.push(p);
+        });
+
+        // Bridge: if both exist, connect last private level into first public with a step
+        let privStep = toStepSeries(priv);
+        if (priv.length && pub.length) {
+            const lastPriv = priv[priv.length - 1];
+            // hold private price until first public day, then public takes over
+            privStep.push({ x: pub[0].x, y: lastPriv.y });
+        } else if (priv.length && cutoverMs != null) {
+            // hold last private to cutover so step is visible until IPO
+            const lastPriv = priv[priv.length - 1];
+            if (lastPriv.x < cutoverMs) {
+                privStep.push({ x: cutoverMs, y: lastPriv.y });
+            }
+        }
+
+        return { private: privStep, public: pub.map(function (p) { return { x: p.x, y: p.y }; }) };
+    }
+
     function updateRangeChange(view) {
-        if (!changeEl || view.length < 1) {
+        if (!changeEl || !view.length) {
             if (changeEl) changeEl.textContent = '';
             return;
         }
@@ -419,19 +445,71 @@ if (typeof Chart !== 'undefined') {
 
     function buildChart(view) {
         if (!view.length) return;
-
-        const ys = view.map(function (p) { return p.y; });
-        const minY = Math.min.apply(null, ys);
-        const maxY = Math.max.apply(null, ys);
+        viewSeries = view.slice();
+        const parts = splitPrivatePublic(view);
+        const allYs = view.map(function (p) { return p.y; });
+        const minY = Math.min.apply(null, allYs);
+        const maxY = Math.max.apply(null, allYs);
         const pad = (maxY - minY) * 0.12 || maxY * 0.02 || 1;
         const minX = view[0].x;
         const maxX = view[view.length - 1].x;
         const spanMs = Math.max(maxX - minX, 86400000);
-        const unit = timeUnitForRange(activeRange, spanMs);
+        const unit = (activeRange === '1d' || activeRange === '1w' || activeRange === '1m')
+            ? 'day'
+            : (spanMs > 120 * 86400000 ? 'month' : 'day');
 
-        // Prefer update over destroy so layout stays stable; always reset x bounds
+        const datasets = [];
+        if (parts.private.length) {
+            datasets.push({
+                label: 'Pre-IPO (revals)',
+                data: parts.private,
+                borderColor: COLORS.copper,
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                tension: 0,
+                stepped: false, // already expanded to steps
+                fill: false,
+                pointRadius: function (ctx) {
+                    // show dots only at actual reval corners (every odd jump end)
+                    return 0;
+                },
+                pointHoverRadius: 4,
+                pointBackgroundColor: COLORS.copper,
+                order: 2
+            });
+            // Reval markers at original private points
+            datasets.push({
+                label: 'Revaluations',
+                data: view.filter(function (p) {
+                    return cutoverMs == null || p.x < cutoverMs;
+                }),
+                borderColor: 'transparent',
+                backgroundColor: COLORS.copper,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                pointStyle: 'circle',
+                showLine: false,
+                order: 1
+            });
+        }
+        if (parts.public.length) {
+            datasets.push({
+                label: 'Public market',
+                data: parts.public,
+                borderColor: COLORS.green,
+                backgroundColor: COLORS.greenFill,
+                borderWidth: 2,
+                tension: 0.2,
+                fill: true,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointBackgroundColor: COLORS.green,
+                order: 3
+            });
+        }
+
         if (priceChart) {
-            priceChart.data.datasets[0].data = view;
+            priceChart.data.datasets = datasets;
             priceChart.options.scales.x.min = minX;
             priceChart.options.scales.x.max = maxX;
             priceChart.options.scales.x.time.unit = unit;
@@ -439,77 +517,43 @@ if (typeof Chart !== 'undefined') {
             priceChart.options.scales.y.max = maxY + pad;
             priceChart.update('none');
             updateRangeChange(view);
-            clearMeasure();
+            clearMeasureUI(false);
             return;
         }
 
-        const ctx = canvas.getContext('2d');
-        priceChart = new Chart(ctx, {
+        priceChart = new Chart(canvas.getContext('2d'), {
             type: 'line',
-            data: {
-                datasets: [{
-                    label: 'Share price',
-                    data: view,
-                    borderColor: COLORS.copper,
-                    backgroundColor: COLORS.copperFill,
-                    borderWidth: 2,
-                    tension: 0.25,
-                    fill: true,
-                    pointRadius: 0,
-                    pointHoverRadius: 4,
-                    pointBackgroundColor: COLORS.copper
-                }]
-            },
+            data: { datasets: datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 parsing: false,
                 animation: false,
-                interaction: { intersect: false, mode: 'index' },
+                interaction: { intersect: false, mode: 'nearest', axis: 'x' },
+                events: [], // we handle pointer ourselves so drag isn't stolen
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        backgroundColor: COLORS.tooltipBg,
-                        borderColor: COLORS.tooltipBorder,
-                        borderWidth: 1,
-                        padding: 8,
-                        titleColor: COLORS.body,
-                        bodyColor: COLORS.body,
-                        displayColors: false,
-                        callbacks: {
-                            title: function (items) {
-                                return fmtDate(items[0].parsed.x);
-                            },
-                            label: function (context) {
-                                return fmtMoney(context.parsed.y);
-                            }
-                        }
-                    }
+                    tooltip: { enabled: false }
                 },
                 scales: {
                     x: {
                         type: 'time',
                         min: minX,
                         max: maxX,
-                        bounds: 'ticks',
                         time: {
                             unit: unit,
-                            tooltipFormat: 'MMM d, yyyy',
                             displayFormats: {
                                 day: 'MMM d',
-                                week: 'MMM d',
                                 month: "MMM ''yy",
                                 year: 'yyyy'
                             }
                         },
-                        adapters: {},
-                        grid: { display: false, drawBorder: false },
+                        grid: { display: false },
                         ticks: {
                             color: COLORS.text,
                             maxRotation: 0,
                             autoSkip: true,
-                            maxTicksLimit: 5,
-                            source: 'auto'
+                            maxTicksLimit: 5
                         }
                     },
                     y: {
@@ -520,17 +564,16 @@ if (typeof Chart !== 'undefined') {
                         ticks: {
                             color: COLORS.text,
                             maxTicksLimit: 4,
-                            callback: function (value) {
-                                return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                            callback: function (v) {
+                                return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
                             }
                         }
                     }
                 }
             }
         });
-
         updateRangeChange(view);
-        clearMeasure();
+        clearMeasureUI(false);
     }
 
     function setRange(range) {
@@ -541,43 +584,43 @@ if (typeof Chart !== 'undefined') {
         buildChart(filterByRange(fullSeries, range));
     }
 
+    function relX(clientX) {
+        const rect = wrap.getBoundingClientRect();
+        return clientX - rect.left;
+    }
+
     function chartArea() {
-        if (!priceChart) return null;
-        return priceChart.chartArea;
+        return priceChart ? priceChart.chartArea : null;
     }
 
-    function xToValue(pixelX) {
-        if (!priceChart) return null;
-        return priceChart.scales.x.getValueForPixel(pixelX);
-    }
-
-    function nearestPoint(ts) {
-        if (!priceChart || !priceChart.data.datasets[0].data.length) return null;
-        const data = priceChart.data.datasets[0].data;
-        const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
-        let best = data[0];
-        let bestDist = Math.abs(data[0].x - t);
-        for (let i = 1; i < data.length; i++) {
-            const d = Math.abs(data[i].x - t);
-            if (d < bestDist) {
-                bestDist = d;
-                best = data[i];
+    function nearestInView(ts) {
+        if (!viewSeries.length) return null;
+        const t = Number(ts);
+        let best = viewSeries[0];
+        let bestD = Math.abs(viewSeries[0].x - t);
+        for (let i = 1; i < viewSeries.length; i++) {
+            const d = Math.abs(viewSeries[i].x - t);
+            if (d < bestD) {
+                bestD = d;
+                best = viewSeries[i];
             }
         }
         return best;
     }
 
-    function clearMeasure() {
+    function clearMeasureUI(resetDrag) {
         if (overlay) {
             overlay.hidden = true;
-            overlay.style.width = '0';
+            overlay.style.width = '0px';
         }
         if (badge) {
             badge.hidden = true;
-            badge.textContent = '';
+            badge.innerHTML = '';
         }
         if (crosshair) crosshair.hidden = true;
-        drag = null;
+        if (resetDrag !== false) {
+            dragging = false;
+        }
     }
 
     function showMeasure(x1, x2) {
@@ -586,10 +629,7 @@ if (typeof Chart !== 'undefined') {
 
         const left = Math.max(area.left, Math.min(x1, x2));
         const right = Math.min(area.right, Math.max(x1, x2));
-        if (right - left < 4) {
-            clearMeasure();
-            return;
-        }
+        if (right - left < 3) return;
 
         overlay.hidden = false;
         overlay.style.left = left + 'px';
@@ -597,12 +637,10 @@ if (typeof Chart !== 'undefined') {
         overlay.style.width = (right - left) + 'px';
         overlay.style.height = (area.bottom - area.top) + 'px';
 
-        const t0 = xToValue(left);
-        const t1 = xToValue(right);
-        if (t0 == null || t1 == null) return;
-
-        const p0 = nearestPoint(t0);
-        const p1 = nearestPoint(t1);
+        const t0 = priceChart.scales.x.getValueForPixel(left);
+        const t1 = priceChart.scales.x.getValueForPixel(right);
+        const p0 = nearestInView(t0);
+        const p1 = nearestInView(t1);
         if (!p0 || !p1) return;
 
         const a = p0.x <= p1.x ? p0 : p1;
@@ -610,7 +648,6 @@ if (typeof Chart !== 'undefined') {
         const delta = b.y - a.y;
         const pct = a.y ? (delta / a.y) * 100 : 0;
         const up = delta >= 0;
-        const days = Math.max(1, Math.round((b.x - a.x) / 86400000));
 
         badge.hidden = false;
         badge.className = 'price-measure-badge compact ' + (up ? 'up' : 'down');
@@ -619,58 +656,56 @@ if (typeof Chart !== 'undefined') {
             '<span>' + fmtDate(a.x) + ' → ' + fmtDate(b.x) + '</span>';
     }
 
-    function onPointerDown(e) {
+    function onDown(e) {
         if (!priceChart) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
         const area = chartArea();
-        if (!area || x < area.left || x > area.right) return;
-        drag = { startX: x, endX: x };
-        canvas.setPointerCapture(e.pointerId);
-        showMeasure(drag.startX, drag.endX);
+        if (!area) return;
+        const x = relX(e.clientX);
+        if (x < area.left || x > area.right) return;
+        dragging = true;
+        dragStartX = x;
+        dragEndX = x;
+        wrap.setPointerCapture(e.pointerId);
+        showMeasure(dragStartX, dragEndX);
         e.preventDefault();
     }
 
-    function onPointerMove(e) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
+    function onMove(e) {
         const area = chartArea();
+        const x = relX(e.clientX);
         if (area && x >= area.left && x <= area.right) {
             crosshair.hidden = false;
             crosshair.style.left = x + 'px';
             crosshair.style.top = area.top + 'px';
             crosshair.style.height = (area.bottom - area.top) + 'px';
-        } else if (!drag) {
+        } else if (!dragging) {
             crosshair.hidden = true;
         }
-        if (!drag) return;
-        drag.endX = x;
-        showMeasure(drag.startX, drag.endX);
+        if (!dragging) return;
+        dragEndX = x;
+        showMeasure(dragStartX, dragEndX);
+        e.preventDefault();
     }
 
-    function onPointerUp(e) {
-        if (!drag) return;
-        const rect = canvas.getBoundingClientRect();
-        drag.endX = e.clientX - rect.left;
-        showMeasure(drag.startX, drag.endX);
-        try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
-        // Keep selection visible until next interaction
-        const start = drag.startX;
-        const end = drag.endX;
-        drag = null;
-        if (Math.abs(end - start) < 6) clearMeasure();
+    function onUp(e) {
+        if (!dragging) return;
+        dragEndX = relX(e.clientX);
+        showMeasure(dragStartX, dragEndX);
+        try { wrap.releasePointerCapture(e.pointerId); } catch (err) {}
+        const dist = Math.abs(dragEndX - dragStartX);
+        dragging = false;
+        if (dist < 6) clearMeasureUI(true);
+        e.preventDefault();
     }
 
-    function onPointerLeave() {
-        if (!drag) crosshair.hidden = true;
-    }
-
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', function () { drag = null; });
-    canvas.addEventListener('pointerleave', onPointerLeave);
-    canvas.addEventListener('dblclick', clearMeasure);
+    wrap.addEventListener('pointerdown', onDown);
+    wrap.addEventListener('pointermove', onMove);
+    wrap.addEventListener('pointerup', onUp);
+    wrap.addEventListener('pointercancel', function () { dragging = false; });
+    wrap.addEventListener('pointerleave', function () {
+        if (!dragging) crosshair.hidden = true;
+    });
+    wrap.addEventListener('dblclick', function () { clearMeasureUI(true); });
 
     document.querySelectorAll('#priceRangeToggles .range-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -681,10 +716,15 @@ if (typeof Chart !== 'undefined') {
     fetch('{{ url_for("main.stock_price_chart_data") }}')
         .then(function (r) { return r.json(); })
         .then(function (data) {
+            if (data.cutover) {
+                cutoverMs = new Date(data.cutover + 'T00:00:00').getTime();
+            }
             fullSeries = (data.dates || []).map(function (d, i) {
-                // noon local to avoid timezone day-shift; store as ms for time scale
                 var ms = new Date(d + 'T12:00:00').getTime();
-                return { x: ms, y: Number(data.prices[i]) };
+                var src = (data.sources && data.sources[i]) || (
+                    cutoverMs != null && ms >= cutoverMs ? 'public' : 'private'
+                );
+                return { x: ms, y: Number(data.prices[i]), source: src };
             }).filter(function (p) { return !isNaN(p.y) && !isNaN(p.x); });
 
             if (fullSeries.length > 60) activeRange = '1y';
@@ -695,6 +735,7 @@ if (typeof Chart !== 'undefined') {
         .catch(function () {});
 })();
 </script>
+
 
 <style>
 .share-price-tile-head {
@@ -770,9 +811,15 @@ if (typeof Chart !== 'undefined') {
     touch-action: none;
     cursor: crosshair;
     user-select: none;
+    -webkit-user-select: none;
 }
 .price-chart-wrap.compact {
     height: 168px;
+}
+.price-chart-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
 }
 .price-selection-overlay {
     position: absolute;
