@@ -384,7 +384,7 @@ if (typeof Chart !== 'undefined') {
         return filtered.length ? filtered : series.slice(-1);
     }
 
-    /** Expand private revals into a continuous step series (hold value until next reval). */
+    /** Expand revals into step holds: flat until next point, then jump. */
     function toStepSeries(points) {
         if (!points.length) return [];
         const out = [];
@@ -394,16 +394,20 @@ if (typeof Chart !== 'undefined') {
                 out.push({ x: p.x, y: p.y });
             } else {
                 const prev = points[i - 1];
-                // horizontal hold at previous price until this reval
                 out.push({ x: p.x, y: prev.y });
                 out.push({ x: p.x, y: p.y });
             }
         }
-        // extend step to cutover or next public point if last private before cutover
         return out;
     }
 
-    function splitPrivatePublic(view) {
+    /**
+     * One continuous green series:
+     * - private revals as steps
+     * - hold last private price until first public day
+     * - jump to first public close, then smooth public path
+     */
+    function buildConnectedSeries(view) {
         const priv = [];
         const pub = [];
         view.forEach(function (p) {
@@ -411,21 +415,41 @@ if (typeof Chart !== 'undefined') {
             else pub.push(p);
         });
 
-        // Bridge: if both exist, connect last private level into first public with a step
-        let privStep = toStepSeries(priv);
-        if (priv.length && pub.length) {
-            const lastPriv = priv[priv.length - 1];
-            // hold private price until first public day, then public takes over
-            privStep.push({ x: pub[0].x, y: lastPriv.y });
+        const line = toStepSeries(priv);
+
+        if (pub.length) {
+            if (priv.length) {
+                const lastPriv = priv[priv.length - 1];
+                const firstPub = pub[0];
+                // Hold last private reval price until first public session
+                if (!line.length || line[line.length - 1].x !== firstPub.x || line[line.length - 1].y !== lastPriv.y) {
+                    line.push({ x: firstPub.x, y: lastPriv.y });
+                }
+                // Vertical step into first public print (same timestamp)
+                if (line[line.length - 1].y !== firstPub.y) {
+                    line.push({ x: firstPub.x, y: firstPub.y });
+                }
+                for (let i = 1; i < pub.length; i++) {
+                    line.push({ x: pub[i].x, y: pub[i].y });
+                }
+            } else {
+                pub.forEach(function (p) { line.push({ x: p.x, y: p.y }); });
+            }
         } else if (priv.length && cutoverMs != null) {
-            // hold last private to cutover so step is visible until IPO
             const lastPriv = priv[priv.length - 1];
             if (lastPriv.x < cutoverMs) {
-                privStep.push({ x: cutoverMs, y: lastPriv.y });
+                line.push({ x: cutoverMs, y: lastPriv.y });
             }
         }
 
-        return { private: privStep, public: pub.map(function (p) { return { x: p.x, y: p.y }; }) };
+        const markers = priv.map(function (p) { return { x: p.x, y: p.y }; });
+        // Mark the handoff: last private level at first public day + first public print
+        if (priv.length && pub.length) {
+            markers.push({ x: pub[0].x, y: priv[priv.length - 1].y });
+            markers.push({ x: pub[0].x, y: pub[0].y });
+        }
+
+        return { line: line, markers: markers };
     }
 
     function updateRangeChange(view) {
@@ -446,67 +470,47 @@ if (typeof Chart !== 'undefined') {
     function buildChart(view) {
         if (!view.length) return;
         viewSeries = view.slice();
-        const parts = splitPrivatePublic(view);
-        const allYs = view.map(function (p) { return p.y; });
+        const parts = buildConnectedSeries(view);
+        const allYs = parts.line.map(function (p) { return p.y; });
         const minY = Math.min.apply(null, allYs);
         const maxY = Math.max.apply(null, allYs);
         const pad = (maxY - minY) * 0.12 || maxY * 0.02 || 1;
-        const minX = view[0].x;
-        const maxX = view[view.length - 1].x;
+        const minX = parts.line[0].x;
+        const maxX = parts.line[parts.line.length - 1].x;
         const spanMs = Math.max(maxX - minX, 86400000);
         const unit = (activeRange === '1d' || activeRange === '1w' || activeRange === '1m')
             ? 'day'
             : (spanMs > 120 * 86400000 ? 'month' : 'day');
 
-        const datasets = [];
-        if (parts.private.length) {
-            datasets.push({
-                label: 'Pre-IPO (revals)',
-                data: parts.private,
-                borderColor: COLORS.copper,
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                tension: 0,
-                stepped: false, // already expanded to steps
-                fill: false,
-                pointRadius: function (ctx) {
-                    // show dots only at actual reval corners (every odd jump end)
-                    return 0;
-                },
-                pointHoverRadius: 4,
-                pointBackgroundColor: COLORS.copper,
-                order: 2
-            });
-            // Reval markers at original private points
-            datasets.push({
-                label: 'Revaluations',
-                data: view.filter(function (p) {
-                    return cutoverMs == null || p.x < cutoverMs;
-                }),
-                borderColor: 'transparent',
-                backgroundColor: COLORS.copper,
-                pointRadius: 3,
-                pointHoverRadius: 5,
-                pointStyle: 'circle',
-                showLine: false,
-                order: 1
-            });
-        }
-        if (parts.public.length) {
-            datasets.push({
-                label: 'Public market',
-                data: parts.public,
+        // Single continuous path (green): steps pre-IPO, connected into public
+        const datasets = [
+            {
+                label: 'Share price',
+                data: parts.line,
                 borderColor: COLORS.green,
                 backgroundColor: COLORS.greenFill,
                 borderWidth: 2,
-                tension: 0.2,
+                tension: 0,
                 fill: true,
                 pointRadius: 0,
-                pointHoverRadius: 4,
-                pointBackgroundColor: COLORS.green,
-                order: 3
-            });
-        }
+                pointHoverRadius: 0,
+                spanGaps: false,
+                order: 2
+            },
+            {
+                label: 'Revaluations',
+                data: parts.markers,
+                borderColor: COLORS.green,
+                backgroundColor: COLORS.green,
+                pointRadius: 3.5,
+                pointHoverRadius: 5,
+                pointStyle: 'circle',
+                pointBorderColor: '#e8e4dc',
+                pointBorderWidth: 1,
+                showLine: false,
+                order: 1
+            }
+        ];
 
         if (priceChart) {
             priceChart.data.datasets = datasets;
@@ -530,7 +534,7 @@ if (typeof Chart !== 'undefined') {
                 parsing: false,
                 animation: false,
                 interaction: { intersect: false, mode: 'nearest', axis: 'x' },
-                events: [], // we handle pointer ourselves so drag isn't stolen
+                events: [],
                 plugins: {
                     legend: { display: false },
                     tooltip: { enabled: false }
