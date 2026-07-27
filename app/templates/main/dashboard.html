@@ -96,38 +96,8 @@
         </p>
     </div>
 
-    <div class="chart-section" id="sharePriceSection">
-        <div class="chart-header price-chart-header">
-            <div class="price-chart-title">
-                <h2>Share price</h2>
-                <div class="price-headline">
-                    <span class="current-price" id="sharePriceHeadline">${{ "{:,.2f}".format(current_price) }}</span>
-                    <span class="price-change" id="sharePriceChange"></span>
-                </div>
-                <p class="price-measure-hint">Drag across the chart to measure gain or loss</p>
-            </div>
-            <div class="range-toggles" id="priceRangeToggles" role="group" aria-label="Chart range">
-                <button type="button" class="range-btn" data-range="1d">1D</button>
-                <button type="button" class="range-btn" data-range="1w">1W</button>
-                <button type="button" class="range-btn" data-range="1m">1M</button>
-                <button type="button" class="range-btn" data-range="ytd">YTD</button>
-                <button type="button" class="range-btn" data-range="1y">1Y</button>
-                <button type="button" class="range-btn" data-range="5y">5Y</button>
-                <button type="button" class="range-btn active" data-range="all">ALL</button>
-            </div>
-        </div>
-
-        <div class="price-measure-badge" id="priceMeasureBadge" hidden></div>
-
-        <div class="price-chart-wrap" id="priceChartWrap">
-            <canvas id="stockPriceChart"></canvas>
-            <div class="price-selection-overlay" id="priceSelectionOverlay" hidden></div>
-            <div class="price-crosshair" id="priceCrosshair" hidden></div>
-        </div>
-    </div>
-
     <div class="dashboard-content">
-        <div class="dashboard-section" style="grid-column: 1 / -1;">
+        <div class="dashboard-section">
             <h2>Upcoming vests</h2>
             {% if upcoming_vests %}
             <div class="vest-list">
@@ -143,6 +113,36 @@
             <p class="empty-state">No upcoming vests</p>
             {% endif %}
             <a href="{{ url_for('grants.vest_schedule') }}" class="link-more">View full schedule</a>
+        </div>
+
+        <div class="dashboard-section share-price-tile" id="sharePriceSection">
+            <div class="share-price-tile-head">
+                <h2>Share price</h2>
+                <div class="price-display tile-price">
+                    <div class="current-price" id="sharePriceHeadline">${{ "{:,.2f}".format(current_price) }}</div>
+                    <div class="price-label">per share</div>
+                    <div class="price-change" id="sharePriceChange"></div>
+                </div>
+            </div>
+
+            <div class="range-toggles compact" id="priceRangeToggles" role="group" aria-label="Chart range">
+                <button type="button" class="range-btn" data-range="1d">1D</button>
+                <button type="button" class="range-btn" data-range="1w">1W</button>
+                <button type="button" class="range-btn" data-range="1m">1M</button>
+                <button type="button" class="range-btn" data-range="ytd">YTD</button>
+                <button type="button" class="range-btn" data-range="1y">1Y</button>
+                <button type="button" class="range-btn" data-range="5y">5Y</button>
+                <button type="button" class="range-btn active" data-range="all">ALL</button>
+            </div>
+
+            <div class="price-measure-badge compact" id="priceMeasureBadge" hidden></div>
+
+            <div class="price-chart-wrap compact" id="priceChartWrap">
+                <canvas id="stockPriceChart"></canvas>
+                <div class="price-selection-overlay" id="priceSelectionOverlay" hidden></div>
+                <div class="price-crosshair" id="priceCrosshair" hidden></div>
+            </div>
+            <p class="price-measure-hint">Drag to measure · double-click to clear</p>
         </div>
     </div>
 </div>
@@ -330,15 +330,15 @@ if (typeof Chart !== 'undefined') {
     createChart(currentView);
 }
 
-/* ——— Share price chart: ranges + drag-to-measure ——— */
+/* ——— Share price chart: ranges + drag-to-measure (compact tile) ——— */
 (function () {
-    let fullSeries = []; // {x: Date, y: number}[]
+    let fullSeries = []; // {x: number (ms), y: number}[]
     let priceChart = null;
     let activeRange = 'all';
-    let drag = null; // { startX, endX } in canvas pixel space relative to chart area
+    let drag = null;
 
-    const wrap = document.getElementById('priceChartWrap');
     const canvas = document.getElementById('stockPriceChart');
+    if (!canvas) return;
     const overlay = document.getElementById('priceSelectionOverlay');
     const badge = document.getElementById('priceMeasureBadge');
     const crosshair = document.getElementById('priceCrosshair');
@@ -356,21 +356,29 @@ if (typeof Chart !== 'undefined') {
         return sign + n.toFixed(2) + '%';
     }
 
-    function fmtDate(d) {
-        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    function fmtDate(ms) {
+        return new Date(ms).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric'
+        });
+    }
+
+    function timeUnitForRange(range, spanMs) {
+        if (range === '1d' || range === '1w') return 'day';
+        if (range === '1m') return 'day';
+        if (range === 'ytd' || range === '1y') return spanMs > 120 * 86400000 ? 'month' : 'day';
+        return spanMs > 400 * 86400000 ? 'month' : 'day';
     }
 
     function filterByRange(series, range) {
         if (!series.length) return series;
-        const end = series[series.length - 1].x.getTime();
-        const endDate = series[series.length - 1].x;
+        const end = series[series.length - 1].x;
+        const endDate = new Date(end);
         let startMs = null;
         const day = 86400000;
 
         switch (range) {
             case '1d':
-                // last trading point + previous for change; show last ~2 sessions min
-                return series.slice(-2);
+                return series.slice(-Math.min(5, series.length));
             case '1w':
                 startMs = end - 7 * day;
                 break;
@@ -390,7 +398,7 @@ if (typeof Chart !== 'undefined') {
             default:
                 return series.slice();
         }
-        const filtered = series.filter(p => p.x.getTime() >= startMs);
+        const filtered = series.filter(function (p) { return p.x >= startMs; });
         return filtered.length ? filtered : series.slice(-1);
     }
 
@@ -410,16 +418,32 @@ if (typeof Chart !== 'undefined') {
     }
 
     function buildChart(view) {
-        const ctx = canvas.getContext('2d');
-        if (priceChart) priceChart.destroy();
-
         if (!view.length) return;
 
-        const ys = view.map(p => p.y);
+        const ys = view.map(function (p) { return p.y; });
         const minY = Math.min.apply(null, ys);
         const maxY = Math.max.apply(null, ys);
-        const pad = (maxY - minY) * 0.08 || maxY * 0.02 || 1;
+        const pad = (maxY - minY) * 0.12 || maxY * 0.02 || 1;
+        const minX = view[0].x;
+        const maxX = view[view.length - 1].x;
+        const spanMs = Math.max(maxX - minX, 86400000);
+        const unit = timeUnitForRange(activeRange, spanMs);
 
+        // Prefer update over destroy so layout stays stable; always reset x bounds
+        if (priceChart) {
+            priceChart.data.datasets[0].data = view;
+            priceChart.options.scales.x.min = minX;
+            priceChart.options.scales.x.max = maxX;
+            priceChart.options.scales.x.time.unit = unit;
+            priceChart.options.scales.y.min = minY - pad;
+            priceChart.options.scales.y.max = maxY + pad;
+            priceChart.update('none');
+            updateRangeChange(view);
+            clearMeasure();
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
         priceChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -432,16 +456,15 @@ if (typeof Chart !== 'undefined') {
                     tension: 0.25,
                     fill: true,
                     pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: COLORS.copper,
-                    pointBorderColor: '#e8e4dc',
-                    pointBorderWidth: 1
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: COLORS.copper
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 parsing: false,
+                animation: false,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
@@ -449,13 +472,13 @@ if (typeof Chart !== 'undefined') {
                         backgroundColor: COLORS.tooltipBg,
                         borderColor: COLORS.tooltipBorder,
                         borderWidth: 1,
-                        padding: 10,
+                        padding: 8,
                         titleColor: COLORS.body,
                         bodyColor: COLORS.body,
                         displayColors: false,
                         callbacks: {
                             title: function (items) {
-                                return fmtDate(new Date(items[0].parsed.x));
+                                return fmtDate(items[0].parsed.x);
                             },
                             label: function (context) {
                                 return fmtMoney(context.parsed.y);
@@ -466,17 +489,28 @@ if (typeof Chart !== 'undefined') {
                 scales: {
                     x: {
                         type: 'time',
+                        min: minX,
+                        max: maxX,
+                        bounds: 'ticks',
                         time: {
+                            unit: unit,
                             tooltipFormat: 'MMM d, yyyy',
                             displayFormats: {
                                 day: 'MMM d',
                                 week: 'MMM d',
-                                month: 'MMM yyyy',
+                                month: "MMM ''yy",
                                 year: 'yyyy'
                             }
                         },
-                        grid: { color: COLORS.grid, drawBorder: false },
-                        ticks: { color: COLORS.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }
+                        adapters: {},
+                        grid: { display: false, drawBorder: false },
+                        ticks: {
+                            color: COLORS.text,
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 5,
+                            source: 'auto'
+                        }
                     },
                     y: {
                         beginAtZero: false,
@@ -485,7 +519,7 @@ if (typeof Chart !== 'undefined') {
                         grid: { color: COLORS.grid, drawBorder: false },
                         ticks: {
                             color: COLORS.text,
-                            maxTicksLimit: 6,
+                            maxTicksLimit: 4,
                             callback: function (value) {
                                 return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
                             }
@@ -514,17 +548,17 @@ if (typeof Chart !== 'undefined') {
 
     function xToValue(pixelX) {
         if (!priceChart) return null;
-        const scale = priceChart.scales.x;
-        return scale.getValueForPixel(pixelX);
+        return priceChart.scales.x.getValueForPixel(pixelX);
     }
 
     function nearestPoint(ts) {
         if (!priceChart || !priceChart.data.datasets[0].data.length) return null;
         const data = priceChart.data.datasets[0].data;
+        const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
         let best = data[0];
-        let bestDist = Math.abs(data[0].x.getTime() - ts);
+        let bestDist = Math.abs(data[0].x - t);
         for (let i = 1; i < data.length; i++) {
-            const d = Math.abs(data[i].x.getTime() - ts);
+            const d = Math.abs(data[i].x - t);
             if (d < bestDist) {
                 bestDist = d;
                 best = data[i];
@@ -567,24 +601,22 @@ if (typeof Chart !== 'undefined') {
         const t1 = xToValue(right);
         if (t0 == null || t1 == null) return;
 
-        const p0 = nearestPoint(typeof t0 === 'number' ? t0 : new Date(t0).getTime());
-        const p1 = nearestPoint(typeof t1 === 'number' ? t1 : new Date(t1).getTime());
+        const p0 = nearestPoint(t0);
+        const p1 = nearestPoint(t1);
         if (!p0 || !p1) return;
 
-        // Order by time
-        const a = p0.x.getTime() <= p1.x.getTime() ? p0 : p1;
-        const b = p0.x.getTime() <= p1.x.getTime() ? p1 : p0;
+        const a = p0.x <= p1.x ? p0 : p1;
+        const b = p0.x <= p1.x ? p1 : p0;
         const delta = b.y - a.y;
         const pct = a.y ? (delta / a.y) * 100 : 0;
         const up = delta >= 0;
         const days = Math.max(1, Math.round((b.x - a.x) / 86400000));
 
         badge.hidden = false;
-        badge.className = 'price-measure-badge ' + (up ? 'up' : 'down');
+        badge.className = 'price-measure-badge compact ' + (up ? 'up' : 'down');
         badge.innerHTML =
             '<strong>' + (up ? '+' : '') + fmtMoney(delta) + ' (' + fmtPct(pct) + ')</strong>' +
-            '<span>' + fmtDate(a.x) + ' → ' + fmtDate(b.x) + ' · ' + days + 'd</span>' +
-            '<span>' + fmtMoney(a.y) + ' → ' + fmtMoney(b.y) + '</span>';
+            '<span>' + fmtDate(a.x) + ' → ' + fmtDate(b.x) + '</span>';
     }
 
     function onPointerDown(e) {
@@ -650,10 +682,11 @@ if (typeof Chart !== 'undefined') {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             fullSeries = (data.dates || []).map(function (d, i) {
-                return { x: new Date(d + 'T12:00:00'), y: Number(data.prices[i]) };
-            }).filter(function (p) { return !isNaN(p.y); });
+                // noon local to avoid timezone day-shift; store as ms for time scale
+                var ms = new Date(d + 'T12:00:00').getTime();
+                return { x: ms, y: Number(data.prices[i]) };
+            }).filter(function (p) { return !isNaN(p.y) && !isNaN(p.x); });
 
-            // Prefer a sensible default range
             if (fullSeries.length > 60) activeRange = '1y';
             else if (fullSeries.length > 20) activeRange = '1m';
             else activeRange = 'all';
@@ -664,53 +697,65 @@ if (typeof Chart !== 'undefined') {
 </script>
 
 <style>
-.price-chart-header {
-    align-items: flex-start;
-    gap: 1rem;
-}
-.price-chart-title h2 { margin-bottom: 0.35rem; }
-.price-headline {
+.share-price-tile-head {
     display: flex;
-    align-items: baseline;
+    justify-content: space-between;
+    align-items: flex-start;
     gap: 0.75rem;
-    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
 }
-.price-headline .current-price {
-    font-size: 1.85rem;
+.share-price-tile-head h2 { margin: 0; }
+.tile-price {
+    text-align: right;
+    padding: 0;
+}
+.tile-price .current-price {
+    font-size: 1.5rem;
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--text-primary);
 }
+.tile-price .price-label {
+    font-size: 0.7rem;
+    margin-top: 0.1rem;
+}
 .price-change {
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     font-weight: 600;
+    margin-top: 0.25rem;
 }
 .price-change.up { color: var(--accent-bright, #2d6b52); }
 .price-change.down { color: #c47a6a; }
 .price-measure-hint {
-    margin-top: 0.35rem;
-    font-size: 0.8rem;
+    margin-top: 0.45rem;
+    font-size: 0.72rem;
     color: var(--text-muted);
+    text-align: center;
 }
 .range-toggles {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: 0.15rem;
     background: var(--bg-primary);
-    padding: 0.25rem;
+    padding: 0.2rem;
     border-radius: var(--radius-sm, 0.5rem);
     border: 1px solid var(--border-subtle, rgba(232,228,220,0.08));
+    margin-bottom: 0.5rem;
+}
+.range-toggles.compact .range-btn {
+    padding: 0.28rem 0.4rem;
+    font-size: 0.68rem;
 }
 .range-btn {
     border: none;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 600;
     font-family: inherit;
-    letter-spacing: 0.03em;
-    padding: 0.4rem 0.65rem;
-    border-radius: 0.35rem;
+    letter-spacing: 0.02em;
+    padding: 0.35rem 0.55rem;
+    border-radius: 0.3rem;
     cursor: pointer;
 }
 .range-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
@@ -721,15 +766,18 @@ if (typeof Chart !== 'undefined') {
 .price-chart-wrap {
     position: relative;
     height: 360px;
-    margin-top: 0.75rem;
+    margin-top: 0.5rem;
     touch-action: none;
     cursor: crosshair;
     user-select: none;
 }
+.price-chart-wrap.compact {
+    height: 168px;
+}
 .price-selection-overlay {
     position: absolute;
     pointer-events: none;
-    background: rgba(184, 115, 51, 0.14);
+    background: rgba(184, 115, 51, 0.16);
     border-left: 1px solid rgba(184, 115, 51, 0.55);
     border-right: 1px solid rgba(184, 115, 51, 0.55);
     z-index: 2;
@@ -744,24 +792,22 @@ if (typeof Chart !== 'undefined') {
 .price-measure-badge {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
+    gap: 0.35rem 0.75rem;
     align-items: center;
-    margin: 0.5rem 0 0.25rem;
-    padding: 0.65rem 0.9rem;
+    margin: 0.35rem 0;
+    padding: 0.4rem 0.6rem;
     border-radius: var(--radius-sm, 0.5rem);
     border: 1px solid var(--border);
     background: var(--bg-primary);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
-.price-measure-badge strong {
-    font-size: 0.95rem;
+.price-measure-badge.compact {
+    font-size: 0.72rem;
+    padding: 0.35rem 0.5rem;
 }
+.price-measure-badge strong { font-size: 0.8rem; }
 .price-measure-badge.up strong { color: var(--accent-bright, #2d6b52); }
 .price-measure-badge.down strong { color: #c47a6a; }
-@media (max-width: 768px) {
-    .price-chart-wrap { height: 280px; }
-    .price-chart-header { flex-direction: column; }
-}
 </style>
 {% endblock %}
