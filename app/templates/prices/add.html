@@ -9,11 +9,6 @@
     </header>
 
     <div class="form-card">
-        <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
-            Private encrypted valuations for dates <strong>before {{ cutover.isoformat() }}</strong>
-            (first {{ ticker }} trading day). From that date onward, prices come from the public market automatically.
-        </p>
-
         <form method="post" action="{{ url_for('prices.add_price') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

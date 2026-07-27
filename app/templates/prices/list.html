@@ -18,7 +18,7 @@
     <div class="stats-grid" style="margin-bottom: 1.5rem;">
         <div class="stat-card accent">
             <div class="stat-content">
-                <div class="stat-label">Live {{ ticker }}</div>
+                <div class="stat-label">{{ ticker }}</div>
                 <div class="stat-value">
                     {% if live_price is not none %}
                     ${{ "{:,.2f}".format(live_price) }}
@@ -26,24 +26,12 @@
                     —
                     {% endif %}
                 </div>
-                <small>Public market from {{ cutover.strftime('%b %d, %Y') }}</small>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-content">
-                <div class="stat-label">Cutover</div>
-                <div class="stat-value" style="font-size: 1.15rem;">{{ cutover.isoformat() }}</div>
-                <small>First public trading day — manual entries apply only before this date</small>
             </div>
         </div>
     </div>
 
     <div class="detail-card">
-        <h2>Public market ({{ ticker }})</h2>
-        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
-            Daily closes and last quote from Yahoo Finance (Stooq fallback), stored for all users.
-            Source of truth for valuations on and after the first trading day.
-        </p>
+        <h2>Market history</h2>
         {% if public_prices %}
         <div class="table-container" style="border: none; padding: 0; margin: 0;">
             <table class="data-table sortable-table">
@@ -51,7 +39,6 @@
                     <tr>
                         <th data-sort="date">Date</th>
                         <th data-sort="number">Price (USD)</th>
-                        <th>Source</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -59,22 +46,18 @@
                     <tr>
                         <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
                         <td class="highlight">${{ "{:,.2f}".format(price.decrypted_price) }}</td>
-                        <td style="color: var(--text-secondary);">{{ price.source }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
         {% else %}
-        <p class="empty-state">No public prices loaded yet. Click Refresh market.</p>
+        <p class="empty-state">No market prices loaded yet. Click Refresh market.</p>
         {% endif %}
     </div>
 
     <div class="detail-card">
-        <h2>Private pre-IPO valuations</h2>
-        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
-            Encrypted entries you entered while SpaceX was private. Used only for dates before {{ cutover.isoformat() }}.
-        </p>
+        <h2>Pre-IPO valuations</h2>
         {% if private_prices %}
         <div class="table-container" style="border: none; padding: 0; margin: 0;">
             <table class="data-table sortable-table">
@@ -100,13 +83,11 @@
                             {% if price.editable %}
                             <div style="display: flex; gap: 0.5rem;">
                                 <a href="{{ url_for('prices.edit_price', price_id=price.id) }}" class="btn btn-secondary btn-sm">Edit</a>
-                                <form method="post" action="{{ url_for('prices.delete_price', price_id=price.id) }}" style="display:inline;" onsubmit="return confirm('Delete this private price entry?');">
+                                <form method="post" action="{{ url_for('prices.delete_price', price_id=price.id) }}" style="display:inline;" onsubmit="return confirm('Delete this price entry?');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                                 </form>
                             </div>
-                            {% else %}
-                            <span style="color: var(--text-muted); font-size: 0.85rem;">Superseded by market</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -115,7 +96,7 @@
             </table>
         </div>
         {% else %}
-        <p class="empty-state">No private pre-IPO entries.</p>
+        <p class="empty-state">No pre-IPO entries.</p>
         {% endif %}
     </div>
 </div>

@@ -51,9 +51,6 @@
             <span class="legend-item"><span class="legend-line solid"></span> Past (vested)</span>
             <span class="legend-item"><span class="legend-line dashed"></span> Future (projected)</span>
         </div>
-        <p style="margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
-            Cumulative equity value at each date, split at today
-        </p>
     </div>
 
     <div class="dashboard-content">
@@ -101,7 +98,6 @@
                 <div class="price-selection-overlay" id="priceSelectionOverlay" hidden></div>
                 <div class="price-crosshair" id="priceCrosshair" hidden></div>
             </div>
-            <p class="price-measure-hint">Drag to measure · double-click to clear</p>
         </div>
     </div>
 </div>
@@ -673,12 +669,18 @@ if (typeof Chart !== 'undefined') {
 
 
 <style>
+.share-price-tile {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
 .share-price-tile-head {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
 }
 .share-price-tile-head h2 { margin: 0; }
 .tile-price {
@@ -702,12 +704,6 @@ if (typeof Chart !== 'undefined') {
 }
 .price-change.up { color: var(--accent-bright, #2d6b52); }
 .price-change.down { color: #c47a6a; }
-.price-measure-hint {
-    margin-top: 0.45rem;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    text-align: center;
-}
 .range-toggles {
     display: flex;
     flex-wrap: wrap;
@@ -716,7 +712,8 @@ if (typeof Chart !== 'undefined') {
     padding: 0.2rem;
     border-radius: var(--radius-sm, 0.5rem);
     border: 1px solid var(--border-subtle, rgba(232,228,220,0.08));
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
+    flex-shrink: 0;
 }
 .range-toggles.compact .range-btn {
     padding: 0.28rem 0.4rem;
@@ -742,14 +739,17 @@ if (typeof Chart !== 'undefined') {
 .price-chart-wrap {
     position: relative;
     height: 360px;
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
     touch-action: none;
     cursor: crosshair;
     user-select: none;
     -webkit-user-select: none;
+    flex: 1 1 auto;
+    min-height: 200px;
 }
 .price-chart-wrap.compact {
-    height: 168px;
+    height: auto;
+    min-height: 220px;
 }
 .price-chart-wrap canvas {
     display: block;
