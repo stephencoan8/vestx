@@ -43,7 +43,11 @@ class Config:
     PUBLIC_MARKET_START = os.getenv('PUBLIC_MARKET_START', '2026-06-12')  # first SPCX trading day
     MARKET_SYNC_MINUTES = int(os.getenv('MARKET_SYNC_MINUTES', '15'))
 
-    
+    # SpaceXAI / xAI Grok (server-side only; never expose to browser)
+    XAI_API_KEY = os.getenv('XAI_API_KEY')
+    XAI_MODEL = os.getenv('XAI_MODEL', 'grok-4.5')
+    XAI_BASE_URL = os.getenv('XAI_BASE_URL', 'https://api.x.ai/v1')
+
     # Session Security
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in prod
     SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access

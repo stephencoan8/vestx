@@ -16,6 +16,8 @@ from app.models.grant import Grant, ShareType
 from app.utils.lot_inventory import build_lots_for_user
 from app.utils.tax_engine import LotSaleInput, analyze_sales
 from app.utils.equity_planner import LotSpec, run_plan
+from app.utils.goal_optimizer import GoalRequest, optimize_goal, parse_goal_heuristic
+from app.utils import xai_advisor
 from app.utils.price_utils import get_latest_user_price
 import logging
 
@@ -59,6 +61,7 @@ def hub():
         live_price=live,
         shares_available=available,
         profile_ready=profile.other_ordinary_income is not None,
+        grok_enabled=xai_advisor.is_configured(),
     )
 
 
@@ -256,6 +259,196 @@ def api_analyze():
 def api_plan():
     """Alias for strategy planner (same body as /api/analyze)."""
     return api_analyze()
+
+
+def _goal_from_payload(data: dict, live_price: float) -> GoalRequest:
+    def _date(key, default=None):
+        raw = data.get(key)
+        if not raw:
+            return default
+        return datetime.fromisoformat(str(raw)).date()
+
+    price = data.get('sale_price')
+    if price is None:
+        price = live_price
+    fmv = data.get('exercise_fmv')
+    if fmv is None:
+        fmv = price
+
+    return GoalRequest(
+        target_net_cash=(
+            float(data['target_net_cash'])
+            if data.get('target_net_cash') not in (None, '')
+            else None
+        ),
+        objective=(data.get('objective') or 'min_tax').strip().lower(),
+        sale_price=float(price or 0),
+        sale_date=_date('sale_date', date.today()),
+        exercise_date=_date('exercise_date', _date('sale_date', date.today())),
+        exercise_fmv=float(fmv or 0),
+        allow_rsu=data.get('allow_rsu', True) is not False,
+        allow_iso_sell_held=data.get('allow_iso_sell_held', True) is not False,
+        allow_iso_cashless=data.get('allow_iso_cashless', True) is not False,
+        allow_iso_exercise_hold=bool(data.get('allow_iso_exercise_hold')),
+        iso_max_exercise=(
+            float(data['iso_max_exercise'])
+            if data.get('iso_max_exercise') not in (None, '')
+            else None
+        ),
+        iso_prefer_hold_fraction=(
+            float(data['iso_prefer_hold_fraction'])
+            if data.get('iso_prefer_hold_fraction') not in (None, '')
+            else None
+        ),
+        max_tax=(
+            float(data['max_tax']) if data.get('max_tax') not in (None, '') else None
+        ),
+        raw_text=data.get('raw_text') or data.get('prompt') or '',
+    )
+
+
+@tax_center_bp.route('/api/goal', methods=['POST'])
+@login_required
+def api_goal():
+    """
+    Goal-based optimizer: e.g. net $500k after tax with min tax, SpecID lots.
+
+    Optional natural language in `prompt` — parsed by Grok when XAI_API_KEY is set,
+    else heuristic parser.
+    """
+    try:
+        data = request.get_json() or {}
+        profile = TaxProfile.for_user(current_user)
+        eng = profile.to_engine_dict()
+        live = get_latest_user_price(current_user.id) or 0.0
+        lots = build_lots_for_user(current_user.id)
+
+        prompt = (data.get('prompt') or data.get('raw_text') or '').strip()
+        explain = bool(data.get('explain', True))
+
+        goal = _goal_from_payload(data, live)
+        parse_meta = {'source': 'form', 'interpretation': None, 'clarifications': []}
+
+        if prompt:
+            goal.raw_text = prompt
+            defaults = {
+                'sale_price': goal.sale_price,
+                'sale_date': goal.sale_date,
+                'exercise_date': goal.exercise_date,
+                'exercise_fmv': goal.exercise_fmv,
+            }
+            if data.get('use_grok_parse', True) and xai_advisor.is_configured():
+                try:
+                    parsed = xai_advisor.parse_goal_with_grok(
+                        prompt,
+                        inventory_summary=xai_advisor.summarize_inventory(lots),
+                        profile_summary=xai_advisor.summarize_profile(eng),
+                        defaults=defaults,
+                    )
+                    parse_meta = {
+                        'source': 'grok',
+                        'interpretation': parsed.get('interpretation'),
+                        'clarifications': parsed.get('clarifications') or [],
+                        'raw_parse': parsed,
+                    }
+                    if parsed.get('target_net_cash') is not None:
+                        goal.target_net_cash = float(parsed['target_net_cash'])
+                    if parsed.get('objective'):
+                        goal.objective = str(parsed['objective'])
+                    for flag in (
+                        'allow_rsu',
+                        'allow_iso_sell_held',
+                        'allow_iso_cashless',
+                        'allow_iso_exercise_hold',
+                    ):
+                        if flag in parsed and parsed[flag] is not None:
+                            setattr(goal, flag, bool(parsed[flag]))
+                    if parsed.get('iso_prefer_hold_fraction') is not None:
+                        goal.iso_prefer_hold_fraction = float(parsed['iso_prefer_hold_fraction'])
+                    if parsed.get('iso_max_exercise') is not None:
+                        goal.iso_max_exercise = float(parsed['iso_max_exercise'])
+                    if parsed.get('max_tax') is not None:
+                        goal.max_tax = float(parsed['max_tax'])
+                except Exception as e:
+                    logger.warning('Grok parse failed, using heuristic: %s', e)
+                    goal = parse_goal_heuristic(prompt, defaults)
+                    # Keep form price/dates
+                    goal.sale_price = float(data.get('sale_price') or live or 0)
+                    goal.sale_date = goal.sale_date or date.today()
+                    parse_meta = {'source': 'heuristic_fallback', 'error': str(e)}
+            else:
+                heur = parse_goal_heuristic(prompt, defaults)
+                if heur.target_net_cash is not None:
+                    goal.target_net_cash = heur.target_net_cash
+                goal.objective = heur.objective or goal.objective
+                goal.allow_iso_cashless = heur.allow_iso_cashless
+                goal.allow_iso_exercise_hold = (
+                    goal.allow_iso_exercise_hold or heur.allow_iso_exercise_hold
+                )
+                parse_meta = {'source': 'heuristic', 'interpretation': None}
+
+        result = optimize_goal(eng, lots, goal)
+        payload = result.to_dict()
+        payload['parse'] = parse_meta
+
+        if explain and xai_advisor.is_configured() and (
+            prompt or result.picks
+        ):
+            try:
+                payload['explanation'] = xai_advisor.explain_plan_with_grok(
+                    user_request=prompt or f"Net ${goal.target_net_cash or 0:,.0f} minimize tax",
+                    plan=payload,
+                    profile_summary=xai_advisor.summarize_profile(eng),
+                    inventory_summary=xai_advisor.summarize_inventory(lots),
+                )
+            except Exception as e:
+                logger.warning('Grok explain failed: %s', e)
+                payload['explanation'] = None
+                payload['explanation_error'] = str(e)
+        else:
+            payload['explanation'] = None
+            if not xai_advisor.is_configured():
+                payload['explanation_note'] = (
+                    'Set XAI_API_KEY for Grok narrative explanations of this plan.'
+                )
+
+        payload['grok_enabled'] = xai_advisor.is_configured()
+        return jsonify({'success': True, **payload})
+    except Exception as e:
+        logger.error('goal optimize failed: %s', e, exc_info=True)
+        return jsonify({'error': str(e)}), 400
+
+
+@tax_center_bp.route('/api/advisor', methods=['POST'])
+@login_required
+def api_advisor():
+    """
+    Free-form Grok chat with plan + inventory context.
+    Body: { messages: [{role, content}], plan?: object }
+    """
+    if not xai_advisor.is_configured():
+        return jsonify({
+            'error': 'Grok is not configured. Set XAI_API_KEY on the server.',
+            'grok_enabled': False,
+        }), 503
+    try:
+        data = request.get_json() or {}
+        messages = data.get('messages') or []
+        if not messages:
+            return jsonify({'error': 'messages required'}), 400
+        profile = TaxProfile.for_user(current_user)
+        eng = profile.to_engine_dict()
+        lots = build_lots_for_user(current_user.id)
+        reply = xai_advisor.advisor_chat(
+            messages=messages,
+            plan=data.get('plan'),
+            profile_summary=xai_advisor.summarize_profile(eng),
+            inventory_summary=xai_advisor.summarize_inventory(lots),
+        )
+        return jsonify({'success': True, 'reply': reply, 'grok_enabled': True})
+    except Exception as e:
+        logger.error('advisor failed: %s', e, exc_info=True)
+        return jsonify({'error': str(e)}), 400
 
 
 @tax_center_bp.route('/api/sales', methods=['POST'])

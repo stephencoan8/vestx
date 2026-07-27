@@ -24,3 +24,6 @@ email-validator>=2.1.0
 
 # Production server
 gunicorn>=21.2.0
+
+# SpaceXAI / xAI Grok (OpenAI-compatible client)
+openai>=1.40.0
