@@ -69,7 +69,8 @@ def create_app():
     from app.routes.prices import prices_bp
     from app.routes.scenarios import scenarios_bp
     from app.routes.transactions import transactions_bp
-    
+    from app.routes.tax_center import tax_center_bp
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(grants_bp)
@@ -78,6 +79,8 @@ def create_app():
     app.register_blueprint(prices_bp)
     app.register_blueprint(scenarios_bp, url_prefix='/scenarios')
     app.register_blueprint(transactions_bp, url_prefix='/transactions')
+    app.register_blueprint(tax_center_bp)
+
     
     # Register error handlers
     register_error_handlers(app)
@@ -86,8 +89,10 @@ def create_app():
     with app.app_context():
         # Register models without rebinding local name `app` (import app.models would)
         from app.models import market_price as _market_price  # noqa: F401
+        from app.models import tax_profile as _tax_profile  # noqa: F401
 
         db.create_all()
+
 
         # Run migrations
         from app.utils.migrate_transactions import migrate_transactions

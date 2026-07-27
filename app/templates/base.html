@@ -24,9 +24,9 @@
 
             <div class="sidebar-section">
                 <span class="sidebar-label">Analysis</span>
+                <a href="{{ url_for('tax_center.hub') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('tax_center.') %} active{% endif %}">Sales &amp; Tax</a>
                 <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link{% if request.endpoint == 'grants.vest_schedule' %} active{% endif %}">Schedule</a>
                 <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link{% if request.endpoint == 'grants.finance_deep_dive' %} active{% endif %}">Finance</a>
-                <a href="{{ url_for('grants.sale_planning') }}" class="nav-link{% if request.endpoint == 'grants.sale_planning' %} active{% endif %}">Sale Planning</a>
                 <a href="{{ url_for('grants.rules') }}" class="nav-link{% if request.endpoint == 'grants.rules' %} active{% endif %}">Rules</a>
             </div>
 

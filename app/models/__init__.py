@@ -9,6 +9,7 @@ from app.models.stock_price import StockPrice
 from app.models.sale_plan import SalePlan
 from app.models.stock_sale import StockSale, ISOExercise, StockPriceScenario, ScenarioPricePoint
 from app.models.market_price import MarketPrice
+from app.models.tax_profile import TaxProfile
 
 __all__ = [
     'User',
@@ -24,4 +25,5 @@ __all__ = [
     'StockPriceScenario',
     'ScenarioPricePoint',
     'MarketPrice',
+    'TaxProfile',
 ]

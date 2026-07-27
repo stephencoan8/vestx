@@ -589,7 +589,15 @@ def vest_detail(vest_id):
 @grants_bp.route('/sale-planning')
 @login_required
 def sale_planning():
-    """Sale planning interface - drag/drop vests into years to optimize taxes"""
+    """Legacy URL — redirect to Sales & Tax center."""
+    from flask import redirect, url_for
+    return redirect(url_for('tax_center.hub'))
+
+
+@grants_bp.route('/sale-planning-legacy')
+@login_required
+def sale_planning_legacy():
+    """Old sale planning UI (kept for reference)."""
     # Get all vest events (vested and unvested)
     vest_events = VestEvent.query.join(Grant).filter(
         Grant.user_id == current_user.id
