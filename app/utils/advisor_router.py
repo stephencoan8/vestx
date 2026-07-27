@@ -37,12 +37,12 @@ _NET_CASH = re.compile(
 )
 _OPTIMIZE = re.compile(
     r'\b(which lots?|what (?:should|do) i sell|minimi[sz]e tax|optimal|optimize|'
-    r'specid|sell order|how many shares)\b',
+    r'specid|sell order|tax.?efficient)\b',
     re.I,
 )
 _PORTFOLIO = re.compile(
     r'\b(how many shares|portfolio|what do i (?:own|hold|have)|total value|'
-    r'unrealized|inventory summary)\b',
+    r'unrealized|inventory summary|shares do i hold)\b',
     re.I,
 )
 _QD = re.compile(
@@ -119,6 +119,47 @@ def route_and_compute(
     today = sale_date or date.today()
     price = float(live_price or 0)
 
+    # Portfolio before optimize (avoid "how many shares" false positives)
+    if _PORTFOLIO.search(text) and not _NET_CASH.search(text) and not re.search(
+        r'\b(sell|tax|net \$|minimize)\b', text, re.I
+    ):
+        held = sum(float(l.get('shares_available') or 0) for l in inventory_lots)
+        unex = sum(float(l.get('shares_unexercised') or 0) for l in inventory_lots)
+        rsu_h = sum(
+            float(l.get('shares_available') or 0)
+            for l in inventory_lots if not l.get('is_iso')
+        )
+        iso_h = sum(
+            float(l.get('shares_available') or 0)
+            for l in inventory_lots if l.get('is_iso')
+        )
+        ug = sum(float(l.get('unrealized_gain') or 0) for l in inventory_lots)
+        val = held * price
+        human = (
+            f"**Portfolio (deterministic)** @ ${price:,.2f}/sh\n"
+            f"- Sellable held: {held:,.2f} sh (~${val:,.0f})\n"
+            f"  - RSU held: {rsu_h:,.2f}\n"
+            f"  - ISO held (exercised): {iso_h:,.2f}\n"
+            f"- Unexercised ISO: {unex:,.2f} sh\n"
+            f"- Lots: {len(inventory_lots)}\n"
+            f"- Unrealized on held (approx): ${ug:,.0f}\n\n"
+            f"For min-tax sell picks, ask e.g. “net $500k minimize tax”."
+        )
+        engine = (
+            f"ENGINE_RESULT portfolio: px={price} held={held} unexISO={unex} "
+            f"rsu_h={rsu_h} iso_h={iso_h} lots={len(inventory_lots)} urGain={ug} val={val}"
+        )
+        if wants_nuance:
+            return RouterResult(
+                mode='engine_then_grok', intent='portfolio',
+                engine_text=engine, deterministic_reply=human, skip_grok=False,
+            )
+        return RouterResult(
+            mode='engine_only', intent='portfolio',
+            engine_text=engine, deterministic_reply=human, skip_grok=True,
+            notes=['Portfolio totals from lot_inventory (0 Grok tokens)'],
+        )
+
     # --- Net cash / optimize lots ---
     net_m = _NET_CASH.search(text)
     if net_m or _OPTIMIZE.search(text):
@@ -190,45 +231,6 @@ def route_and_compute(
             deterministic_reply=human,
             skip_grok=True,
             notes=['Answered from goal_optimizer only (0 Grok tokens)'],
-        )
-
-    # --- Portfolio snapshot ---
-    if _PORTFOLIO.search(text):
-        held = sum(float(l.get('shares_available') or 0) for l in inventory_lots)
-        unex = sum(float(l.get('shares_unexercised') or 0) for l in inventory_lots)
-        rsu_h = sum(
-            float(l.get('shares_available') or 0)
-            for l in inventory_lots if not l.get('is_iso')
-        )
-        iso_h = sum(
-            float(l.get('shares_available') or 0)
-            for l in inventory_lots if l.get('is_iso')
-        )
-        ug = sum(float(l.get('unrealized_gain') or 0) for l in inventory_lots)
-        val = held * price
-        human = (
-            f"**Portfolio (deterministic)** @ ${price:,.2f}/sh\n"
-            f"- Sellable held: {held:,.2f} sh (~${val:,.0f})\n"
-            f"  - RSU held: {rsu_h:,.2f}\n"
-            f"  - ISO held (exercised): {iso_h:,.2f}\n"
-            f"- Unexercised ISO: {unex:,.2f} sh\n"
-            f"- Lots: {len(inventory_lots)}\n"
-            f"- Unrealized on held (approx): ${ug:,.0f}\n\n"
-            f"For min-tax sell picks, ask e.g. “net $500k minimize tax”."
-        )
-        engine = (
-            f"ENGINE_RESULT portfolio: px={price} held={held} unexISO={unex} "
-            f"rsu_h={rsu_h} iso_h={iso_h} lots={len(inventory_lots)} urGain={ug} val={val}"
-        )
-        if wants_nuance:
-            return RouterResult(
-                mode='engine_then_grok', intent='portfolio',
-                engine_text=engine, deterministic_reply=human, skip_grok=False,
-            )
-        return RouterResult(
-            mode='engine_only', intent='portfolio',
-            engine_text=engine, deterministic_reply=human, skip_grok=True,
-            notes=['Portfolio totals from lot_inventory (0 Grok tokens)'],
         )
 
     # --- ISO QD calendar ---
