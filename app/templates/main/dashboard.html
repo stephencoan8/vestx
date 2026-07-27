@@ -442,14 +442,7 @@ if (typeof Chart !== 'undefined') {
             }
         }
 
-        const markers = priv.map(function (p) { return { x: p.x, y: p.y }; });
-        // Mark the handoff: last private level at first public day + first public print
-        if (priv.length && pub.length) {
-            markers.push({ x: pub[0].x, y: priv[priv.length - 1].y });
-            markers.push({ x: pub[0].x, y: pub[0].y });
-        }
-
-        return { line: line, markers: markers };
+        return { line: line };
     }
 
     function updateRangeChange(view) {
@@ -482,7 +475,7 @@ if (typeof Chart !== 'undefined') {
             ? 'day'
             : (spanMs > 120 * 86400000 ? 'month' : 'day');
 
-        // Single continuous path (green): steps pre-IPO, connected into public
+        // Single continuous path (green): steps pre-IPO, connected into public (no reval dots)
         const datasets = [
             {
                 label: 'Share price',
@@ -496,19 +489,6 @@ if (typeof Chart !== 'undefined') {
                 pointHoverRadius: 0,
                 spanGaps: false,
                 order: 2
-            },
-            {
-                label: 'Revaluations',
-                data: parts.markers,
-                borderColor: COLORS.green,
-                backgroundColor: COLORS.green,
-                pointRadius: 3.5,
-                pointHoverRadius: 5,
-                pointStyle: 'circle',
-                pointBorderColor: '#e8e4dc',
-                pointBorderWidth: 1,
-                showLine: false,
-                order: 1
             }
         ];
 
