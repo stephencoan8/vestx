@@ -96,8 +96,38 @@
         </p>
     </div>
 
+    <div class="chart-section" id="sharePriceSection">
+        <div class="chart-header price-chart-header">
+            <div class="price-chart-title">
+                <h2>Share price</h2>
+                <div class="price-headline">
+                    <span class="current-price" id="sharePriceHeadline">${{ "{:,.2f}".format(current_price) }}</span>
+                    <span class="price-change" id="sharePriceChange"></span>
+                </div>
+                <p class="price-measure-hint">Drag across the chart to measure gain or loss</p>
+            </div>
+            <div class="range-toggles" id="priceRangeToggles" role="group" aria-label="Chart range">
+                <button type="button" class="range-btn" data-range="1d">1D</button>
+                <button type="button" class="range-btn" data-range="1w">1W</button>
+                <button type="button" class="range-btn" data-range="1m">1M</button>
+                <button type="button" class="range-btn" data-range="ytd">YTD</button>
+                <button type="button" class="range-btn" data-range="1y">1Y</button>
+                <button type="button" class="range-btn" data-range="5y">5Y</button>
+                <button type="button" class="range-btn active" data-range="all">ALL</button>
+            </div>
+        </div>
+
+        <div class="price-measure-badge" id="priceMeasureBadge" hidden></div>
+
+        <div class="price-chart-wrap" id="priceChartWrap">
+            <canvas id="stockPriceChart"></canvas>
+            <div class="price-selection-overlay" id="priceSelectionOverlay" hidden></div>
+            <div class="price-crosshair" id="priceCrosshair" hidden></div>
+        </div>
+    </div>
+
     <div class="dashboard-content">
-        <div class="dashboard-section">
+        <div class="dashboard-section" style="grid-column: 1 / -1;">
             <h2>Upcoming vests</h2>
             {% if upcoming_vests %}
             <div class="vest-list">
@@ -113,17 +143,6 @@
             <p class="empty-state">No upcoming vests</p>
             {% endif %}
             <a href="{{ url_for('grants.vest_schedule') }}" class="link-more">View full schedule</a>
-        </div>
-
-        <div class="dashboard-section">
-            <h2>Share price</h2>
-            <div class="price-display">
-                <div class="current-price">${{ "{:,.2f}".format(current_price) }}</div>
-                <div class="price-label">per share</div>
-            </div>
-            <div class="mini-chart-container" style="margin-top: 1.25rem; height: 150px;">
-                <canvas id="stockPriceChart"></canvas>
-            </div>
         </div>
     </div>
 </div>
@@ -311,67 +330,438 @@ if (typeof Chart !== 'undefined') {
     createChart(currentView);
 }
 
-fetch('{{ url_for("main.stock_price_chart_data") }}')
-    .then(response => response.json())
-    .then(data => {
-        const ctx = document.getElementById('stockPriceChart').getContext('2d');
-        new Chart(ctx, {
+/* ——— Share price chart: ranges + drag-to-measure ——— */
+(function () {
+    let fullSeries = []; // {x: Date, y: number}[]
+    let priceChart = null;
+    let activeRange = 'all';
+    let drag = null; // { startX, endX } in canvas pixel space relative to chart area
+
+    const wrap = document.getElementById('priceChartWrap');
+    const canvas = document.getElementById('stockPriceChart');
+    const overlay = document.getElementById('priceSelectionOverlay');
+    const badge = document.getElementById('priceMeasureBadge');
+    const crosshair = document.getElementById('priceCrosshair');
+    const changeEl = document.getElementById('sharePriceChange');
+    const headline = document.getElementById('sharePriceHeadline');
+
+    function fmtMoney(n) {
+        return '$' + Number(n).toLocaleString('en-US', {
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+        });
+    }
+
+    function fmtPct(n) {
+        const sign = n > 0 ? '+' : '';
+        return sign + n.toFixed(2) + '%';
+    }
+
+    function fmtDate(d) {
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function filterByRange(series, range) {
+        if (!series.length) return series;
+        const end = series[series.length - 1].x.getTime();
+        const endDate = series[series.length - 1].x;
+        let startMs = null;
+        const day = 86400000;
+
+        switch (range) {
+            case '1d':
+                // last trading point + previous for change; show last ~2 sessions min
+                return series.slice(-2);
+            case '1w':
+                startMs = end - 7 * day;
+                break;
+            case '1m':
+                startMs = end - 31 * day;
+                break;
+            case 'ytd':
+                startMs = new Date(endDate.getFullYear(), 0, 1).getTime();
+                break;
+            case '1y':
+                startMs = end - 365 * day;
+                break;
+            case '5y':
+                startMs = end - 5 * 365 * day;
+                break;
+            case 'all':
+            default:
+                return series.slice();
+        }
+        const filtered = series.filter(p => p.x.getTime() >= startMs);
+        return filtered.length ? filtered : series.slice(-1);
+    }
+
+    function updateRangeChange(view) {
+        if (!changeEl || view.length < 1) {
+            if (changeEl) changeEl.textContent = '';
+            return;
+        }
+        const first = view[0].y;
+        const last = view[view.length - 1].y;
+        const delta = last - first;
+        const pct = first ? (delta / first) * 100 : 0;
+        const up = delta >= 0;
+        changeEl.textContent = (up ? '▲ ' : '▼ ') + fmtMoney(Math.abs(delta)) + ' (' + fmtPct(pct) + ')';
+        changeEl.className = 'price-change ' + (up ? 'up' : 'down');
+        if (headline) headline.textContent = fmtMoney(last);
+    }
+
+    function buildChart(view) {
+        const ctx = canvas.getContext('2d');
+        if (priceChart) priceChart.destroy();
+
+        if (!view.length) return;
+
+        const ys = view.map(p => p.y);
+        const minY = Math.min.apply(null, ys);
+        const maxY = Math.max.apply(null, ys);
+        const pad = (maxY - minY) * 0.08 || maxY * 0.02 || 1;
+
+        priceChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: data.dates,
                 datasets: [{
-                    label: 'Stock Price',
-                    data: data.prices,
+                    label: 'Share price',
+                    data: view,
                     borderColor: COLORS.copper,
                     backgroundColor: COLORS.copperFill,
                     borderWidth: 2,
-                    tension: 0.35,
+                    tension: 0.25,
                     fill: true,
                     pointRadius: 0,
-                    pointHoverRadius: 4,
-                    pointBackgroundColor: COLORS.copper
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: COLORS.copper,
+                    pointBorderColor: '#e8e4dc',
+                    pointBorderWidth: 1
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                parsing: false,
+                interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
                         backgroundColor: COLORS.tooltipBg,
                         borderColor: COLORS.tooltipBorder,
                         borderWidth: 1,
-                        padding: 8,
+                        padding: 10,
                         titleColor: COLORS.body,
                         bodyColor: COLORS.body,
                         displayColors: false,
                         callbacks: {
-                            label: function(context) {
-                                return '$' + context.parsed.y.toLocaleString('en-US', {
-                                    minimumFractionDigits: 2, maximumFractionDigits: 2
-                                });
+                            title: function (items) {
+                                return fmtDate(new Date(items[0].parsed.x));
+                            },
+                            label: function (context) {
+                                return fmtMoney(context.parsed.y);
                             }
                         }
                     }
                 },
                 scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            tooltipFormat: 'MMM d, yyyy',
+                            displayFormats: {
+                                day: 'MMM d',
+                                week: 'MMM d',
+                                month: 'MMM yyyy',
+                                year: 'yyyy'
+                            }
+                        },
+                        grid: { color: COLORS.grid, drawBorder: false },
+                        ticks: { color: COLORS.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }
+                    },
                     y: {
                         beginAtZero: false,
+                        min: minY - pad,
+                        max: maxY + pad,
                         grid: { color: COLORS.grid, drawBorder: false },
                         ticks: {
                             color: COLORS.text,
-                            maxTicksLimit: 4,
-                            callback: function(value) {
-                                return '$' + value.toLocaleString('en-US', {maximumFractionDigits: 0});
+                            maxTicksLimit: 6,
+                            callback: function (value) {
+                                return '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
                             }
                         }
-                    },
-                    x: { display: false }
-                },
-                interaction: { intersect: false, mode: 'index' }
+                    }
+                }
             }
         });
-    })
-    .catch(function() {});
+
+        updateRangeChange(view);
+        clearMeasure();
+    }
+
+    function setRange(range) {
+        activeRange = range;
+        document.querySelectorAll('#priceRangeToggles .range-btn').forEach(function (btn) {
+            btn.classList.toggle('active', btn.dataset.range === range);
+        });
+        buildChart(filterByRange(fullSeries, range));
+    }
+
+    function chartArea() {
+        if (!priceChart) return null;
+        return priceChart.chartArea;
+    }
+
+    function xToValue(pixelX) {
+        if (!priceChart) return null;
+        const scale = priceChart.scales.x;
+        return scale.getValueForPixel(pixelX);
+    }
+
+    function nearestPoint(ts) {
+        if (!priceChart || !priceChart.data.datasets[0].data.length) return null;
+        const data = priceChart.data.datasets[0].data;
+        let best = data[0];
+        let bestDist = Math.abs(data[0].x.getTime() - ts);
+        for (let i = 1; i < data.length; i++) {
+            const d = Math.abs(data[i].x.getTime() - ts);
+            if (d < bestDist) {
+                bestDist = d;
+                best = data[i];
+            }
+        }
+        return best;
+    }
+
+    function clearMeasure() {
+        if (overlay) {
+            overlay.hidden = true;
+            overlay.style.width = '0';
+        }
+        if (badge) {
+            badge.hidden = true;
+            badge.textContent = '';
+        }
+        if (crosshair) crosshair.hidden = true;
+        drag = null;
+    }
+
+    function showMeasure(x1, x2) {
+        const area = chartArea();
+        if (!area || !priceChart) return;
+
+        const left = Math.max(area.left, Math.min(x1, x2));
+        const right = Math.min(area.right, Math.max(x1, x2));
+        if (right - left < 4) {
+            clearMeasure();
+            return;
+        }
+
+        overlay.hidden = false;
+        overlay.style.left = left + 'px';
+        overlay.style.top = area.top + 'px';
+        overlay.style.width = (right - left) + 'px';
+        overlay.style.height = (area.bottom - area.top) + 'px';
+
+        const t0 = xToValue(left);
+        const t1 = xToValue(right);
+        if (t0 == null || t1 == null) return;
+
+        const p0 = nearestPoint(typeof t0 === 'number' ? t0 : new Date(t0).getTime());
+        const p1 = nearestPoint(typeof t1 === 'number' ? t1 : new Date(t1).getTime());
+        if (!p0 || !p1) return;
+
+        // Order by time
+        const a = p0.x.getTime() <= p1.x.getTime() ? p0 : p1;
+        const b = p0.x.getTime() <= p1.x.getTime() ? p1 : p0;
+        const delta = b.y - a.y;
+        const pct = a.y ? (delta / a.y) * 100 : 0;
+        const up = delta >= 0;
+        const days = Math.max(1, Math.round((b.x - a.x) / 86400000));
+
+        badge.hidden = false;
+        badge.className = 'price-measure-badge ' + (up ? 'up' : 'down');
+        badge.innerHTML =
+            '<strong>' + (up ? '+' : '') + fmtMoney(delta) + ' (' + fmtPct(pct) + ')</strong>' +
+            '<span>' + fmtDate(a.x) + ' → ' + fmtDate(b.x) + ' · ' + days + 'd</span>' +
+            '<span>' + fmtMoney(a.y) + ' → ' + fmtMoney(b.y) + '</span>';
+    }
+
+    function onPointerDown(e) {
+        if (!priceChart) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const area = chartArea();
+        if (!area || x < area.left || x > area.right) return;
+        drag = { startX: x, endX: x };
+        canvas.setPointerCapture(e.pointerId);
+        showMeasure(drag.startX, drag.endX);
+        e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const area = chartArea();
+        if (area && x >= area.left && x <= area.right) {
+            crosshair.hidden = false;
+            crosshair.style.left = x + 'px';
+            crosshair.style.top = area.top + 'px';
+            crosshair.style.height = (area.bottom - area.top) + 'px';
+        } else if (!drag) {
+            crosshair.hidden = true;
+        }
+        if (!drag) return;
+        drag.endX = x;
+        showMeasure(drag.startX, drag.endX);
+    }
+
+    function onPointerUp(e) {
+        if (!drag) return;
+        const rect = canvas.getBoundingClientRect();
+        drag.endX = e.clientX - rect.left;
+        showMeasure(drag.startX, drag.endX);
+        try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+        // Keep selection visible until next interaction
+        const start = drag.startX;
+        const end = drag.endX;
+        drag = null;
+        if (Math.abs(end - start) < 6) clearMeasure();
+    }
+
+    function onPointerLeave() {
+        if (!drag) crosshair.hidden = true;
+    }
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', function () { drag = null; });
+    canvas.addEventListener('pointerleave', onPointerLeave);
+    canvas.addEventListener('dblclick', clearMeasure);
+
+    document.querySelectorAll('#priceRangeToggles .range-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            setRange(btn.dataset.range);
+        });
+    });
+
+    fetch('{{ url_for("main.stock_price_chart_data") }}')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            fullSeries = (data.dates || []).map(function (d, i) {
+                return { x: new Date(d + 'T12:00:00'), y: Number(data.prices[i]) };
+            }).filter(function (p) { return !isNaN(p.y); });
+
+            // Prefer a sensible default range
+            if (fullSeries.length > 60) activeRange = '1y';
+            else if (fullSeries.length > 20) activeRange = '1m';
+            else activeRange = 'all';
+            setRange(activeRange);
+        })
+        .catch(function () {});
+})();
 </script>
+
+<style>
+.price-chart-header {
+    align-items: flex-start;
+    gap: 1rem;
+}
+.price-chart-title h2 { margin-bottom: 0.35rem; }
+.price-headline {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.price-headline .current-price {
+    font-size: 1.85rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+.price-change {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+.price-change.up { color: var(--accent-bright, #2d6b52); }
+.price-change.down { color: #c47a6a; }
+.price-measure-hint {
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.range-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    background: var(--bg-primary);
+    padding: 0.25rem;
+    border-radius: var(--radius-sm, 0.5rem);
+    border: 1px solid var(--border-subtle, rgba(232,228,220,0.08));
+}
+.range-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.03em;
+    padding: 0.4rem 0.65rem;
+    border-radius: 0.35rem;
+    cursor: pointer;
+}
+.range-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.range-btn.active {
+    background: var(--accent);
+    color: #f0ebe3;
+}
+.price-chart-wrap {
+    position: relative;
+    height: 360px;
+    margin-top: 0.75rem;
+    touch-action: none;
+    cursor: crosshair;
+    user-select: none;
+}
+.price-selection-overlay {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(184, 115, 51, 0.14);
+    border-left: 1px solid rgba(184, 115, 51, 0.55);
+    border-right: 1px solid rgba(184, 115, 51, 0.55);
+    z-index: 2;
+}
+.price-crosshair {
+    position: absolute;
+    width: 0;
+    border-left: 1px dashed rgba(232, 228, 220, 0.35);
+    pointer-events: none;
+    z-index: 1;
+}
+.price-measure-badge {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    align-items: center;
+    margin: 0.5rem 0 0.25rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: var(--radius-sm, 0.5rem);
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.price-measure-badge strong {
+    font-size: 0.95rem;
+}
+.price-measure-badge.up strong { color: var(--accent-bright, #2d6b52); }
+.price-measure-badge.down strong { color: #c47a6a; }
+@media (max-width: 768px) {
+    .price-chart-wrap { height: 280px; }
+    .price-chart-header { flex-direction: column; }
+}
+</style>
 {% endblock %}
