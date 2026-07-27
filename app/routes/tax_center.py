@@ -431,14 +431,24 @@ def api_advisor():
     """
     Free-form Grok chat with full account context.
     Body: { messages: [{role, content}], plan?: object }
+
+    Always returns JSON (never HTML) so the chat client can show real errors.
     """
+    def _json_ok(payload, status=200):
+        return jsonify(payload), status
+
+    def _json_err(msg, status=400, **extra):
+        body = {'success': False, 'error': str(msg), 'code': extra.pop('code', 'advisor_error')}
+        body.update(extra)
+        return jsonify(body), status
+
     try:
         data = request.get_json(silent=True) or {}
         messages = data.get('messages') or []
         if not messages and data.get('message'):
             messages = [{'role': 'user', 'content': str(data['message'])}]
         if not messages:
-            return jsonify({'error': 'messages required'}), 400
+            return _json_err('messages required', 400, code='bad_request')
 
         from app.utils.account_context import pack_context_for_prompt
         from app.utils.advisor_router import route_and_compute
@@ -450,29 +460,72 @@ def api_advisor():
                 last_user = m.get('content') or ''
                 break
 
-        profile = TaxProfile.for_user(current_user)
-        eng = profile.to_engine_dict()
-        lots = build_lots_for_user(current_user.id)
-        live = get_latest_user_price(current_user.id) or 0.0
+        try:
+            profile = TaxProfile.for_user(current_user)
+            eng = profile.to_engine_dict()
+        except Exception as e:
+            logger.warning('tax profile load failed: %s', e)
+            eng = {
+                'filing_status': 'single',
+                'state_code': 'CA',
+                'tax_year': date.today().year,
+                'other_ordinary_income': 0.0,
+                'use_bracket_engine': True,
+                'use_state_engine': True,
+                'include_niit': True,
+                'include_fica': False,
+                'ytd_wages': 0.0,
+                'ss_wage_base_maxed': False,
+                'amt_credit_carryforward': 0.0,
+                'ca_amt_credit_carryforward': 0.0,
+                'other_long_term_gains': 0.0,
+                'other_short_term_gains': 0.0,
+            }
+
+        try:
+            lots = build_lots_for_user(current_user.id) or []
+        except Exception as e:
+            logger.warning('lots load failed: %s', e)
+            lots = []
+
+        try:
+            live = get_latest_user_price(current_user.id) or 0.0
+        except Exception:
+            live = 0.0
+
         plan = data.get('plan')
+        # Drop non-serializable noise from client plan
+        if plan is not None and not isinstance(plan, dict):
+            plan = None
 
         # 1) Deterministic tools first
-        routed = route_and_compute(
-            user_message=last_user,
-            profile_dict=eng,
-            inventory_lots=lots,
-            live_price=live,
-            plan=plan,
-            force_grok=bool(data.get('force_grok')),
-        )
+        try:
+            routed = route_and_compute(
+                user_message=last_user,
+                profile_dict=eng,
+                inventory_lots=lots,
+                live_price=live,
+                plan=plan,
+                force_grok=bool(data.get('force_grok')),
+            )
+        except Exception as e:
+            logger.error('route_and_compute failed: %s', e, exc_info=True)
+            return _json_err(
+                f'Engine failed: {e}',
+                500,
+                code='engine_error',
+                phase='engine',
+            )
 
         # 2) Pure engine answer — no Grok tokens
         if routed.skip_grok and routed.deterministic_reply:
-            return jsonify({
+            return _json_ok({
                 'success': True,
                 'reply': routed.deterministic_reply,
                 'grok_enabled': xai_advisor.is_configured(current_user),
                 'used_grok': False,
+                'api_ok': True,
+                'phase': 'engine_done',
                 'engine_plan': routed.engine_payload or None,
                 'context_meta': {
                     **routed.to_meta(),
@@ -482,35 +535,47 @@ def api_advisor():
                 },
             })
 
-        # 3) Need Grok (open-ended or explain-on-top-of-engine)
-        if not xai_advisor.is_configured(current_user):
-            # Still return engine answer if we have one
+        # 3) Need Grok
+        grok_on = xai_advisor.is_configured(current_user)
+        if not grok_on:
             if routed.deterministic_reply:
-                return jsonify({
+                return _json_ok({
                     'success': True,
                     'reply': routed.deterministic_reply + (
                         '\n\n_Add an xAI key in Settings for narrative explanations._'
                     ),
                     'used_grok': False,
+                    'api_ok': True,
+                    'phase': 'engine_done_no_key',
                     'engine_plan': routed.engine_payload or None,
                     'grok_enabled': False,
                     'context_meta': {**routed.to_meta(), 'live_price': live, 'lots': len(lots)},
                 })
-            return jsonify({
-                'error': 'Add your xAI API key under Settings for open-ended questions. '
-                         'Or ask a computable question like “net $500k minimize tax”.',
-                'grok_enabled': False,
-                'settings_url': url_for('settings.profile'),
-            }), 503
+            return _json_err(
+                'Add your xAI API key under Settings for open-ended questions. '
+                'Or ask a computable question like “net $500k minimize tax”.',
+                503,
+                code='no_api_key',
+                grok_enabled=False,
+                settings_url=url_for('settings.profile'),
+                phase='need_key',
+            )
 
-        # Full account TSV every Grok turn (lots/grants/sales/profile) — quality over micro-savings
-        packed = pack_context_for_prompt(
-            current_user.id,
-            user_message=last_user,
-            plan=plan or routed.engine_payload,
-            mode='full',
-        )
-        account_blob = packed['text']
+        try:
+            packed = pack_context_for_prompt(
+                current_user.id,
+                user_message=last_user,
+                plan=plan or routed.engine_payload,
+                mode='full',
+            )
+        except Exception as e:
+            logger.error('pack_context failed: %s', e, exc_info=True)
+            packed = {
+                'text': f'## SNAPSHOT\npack_error={e}\nlive_price={live}\nlots={len(lots)}',
+                'meta': {'est_tokens': 20, 'lot_count': len(lots), 'live_price': live},
+            }
+
+        account_blob = packed.get('text') or ''
         if routed.engine_text:
             account_blob = (
                 '## ENGINE_RESULT (authoritative $ and picks — do not invent alternatives)\n'
@@ -519,13 +584,36 @@ def api_advisor():
                 + account_blob
             )
 
-        reply = xai_advisor.advisor_chat(
-            messages=messages,
-            plan=plan or routed.engine_payload,
-            user=current_user,
-            account_context=account_blob,
-        )
-        # Prepend short engine summary when we have deterministic picks
+        try:
+            reply = xai_advisor.advisor_chat(
+                messages=messages,
+                plan=plan or routed.engine_payload,
+                user=current_user,
+                account_context=account_blob,
+            )
+        except Exception as e:
+            logger.error('Grok API call failed: %s', e, exc_info=True)
+            # Fall back to engine text if any
+            if routed.deterministic_reply:
+                return _json_ok({
+                    'success': True,
+                    'reply': routed.deterministic_reply + f'\n\n_Grok API error: {e}_',
+                    'used_grok': False,
+                    'api_ok': False,
+                    'grok_error': str(e),
+                    'phase': 'grok_failed_engine_fallback',
+                    'engine_plan': routed.engine_payload or None,
+                    'grok_enabled': True,
+                    'context_meta': {**routed.to_meta(), 'live_price': live, 'lots': len(lots)},
+                })
+            return _json_err(
+                f'Grok API call failed: {e}',
+                502,
+                code='grok_api_error',
+                phase='grok_failed',
+                grok_enabled=True,
+            )
+
         if routed.deterministic_reply and routed.mode == 'engine_then_grok':
             reply = (
                 routed.deterministic_reply
@@ -534,11 +622,13 @@ def api_advisor():
             )
 
         meta = packed.get('meta') or {}
-        return jsonify({
+        return _json_ok({
             'success': True,
             'reply': reply,
             'grok_enabled': True,
             'used_grok': True,
+            'api_ok': True,
+            'phase': 'grok_done',
             'engine_plan': routed.engine_payload or None,
             'context_meta': {
                 'lots': meta.get('lot_count') or len(lots),
@@ -552,7 +642,14 @@ def api_advisor():
         })
     except Exception as e:
         logger.error('advisor failed: %s', e, exc_info=True)
-        return jsonify({'error': str(e), 'code': 'advisor_error'}), 400
+        # Never let Flask render HTML 500 for this endpoint
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'code': 'advisor_error',
+            'phase': 'unhandled',
+            'api_ok': False,
+        }), 500
 
 
 @tax_center_bp.route('/api/context', methods=['GET'])

@@ -286,8 +286,32 @@
             input.value = '';
             appendMsg('user', text);
             history.push({ role: 'user', content: text });
-            statusEl.textContent = 'Running engines / advisor…';
+
+            // Visible progress so user is not left waiting blindly
+            var loadEl = document.createElement('div');
+            loadEl.className = 'advisor-msg bot advisor-loading-msg';
+            loadEl.innerHTML =
+                '<div class="advisor-loading">' +
+                '<span class="advisor-spinner" aria-hidden="true"></span>' +
+                '<div class="advisor-loading-text">' +
+                '<strong>Calling VestX API…</strong>' +
+                '<span class="advisor-loading-phase">1/2 Tax engines (deterministic)</span>' +
+                '<span class="advisor-loading-hint">If needed: 2/2 Grok with your full account TSV</span>' +
+                '</div></div>';
+            log.appendChild(loadEl);
+            log.scrollTop = log.scrollHeight;
+
+            statusEl.textContent = 'API request in flight…';
             sendBtn.disabled = true;
+            sendBtn.textContent = 'Working…';
+
+            var phaseTimer = setTimeout(function () {
+                var ph = loadEl.querySelector('.advisor-loading-phase');
+                if (ph) ph.textContent = 'Still working… engines or Grok API (can take 10–30s)';
+                statusEl.textContent = 'Still waiting on server / Grok…';
+            }, 4000);
+
+            var t0 = Date.now();
             window.vestxFetchJson(window.VESTX_ADVISOR_URL, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -296,35 +320,61 @@
                 })
             })
             .then(function (data) {
+                clearTimeout(phaseTimer);
+                if (loadEl.parentNode) loadEl.parentNode.removeChild(loadEl);
+                var ms = Date.now() - t0;
                 var reply = data.reply || '(empty reply)';
                 history.push({ role: 'assistant', content: reply });
                 appendMsg('assistant', reply);
                 if (data.engine_plan) {
                     applyPlanFromChat(data);
                 }
-                if (data.context_meta) {
-                    var cm = data.context_meta;
-                    if (data.used_grok === false) {
-                        statusEl.textContent = 'Engine only (0 Grok) · UI ' +
-                            (data.engine_plan ? 'synced' : 'no plan') +
-                            ' · ' + (cm.intent || cm.mode || '');
-                    } else {
-                        statusEl.textContent = 'Grok · ctx ~' + (cm.est_context_tokens || '?') +
-                            ' tok · ' + (cm.mode || '');
-                    }
+
+                // Explicit "API worked" status line in chat
+                var ok = document.createElement('div');
+                ok.className = 'advisor-msg bot advisor-api-ok';
+                var usedGrok = data.used_grok === true;
+                var apiOk = data.api_ok !== false;
+                var cm = data.context_meta || {};
+                ok.innerHTML = '<strong>' + (apiOk ? '✓ API OK' : '⚠ Partial') + '</strong> · ' +
+                    (usedGrok ? 'Grok called' : 'Engines only (0 Grok tokens)') +
+                    ' · ' + (ms / 1000).toFixed(1) + 's' +
+                    (cm.est_context_tokens ? ' · ~' + cm.est_context_tokens + ' ctx tok' : '') +
+                    (cm.intent || cm.mode ? ' · ' + (cm.intent || cm.mode) : '') +
+                    (data.phase ? ' · phase=' + data.phase : '');
+                log.appendChild(ok);
+                log.scrollTop = log.scrollHeight;
+
+                if (usedGrok) {
+                    statusEl.textContent = 'Grok API responded · ' + (ms / 1000).toFixed(1) + 's · ready';
                 } else {
-                    statusEl.textContent = 'Ready';
+                    statusEl.textContent = 'Engine only · API OK · ' + (ms / 1000).toFixed(1) + 's · ready';
                 }
             })
             .catch(function (e) {
+                clearTimeout(phaseTimer);
+                if (loadEl.parentNode) loadEl.parentNode.removeChild(loadEl);
                 var msg = e.message || String(e);
+                if (e.data && e.data.error) msg = e.data.error;
+                if (e.data && e.data.phase) msg += ' (phase: ' + e.data.phase + ')';
                 if (e.status === 503 || /API key/i.test(msg)) {
                     msg += ' → Settings to add your encrypted xAI key.';
                 }
-                appendMsg('bot', 'Error: ' + msg);
-                statusEl.textContent = 'Error — see message above';
+                if (/non-JSON|Internal Server Error/i.test(msg)) {
+                    msg += ' Server crashed before JSON response — check Railway logs after redeploy.';
+                }
+                appendMsg('bot', '**Error**\n\n' + msg);
+                var fail = document.createElement('div');
+                fail.className = 'advisor-msg bot advisor-api-fail';
+                fail.innerHTML = '<strong>✗ API failed</strong> · HTTP ' + (e.status || '?') +
+                    ' · request did not complete cleanly';
+                log.appendChild(fail);
+                statusEl.textContent = 'API error — see chat';
             })
-            .finally(function () { sendBtn.disabled = false; });
+            .finally(function () {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            });
         }
         if (sendBtn) sendBtn.addEventListener('click', sendAdvisor);
         if (input) input.addEventListener('keydown', function (e) {

@@ -51,32 +51,71 @@ def build_account_context(user_id: Optional[int] = None, *, max_lots: int = 500)
     from app.utils.lot_inventory import build_lots_for_user
     from app.utils.price_utils import get_latest_user_price
 
-    uid = user_id or (current_user.id if current_user and current_user.is_authenticated else None)
+    from app.models.user import User
+
+    uid = user_id
+    if not uid:
+        try:
+            if getattr(current_user, 'is_authenticated', False):
+                uid = current_user.id
+        except Exception:
+            uid = None
     if not uid:
         return {'error': 'not authenticated'}
 
-    user = current_user if (current_user.is_authenticated and current_user.id == uid) else None
-    profile = TaxProfile.for_user(user) if user else TaxProfile.query.filter_by(user_id=uid).first()
-    eng = profile.to_engine_dict() if profile else {}
+    # Prefer explicit User row — never assume request-local current_user works
+    user = User.query.get(uid)
+    if user is None:
+        return {'error': 'user not found'}
 
-    live = get_latest_user_price(uid) or 0.0
-    lots = build_lots_for_user(uid)
-    grants = Grant.query.filter_by(user_id=uid).order_by(Grant.grant_date.desc()).all()
-    sales = (
-        StockSale.query.filter_by(user_id=uid)
-        .order_by(StockSale.sale_date.desc())
-        .limit(100)
-        .all()
-    )
-    exercises = (
-        ISOExercise.query.filter_by(user_id=uid)
-        .order_by(ISOExercise.exercise_date.desc())
-        .limit(100)
-        .all()
-    )
+    try:
+        profile = TaxProfile.for_user(user)
+        eng = profile.to_engine_dict() if profile else {}
+    except Exception:
+        eng = {}
+
+    try:
+        live = get_latest_user_price(uid) or 0.0
+    except Exception:
+        live = 0.0
+
+    try:
+        lots = build_lots_for_user(uid) or []
+    except Exception:
+        lots = []
+
+    try:
+        grants = Grant.query.filter_by(user_id=uid).order_by(Grant.grant_date.desc()).all()
+    except Exception:
+        grants = []
+
+    try:
+        sales = (
+            StockSale.query.filter_by(user_id=uid)
+            .order_by(StockSale.sale_date.desc())
+            .limit(100)
+            .all()
+        )
+    except Exception:
+        sales = []
+
+    try:
+        exercises = (
+            ISOExercise.query.filter_by(user_id=uid)
+            .order_by(ISOExercise.exercise_date.desc())
+            .limit(100)
+            .all()
+        )
+    except Exception:
+        exercises = []
 
     total_held = sum(float(l.get('shares_available') or 0) for l in lots)
     total_unex = sum(float(l.get('shares_unexercised') or 0) for l in lots)
+
+    try:
+        has_key = bool(user.has_xai_api_key())
+    except Exception:
+        has_key = False
 
     return {
         'as_of': date.today().isoformat(),
@@ -99,7 +138,7 @@ def build_account_context(user_id: Optional[int] = None, *, max_lots: int = 500)
         'capabilities': {
             'goal_optimizer': True,
             'state_tax_ca': (eng.get('state_code') or '').upper() == 'CA',
-            'has_xai_key': bool(user and user.has_xai_api_key()) if user else False,
+            'has_xai_key': has_key,
         },
     }
 

@@ -125,14 +125,15 @@ def create_app():
 def _wants_json():
     """True for API/JSON clients so we never return HTML error pages to fetch()."""
     from flask import request
-    if request.path.startswith('/tax/api') or request.path.startswith('/api/'):
+    path = request.path or ''
+    if path.startswith('/tax/api') or path.startswith('/api/') or '/api/' in path:
         return True
     if request.is_json:
         return True
-    accept = (request.accept_mimetypes.best or '')
-    if accept == 'application/json':
+    # Accept header may be a list-like; check raw header too
+    accept = (request.headers.get('Accept') or '') + ' ' + (request.accept_mimetypes.best or '')
+    if 'application/json' in accept:
         return True
-    # fetch() with Content-Type application/json
     if 'application/json' in (request.content_type or ''):
         return True
     return False

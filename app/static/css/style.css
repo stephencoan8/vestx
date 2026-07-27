@@ -397,6 +397,54 @@ body.app-layout {
     color: var(--copper);
 }
 
+.advisor-loading {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+.advisor-spinner {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin-top: 0.15rem;
+    border: 2px solid var(--border-subtle);
+    border-top-color: var(--copper);
+    border-radius: 50%;
+    animation: advisor-spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+@keyframes advisor-spin {
+    to { transform: rotate(360deg); }
+}
+.advisor-loading-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.85rem;
+}
+.advisor-loading-text strong {
+    color: var(--text-primary);
+}
+.advisor-loading-phase,
+.advisor-loading-hint {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+.advisor-api-ok {
+    border-color: var(--accent-bright) !important;
+    background: var(--accent-soft) !important;
+    color: var(--text-primary) !important;
+    font-size: 0.78rem !important;
+    padding: 0.45rem 0.7rem !important;
+}
+.advisor-api-fail {
+    border-color: var(--error) !important;
+    font-size: 0.78rem !important;
+    padding: 0.45rem 0.7rem !important;
+}
+.advisor-loading-msg {
+    opacity: 0.95;
+}
+
 .advisor-input-row {
     padding: 0.75rem 1rem 1rem;
     border-top: 1px solid var(--border-subtle);

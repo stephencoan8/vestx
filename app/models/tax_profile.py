@@ -77,23 +77,35 @@ class TaxProfile(db.Model):
         return profile
 
     def to_engine_dict(self) -> dict:
+        """Safe for partially-migrated DBs (missing columns → defaults)."""
+        def g(name, default=None):
+            try:
+                return getattr(self, name, default)
+            except Exception:
+                return default
+
+        state_ord = g('state_ordinary_rate', 0.0) or 0.0
+        state_cg = g('state_cg_rate', None)
+        if state_cg is None:
+            state_cg = state_ord
+        use_state = g('use_state_engine', True)
         return {
-            'filing_status': self.filing_status or 'single',
-            'state_code': (self.state_code or '').upper() or None,
-            'federal_ordinary_rate': self.federal_ordinary_rate,
-            'federal_ltcg_rate': self.federal_ltcg_rate,
-            'state_ordinary_rate': self.state_ordinary_rate or 0.0,
-            'state_cg_rate': self.state_cg_rate if self.state_cg_rate is not None else (self.state_ordinary_rate or 0.0),
-            'use_bracket_engine': bool(self.use_bracket_engine),
-            'use_state_engine': bool(self.use_state_engine if self.use_state_engine is not None else True),
-            'other_ordinary_income': self.other_ordinary_income or 0.0,
-            'other_long_term_gains': self.other_long_term_gains or 0.0,
-            'other_short_term_gains': self.other_short_term_gains or 0.0,
-            'include_fica': bool(self.include_fica),
-            'ytd_wages': self.ytd_wages or 0.0,
-            'ss_wage_base_maxed': bool(self.ss_wage_base_maxed),
-            'include_niit': bool(self.include_niit),
-            'amt_credit_carryforward': self.amt_credit_carryforward or 0.0,
-            'ca_amt_credit_carryforward': self.ca_amt_credit_carryforward or 0.0,
-            'tax_year': self.tax_year or datetime.utcnow().year,
+            'filing_status': g('filing_status') or 'single',
+            'state_code': ((g('state_code') or '') or '').upper() or None,
+            'federal_ordinary_rate': g('federal_ordinary_rate'),
+            'federal_ltcg_rate': g('federal_ltcg_rate'),
+            'state_ordinary_rate': state_ord,
+            'state_cg_rate': state_cg,
+            'use_bracket_engine': bool(g('use_bracket_engine', True)),
+            'use_state_engine': bool(use_state if use_state is not None else True),
+            'other_ordinary_income': g('other_ordinary_income', 0.0) or 0.0,
+            'other_long_term_gains': g('other_long_term_gains', 0.0) or 0.0,
+            'other_short_term_gains': g('other_short_term_gains', 0.0) or 0.0,
+            'include_fica': bool(g('include_fica', True)),
+            'ytd_wages': g('ytd_wages', 0.0) or 0.0,
+            'ss_wage_base_maxed': bool(g('ss_wage_base_maxed', False)),
+            'include_niit': bool(g('include_niit', True)),
+            'amt_credit_carryforward': g('amt_credit_carryforward', 0.0) or 0.0,
+            'ca_amt_credit_carryforward': g('ca_amt_credit_carryforward', 0.0) or 0.0,
+            'tax_year': g('tax_year') or datetime.utcnow().year,
         }
