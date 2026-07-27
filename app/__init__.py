@@ -140,85 +140,110 @@ def _wants_json():
 
 
 def register_error_handlers(app):
-    """Register error handlers for security."""
-    from flask import render_template, jsonify, request, redirect, url_for
-    from app.utils.audit_log import AuditLogger
+    """Register error handlers. API paths always get JSON — handlers must never raise."""
+    from flask import render_template, jsonify, redirect, url_for, Response
     from flask_wtf.csrf import CSRFError
+    import json as _json
+    import traceback as _tb
+
+    def _safe_audit(event, details=None):
+        try:
+            from app.utils.audit_log import AuditLogger
+            AuditLogger.log_security_event(event, details or {})
+        except Exception:
+            pass
+
+    def _json_err(payload, status=500):
+        try:
+            body = _json.dumps(payload, default=str, ensure_ascii=False)
+        except Exception:
+            body = '{"success":false,"error":"error handler failed","code":"handler_fail"}'
+        return Response(body, status=status, mimetype='application/json; charset=utf-8')
 
     @app.errorhandler(CSRFError)
     def csrf_error(e):
-        AuditLogger.log_security_event('CSRF_FAILURE', {'error': str(e)})
+        _safe_audit('CSRF_FAILURE', {'error': str(e)})
         if _wants_json():
-            return jsonify({
+            return _json_err({
+                'success': False,
                 'error': 'CSRF validation failed. Refresh the page and try again.',
                 'code': 'csrf',
-            }), 400
-        return render_template('errors/403.html'), 400
+                'api_ok': False,
+            }, 400)
+        try:
+            return render_template('errors/403.html'), 400
+        except Exception:
+            return 'Forbidden', 400
 
     @app.errorhandler(401)
     def unauthorized(e):
         if _wants_json():
-            return jsonify({'error': 'Login required', 'code': 'auth'}), 401
+            return _json_err({'success': False, 'error': 'Login required', 'code': 'auth'}, 401)
         return redirect(url_for('auth.login'))
 
     @app.errorhandler(403)
     def forbidden(e):
-        AuditLogger.log_security_event('403_FORBIDDEN', {'error': str(e)})
+        _safe_audit('403_FORBIDDEN', {'error': str(e)})
         if _wants_json():
-            return jsonify({'error': 'Forbidden', 'code': 'forbidden'}), 403
-        return render_template('errors/403.html'), 403
+            return _json_err({'success': False, 'error': 'Forbidden', 'code': 'forbidden'}, 403)
+        try:
+            return render_template('errors/403.html'), 403
+        except Exception:
+            return 'Forbidden', 403
 
     @app.errorhandler(404)
     def not_found(e):
         if _wants_json():
-            return jsonify({'error': 'Not found', 'code': 'not_found'}), 404
-        return render_template('errors/404.html'), 404
+            return _json_err({'success': False, 'error': 'Not found', 'code': 'not_found'}, 404)
+        try:
+            return render_template('errors/404.html'), 404
+        except Exception:
+            return 'Not found', 404
 
     @app.errorhandler(500)
     def internal_error(e):
-        AuditLogger.log_security_event('500_ERROR', {'error': str(e)})
+        _safe_audit('500_ERROR', {'error': str(e)})
         if _wants_json():
-            from flask import Response
-            import json as _json
-            body = _json.dumps({
+            return _json_err({
                 'success': False,
                 'error': str(e) or 'Internal server error',
                 'code': 'server_error',
                 'phase': 'flask_500_handler',
                 'api_ok': False,
-            }, default=str)
-            return Response(body, status=500, mimetype='application/json; charset=utf-8')
-        return render_template('errors/500.html'), 500
+            }, 500)
+        try:
+            return render_template('errors/500.html'), 500
+        except Exception:
+            return 'Internal Server Error', 500
 
-    # Catch-all for uncaught exceptions on API paths (avoids bare HTML 500)
+    # Catch-all: API always JSON. Never re-raise (re-raise → bare HTML 500).
     @app.errorhandler(Exception)
     def unhandled_exception(e):
         from werkzeug.exceptions import HTTPException
         if isinstance(e, HTTPException):
             if _wants_json():
-                return jsonify({
+                return _json_err({
                     'success': False,
-                    'error': e.description or str(e),
+                    'error': getattr(e, 'description', None) or str(e),
                     'code': 'http_error',
                     'api_ok': False,
-                }), e.code or 500
+                }, int(e.code or 500))
             return e
-        AuditLogger.log_security_event('UNHANDLED_EXCEPTION', {'error': str(e)})
+        _safe_audit('UNHANDLED_EXCEPTION', {'error': str(e)})
         if _wants_json():
-            from flask import Response
-            import json as _json
-            import traceback as _tb
-            body = _json.dumps({
+            return _json_err({
                 'success': False,
                 'error': str(e),
                 'code': 'unhandled_exception',
                 'phase': 'app_exception_handler',
                 'api_ok': False,
                 'detail': _tb.format_exc()[-1200:],
-            }, default=str)
-            return Response(body, status=500, mimetype='application/json; charset=utf-8')
-        # Non-API: re-raise so Flask default / 500 template path still works
-        raise e
+            }, 500)
+        # HTML pages: use 500 template without re-raising
+        try:
+            return render_template('errors/500.html'), 500
+        except Exception:
+            return 'Internal Server Error', 500
 
     @app.errorhandler(429)
     def rate_limit_exceeded(e):

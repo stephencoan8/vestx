@@ -11,30 +11,39 @@ from flask_login import current_user
 from functools import wraps
 
 
-# Create logs directory if it doesn't exist
-Path('logs').mkdir(exist_ok=True)
+# Create logs directory if it doesn't exist (never crash import on read-only FS)
+try:
+    Path('logs').mkdir(exist_ok=True)
+except Exception:
+    pass
 
 # Configure audit logger
 audit_logger = logging.getLogger('audit')
 audit_logger.setLevel(logging.INFO)
-audit_handler = logging.FileHandler('logs/audit.log')
-audit_formatter = logging.Formatter(
-    '%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-audit_handler.setFormatter(audit_formatter)
-audit_logger.addHandler(audit_handler)
+try:
+    audit_handler = logging.FileHandler('logs/audit.log')
+    audit_formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    audit_handler.setFormatter(audit_formatter)
+    audit_logger.addHandler(audit_handler)
+except Exception:
+    audit_logger.addHandler(logging.StreamHandler())
 
 # Configure security logger
 security_logger = logging.getLogger('security')
 security_logger.setLevel(logging.WARNING)
-security_handler = logging.FileHandler('logs/security.log')
-security_formatter = logging.Formatter(
-    '%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-security_handler.setFormatter(security_formatter)
-security_logger.addHandler(security_handler)
+try:
+    security_handler = logging.FileHandler('logs/security.log')
+    security_formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    security_handler.setFormatter(security_formatter)
+    security_logger.addHandler(security_handler)
+except Exception:
+    security_logger.addHandler(logging.StreamHandler())
 
 
 class AuditLogger:
@@ -42,31 +51,43 @@ class AuditLogger:
     
     @staticmethod
     def _get_user_context():
-        """Get current user context for logging."""
-        if has_request_context():
-            user_id = current_user.id if current_user.is_authenticated else None
-            username = current_user.username if current_user.is_authenticated else 'anonymous'
-            ip_address = request.remote_addr
-            user_agent = request.headers.get('User-Agent', 'Unknown')
+        """Get current user context for logging. Never raises."""
+        try:
+            if not has_request_context():
+                return {}
+            authed = False
+            user_id = None
+            username = 'anonymous'
+            try:
+                authed = bool(getattr(current_user, 'is_authenticated', False))
+                if authed:
+                    user_id = getattr(current_user, 'id', None)
+                    username = getattr(current_user, 'username', None) or 'user'
+            except Exception:
+                pass
             return {
                 'user_id': user_id,
                 'username': username,
-                'ip_address': ip_address,
-                'user_agent': user_agent[:100]  # Truncate long user agents
+                'ip_address': getattr(request, 'remote_addr', None),
+                'user_agent': (request.headers.get('User-Agent', 'Unknown') or 'Unknown')[:100],
             }
-        return {}
+        except Exception:
+            return {}
     
     @staticmethod
     def _format_log(event_type: str, details: dict):
-        """Format audit log entry."""
-        context = AuditLogger._get_user_context()
-        log_entry = {
-            'timestamp': datetime.utcnow().isoformat(),
-            'event_type': event_type,
-            **context,
-            **details
-        }
-        return json.dumps(log_entry)
+        """Format audit log entry. Never raises."""
+        try:
+            context = AuditLogger._get_user_context()
+            log_entry = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'event_type': event_type,
+                **context,
+                **(details or {}),
+            }
+            return json.dumps(log_entry, default=str)
+        except Exception as e:
+            return json.dumps({'event_type': event_type, 'format_error': str(e)})
     
     @staticmethod
     def log_auth_success(username: str):
@@ -203,14 +224,13 @@ class AuditLogger:
     @staticmethod
     def log_security_event(event_type: str, details: dict):
         """
-        Log a generic security event.
-        
-        Args:
-            event_type: Type of security event (e.g., 'SUSPICIOUS_LOGIN', 'DATA_ACCESS')
-            details: Dictionary of event details
+        Log a generic security event. Never raises (must not crash error handlers).
         """
-        log_msg = AuditLogger._format_log(event_type, details)
-        security_logger.warning(log_msg)
+        try:
+            log_msg = AuditLogger._format_log(event_type, details or {})
+            security_logger.warning(log_msg)
+        except Exception:
+            pass
 
 
 def audit_log(event_type: str):
