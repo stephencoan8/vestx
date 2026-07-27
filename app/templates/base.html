@@ -155,25 +155,31 @@
             try {
                 data = text ? JSON.parse(text) : {};
             } catch (e) {
-                var snippet = (text || '').replace(/\s+/g, ' ').slice(0, 160);
-                throw new Error(
+                var snippet = (text || '').replace(/\s+/g, ' ').slice(0, 180);
+                var err = new Error(
                     'Server returned non-JSON (HTTP ' + res.status + '). ' +
-                    'Often a login redirect, CSRF fail, or 500 HTML page. ' +
+                    'Often an undeployed crash or proxy HTML page. ' +
                     (snippet ? 'Body starts: ' + snippet : 'Empty body.')
                 );
+                err.status = res.status;
+                err.raw = text;
+                throw err;
             }
             if (!res.ok) {
                 var msg = (data && (data.error || data.message)) || ('HTTP ' + res.status);
-                var err = new Error(msg);
-                err.status = res.status;
-                err.data = data;
-                throw err;
+                if (data && data.phase) msg += ' [' + data.phase + ']';
+                if (data && data.detail) msg += '\n' + String(data.detail).slice(0, 400);
+                var err2 = new Error(msg);
+                err2.status = res.status;
+                err2.data = data;
+                throw err2;
             }
             return data;
         };
 
         window.VESTX_CSRF = '{{ csrf_token() }}';
         window.VESTX_ADVISOR_URL = '{{ url_for("tax_center.api_advisor") }}';
+        window.VESTX_ADVISOR_PING_URL = '{{ url_for("tax_center.api_ping") }}';
         window.VESTX_SETTINGS_URL = '{{ url_for("settings.profile") }}';
         window.VESTX_TAX_HUB_URL = '{{ url_for("tax_center.hub") }}';
         window.VESTX_LAST_PLAN = window.VESTX_LAST_PLAN || null;
@@ -230,7 +236,23 @@
             fab.setAttribute('aria-expanded', 'false');
         }
         if (fab) fab.addEventListener('click', function () {
-            if (panel.hidden) openAdvisor(); else closeAdvisor();
+            if (panel.hidden) {
+                openAdvisor();
+                // Prove API path on open
+                if (window.VESTX_ADVISOR_PING_URL && window.vestxFetchJson) {
+                    statusEl.textContent = 'Checking API…';
+                    window.vestxFetchJson(window.VESTX_ADVISOR_PING_URL, { method: 'GET' })
+                        .then(function (d) {
+                            statusEl.textContent = 'API OK · ' + (d.api_version || 'ping') +
+                                (d.grok_enabled ? ' · Grok key ready' : ' · no Grok key (engine Qs still work)');
+                        })
+                        .catch(function (e) {
+                            statusEl.textContent = 'API check failed: ' + (e.message || e);
+                        });
+                }
+            } else {
+                closeAdvisor();
+            }
         });
         if (closeBtn) closeBtn.addEventListener('click', closeAdvisor);
 
@@ -341,7 +363,8 @@
                     ' · ' + (ms / 1000).toFixed(1) + 's' +
                     (cm.est_context_tokens ? ' · ~' + cm.est_context_tokens + ' ctx tok' : '') +
                     (cm.intent || cm.mode ? ' · ' + (cm.intent || cm.mode) : '') +
-                    (data.phase ? ' · phase=' + data.phase : '');
+                    (data.phase ? ' · phase=' + data.phase : '') +
+                    (data.api_version ? ' · ' + data.api_version : '');
                 log.appendChild(ok);
                 log.scrollTop = log.scrollHeight;
 
@@ -366,10 +389,11 @@
                 appendMsg('bot', '**Error**\n\n' + msg);
                 var fail = document.createElement('div');
                 fail.className = 'advisor-msg bot advisor-api-fail';
-                fail.innerHTML = '<strong>✗ API failed</strong> · HTTP ' + (e.status || '?') +
+                fail.innerHTML = '<strong>✗ API failed</strong> · HTTP ' + (e.status != null ? e.status : '?') +
                     ' · request did not complete cleanly';
                 log.appendChild(fail);
-                statusEl.textContent = 'API error — see chat';
+                log.scrollTop = log.scrollHeight;
+                statusEl.textContent = 'API error HTTP ' + (e.status != null ? e.status : '?');
             })
             .finally(function () {
                 sendBtn.disabled = false;

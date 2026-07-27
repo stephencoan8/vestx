@@ -178,12 +178,47 @@ def register_error_handlers(app):
     def internal_error(e):
         AuditLogger.log_security_event('500_ERROR', {'error': str(e)})
         if _wants_json():
-            return jsonify({
-                'error': 'Server error. Check Railway logs; often a missing DB column migration or encryption key.',
+            from flask import Response
+            import json as _json
+            body = _json.dumps({
+                'success': False,
+                'error': str(e) or 'Internal server error',
                 'code': 'server_error',
-                'detail': str(e) if app.debug else None,
-            }), 500
+                'phase': 'flask_500_handler',
+                'api_ok': False,
+            }, default=str)
+            return Response(body, status=500, mimetype='application/json; charset=utf-8')
         return render_template('errors/500.html'), 500
+
+    # Catch-all for uncaught exceptions on API paths (avoids bare HTML 500)
+    @app.errorhandler(Exception)
+    def unhandled_exception(e):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            if _wants_json():
+                return jsonify({
+                    'success': False,
+                    'error': e.description or str(e),
+                    'code': 'http_error',
+                    'api_ok': False,
+                }), e.code or 500
+            return e
+        AuditLogger.log_security_event('UNHANDLED_EXCEPTION', {'error': str(e)})
+        if _wants_json():
+            from flask import Response
+            import json as _json
+            import traceback as _tb
+            body = _json.dumps({
+                'success': False,
+                'error': str(e),
+                'code': 'unhandled_exception',
+                'phase': 'app_exception_handler',
+                'api_ok': False,
+                'detail': _tb.format_exc()[-1200:],
+            }, default=str)
+            return Response(body, status=500, mimetype='application/json; charset=utf-8')
+        # Non-API: re-raise so Flask default / 500 template path still works
+        raise e
 
     @app.errorhandler(429)
     def rate_limit_exceeded(e):

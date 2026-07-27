@@ -5,7 +5,7 @@ Sales & Tax Center — lot inventory, sale recording, what-if tax engine.
 from __future__ import annotations
 
 from datetime import datetime, date
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, Response
 from flask_login import login_required, current_user
 
 from app import db
@@ -19,15 +19,36 @@ from app.utils.equity_planner import LotSpec, run_plan
 from app.utils.goal_optimizer import GoalRequest, optimize_goal, parse_goal_heuristic
 from app.utils import xai_advisor
 from app.utils.price_utils import get_latest_user_price
+import json
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
 tax_center_bp = Blueprint('tax_center', __name__, url_prefix='/tax')
 
+ADVISOR_API_VERSION = '2026-07-27-v3'
+
 
 def _iso(share_type: str) -> bool:
     return share_type in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value)
+
+
+def _api_json(payload: dict, status: int = 200) -> Response:
+    """Always return application/json (never HTML), even if payload has odd types."""
+    payload = dict(payload or {})
+    payload.setdefault('api_version', ADVISOR_API_VERSION)
+    try:
+        body = json.dumps(payload, default=str, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        # NaN/inf or other bad values — scrub
+        body = json.dumps(
+            {'success': False, 'error': 'Response serialization failed', 'code': 'json_encode',
+             'api_version': ADVISOR_API_VERSION},
+            ensure_ascii=False,
+        )
+        status = 500
+    return Response(body, status=status, mimetype='application/json; charset=utf-8')
 
 
 # ensure date is available in template helpers
@@ -425,6 +446,33 @@ def api_goal():
         return jsonify({'error': str(e)}), 400
 
 
+@tax_center_bp.route('/api/ping', methods=['GET', 'POST'])
+@login_required
+def api_ping():
+    """Health check for chat client — proves deploy + auth + JSON path."""
+    try:
+        has_key = False
+        try:
+            has_key = xai_advisor.is_configured(current_user)
+        except Exception:
+            has_key = False
+        return _api_json({
+            'success': True,
+            'pong': True,
+            'api_ok': True,
+            'user_id': current_user.id,
+            'grok_enabled': has_key,
+            'phase': 'ping',
+        })
+    except Exception as e:
+        return _api_json({
+            'success': False,
+            'error': str(e),
+            'api_ok': False,
+            'phase': 'ping_fail',
+        }, 500)
+
+
 @tax_center_bp.route('/api/advisor', methods=['POST'])
 @login_required
 def api_advisor():
@@ -432,27 +480,20 @@ def api_advisor():
     Free-form Grok chat with full account context.
     Body: { messages: [{role, content}], plan?: object }
 
-    Always returns JSON (never HTML) so the chat client can show real errors.
+    Always returns application/json via _api_json (never HTML).
     """
-    def _json_ok(payload, status=200):
-        return jsonify(payload), status
-
-    def _json_err(msg, status=400, **extra):
-        body = {'success': False, 'error': str(msg), 'code': extra.pop('code', 'advisor_error')}
-        body.update(extra)
-        return jsonify(body), status
-
     try:
         data = request.get_json(silent=True) or {}
         messages = data.get('messages') or []
         if not messages and data.get('message'):
             messages = [{'role': 'user', 'content': str(data['message'])}]
         if not messages:
-            return _json_err('messages required', 400, code='bad_request')
-
-        from app.utils.account_context import pack_context_for_prompt
-        from app.utils.advisor_router import route_and_compute
-        from app.utils.price_utils import get_latest_user_price
+            return _api_json({
+                'success': False,
+                'error': 'messages required',
+                'code': 'bad_request',
+                'phase': 'validate',
+            }, 400)
 
         last_user = ''
         for m in reversed(messages):
@@ -460,46 +501,46 @@ def api_advisor():
                 last_user = m.get('content') or ''
                 break
 
+        # --- Load profile / lots (never crash the request) ---
+        eng = {
+            'filing_status': 'single',
+            'state_code': 'CA',
+            'tax_year': date.today().year,
+            'other_ordinary_income': 0.0,
+            'use_bracket_engine': True,
+            'use_state_engine': True,
+            'include_niit': True,
+            'include_fica': False,
+            'ytd_wages': 0.0,
+            'ss_wage_base_maxed': False,
+            'amt_credit_carryforward': 0.0,
+            'ca_amt_credit_carryforward': 0.0,
+            'other_long_term_gains': 0.0,
+            'other_short_term_gains': 0.0,
+        }
         try:
             profile = TaxProfile.for_user(current_user)
             eng = profile.to_engine_dict()
         except Exception as e:
             logger.warning('tax profile load failed: %s', e)
-            eng = {
-                'filing_status': 'single',
-                'state_code': 'CA',
-                'tax_year': date.today().year,
-                'other_ordinary_income': 0.0,
-                'use_bracket_engine': True,
-                'use_state_engine': True,
-                'include_niit': True,
-                'include_fica': False,
-                'ytd_wages': 0.0,
-                'ss_wage_base_maxed': False,
-                'amt_credit_carryforward': 0.0,
-                'ca_amt_credit_carryforward': 0.0,
-                'other_long_term_gains': 0.0,
-                'other_short_term_gains': 0.0,
-            }
 
+        lots = []
         try:
             lots = build_lots_for_user(current_user.id) or []
         except Exception as e:
             logger.warning('lots load failed: %s', e)
-            lots = []
 
+        live = 0.0
         try:
-            live = get_latest_user_price(current_user.id) or 0.0
+            live = float(get_latest_user_price(current_user.id) or 0.0)
         except Exception:
             live = 0.0
 
-        plan = data.get('plan')
-        # Drop non-serializable noise from client plan
-        if plan is not None and not isinstance(plan, dict):
-            plan = None
+        plan = data.get('plan') if isinstance(data.get('plan'), dict) else None
 
-        # 1) Deterministic tools first
+        # --- Deterministic router ---
         try:
+            from app.utils.advisor_router import route_and_compute
             routed = route_and_compute(
                 user_message=last_user,
                 profile_dict=eng,
@@ -510,19 +551,26 @@ def api_advisor():
             )
         except Exception as e:
             logger.error('route_and_compute failed: %s', e, exc_info=True)
-            return _json_err(
-                f'Engine failed: {e}',
-                500,
-                code='engine_error',
-                phase='engine',
-            )
+            return _api_json({
+                'success': False,
+                'error': f'Engine failed: {e}',
+                'code': 'engine_error',
+                'phase': 'engine',
+                'detail': traceback.format_exc()[-1500:],
+                'api_ok': False,
+            }, 500)
 
-        # 2) Pure engine answer — no Grok tokens
+        # Engine-only (no Grok)
         if routed.skip_grok and routed.deterministic_reply:
-            return _json_ok({
+            grok_on = False
+            try:
+                grok_on = xai_advisor.is_configured(current_user)
+            except Exception:
+                pass
+            return _api_json({
                 'success': True,
                 'reply': routed.deterministic_reply,
-                'grok_enabled': xai_advisor.is_configured(current_user),
+                'grok_enabled': grok_on,
                 'used_grok': False,
                 'api_ok': True,
                 'phase': 'engine_done',
@@ -535,11 +583,16 @@ def api_advisor():
                 },
             })
 
-        # 3) Need Grok
-        grok_on = xai_advisor.is_configured(current_user)
+        # Need Grok?
+        grok_on = False
+        try:
+            grok_on = xai_advisor.is_configured(current_user)
+        except Exception as e:
+            logger.warning('is_configured failed: %s', e)
+
         if not grok_on:
             if routed.deterministic_reply:
-                return _json_ok({
+                return _api_json({
                     'success': True,
                     'reply': routed.deterministic_reply + (
                         '\n\n_Add an xAI key in Settings for narrative explanations._'
@@ -549,19 +602,28 @@ def api_advisor():
                     'phase': 'engine_done_no_key',
                     'engine_plan': routed.engine_payload or None,
                     'grok_enabled': False,
-                    'context_meta': {**routed.to_meta(), 'live_price': live, 'lots': len(lots)},
+                    'context_meta': {
+                        **routed.to_meta(),
+                        'live_price': live,
+                        'lots': len(lots),
+                    },
                 })
-            return _json_err(
-                'Add your xAI API key under Settings for open-ended questions. '
-                'Or ask a computable question like “net $500k minimize tax”.',
-                503,
-                code='no_api_key',
-                grok_enabled=False,
-                settings_url=url_for('settings.profile'),
-                phase='need_key',
-            )
+            return _api_json({
+                'success': False,
+                'error': (
+                    'Add your xAI API key under Settings for open-ended questions. '
+                    'Or ask a computable question like “net $500k minimize tax”.'
+                ),
+                'code': 'no_api_key',
+                'grok_enabled': False,
+                'settings_url': url_for('settings.profile'),
+                'phase': 'need_key',
+                'api_ok': True,
+            }, 503)
 
+        # Pack account for Grok
         try:
+            from app.utils.account_context import pack_context_for_prompt
             packed = pack_context_for_prompt(
                 current_user.id,
                 user_message=last_user,
@@ -593,9 +655,8 @@ def api_advisor():
             )
         except Exception as e:
             logger.error('Grok API call failed: %s', e, exc_info=True)
-            # Fall back to engine text if any
             if routed.deterministic_reply:
-                return _json_ok({
+                return _api_json({
                     'success': True,
                     'reply': routed.deterministic_reply + f'\n\n_Grok API error: {e}_',
                     'used_grok': False,
@@ -604,15 +665,21 @@ def api_advisor():
                     'phase': 'grok_failed_engine_fallback',
                     'engine_plan': routed.engine_payload or None,
                     'grok_enabled': True,
-                    'context_meta': {**routed.to_meta(), 'live_price': live, 'lots': len(lots)},
+                    'context_meta': {
+                        **routed.to_meta(),
+                        'live_price': live,
+                        'lots': len(lots),
+                    },
                 })
-            return _json_err(
-                f'Grok API call failed: {e}',
-                502,
-                code='grok_api_error',
-                phase='grok_failed',
-                grok_enabled=True,
-            )
+            return _api_json({
+                'success': False,
+                'error': f'Grok API call failed: {e}',
+                'code': 'grok_api_error',
+                'phase': 'grok_failed',
+                'grok_enabled': True,
+                'api_ok': False,
+                'detail': traceback.format_exc()[-1200:],
+            }, 502)
 
         if routed.deterministic_reply and routed.mode == 'engine_then_grok':
             reply = (
@@ -622,9 +689,9 @@ def api_advisor():
             )
 
         meta = packed.get('meta') or {}
-        return _json_ok({
+        return _api_json({
             'success': True,
-            'reply': reply,
+            'reply': reply or '(empty model reply)',
             'grok_enabled': True,
             'used_grok': True,
             'api_ok': True,
@@ -641,29 +708,32 @@ def api_advisor():
             },
         })
     except Exception as e:
-        logger.error('advisor failed: %s', e, exc_info=True)
-        # Never let Flask render HTML 500 for this endpoint
-        return jsonify({
+        logger.error('advisor unhandled: %s', e, exc_info=True)
+        return _api_json({
             'success': False,
             'error': str(e),
             'code': 'advisor_error',
             'phase': 'unhandled',
             'api_ok': False,
-        }), 500
+            'detail': traceback.format_exc()[-1500:],
+        }, 500)
 
 
 @tax_center_bp.route('/api/context', methods=['GET'])
 @login_required
 def api_context():
     """Debug/helper: account snapshot size (no secrets)."""
-    from app.utils.account_context import build_account_context
-    ctx = build_account_context(current_user.id)
-    return jsonify({
-        'success': True,
-        'summary': ctx.get('portfolio_summary'),
-        'live_price': ctx.get('live_price'),
-        'grok_enabled': xai_advisor.is_configured(current_user),
-    })
+    try:
+        from app.utils.account_context import build_account_context
+        ctx = build_account_context(current_user.id)
+        return _api_json({
+            'success': True,
+            'summary': ctx.get('portfolio_summary'),
+            'live_price': ctx.get('live_price'),
+            'grok_enabled': xai_advisor.is_configured(current_user),
+        })
+    except Exception as e:
+        return _api_json({'success': False, 'error': str(e)}, 500)
 
 
 @tax_center_bp.route('/api/sales', methods=['POST'])
