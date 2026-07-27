@@ -55,16 +55,41 @@
 
   <!-- Planner -->
   <div class="detail-card">
-    <h2>What-if sale planner</h2>
-    <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.9rem;">
-      Select lots and shares. Stacks federal brackets, NIIT, FICA, AMT (ISO), and
+    <h2>Equity scenario planner</h2>
+    <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.9rem;max-width:48rem;">
+      <strong>Exercise and sale are separate taxable events for ISOs.</strong>
+      Pick a strategy, set dates/prices, choose lots. Federal brackets, NIIT, FICA, AMT, and
       {% if (profile.state_code or '')|upper == 'CA' and (profile.use_state_engine is none or profile.use_state_engine) %}
-      <strong>California progressive PIT + MHST</strong> (gains taxed as ordinary).
+      <strong>California PIT + MHST</strong> (gains as ordinary)
       {% else %}
-      state tax from your profile rates.
+      state tax
       {% endif %}
+      are stacked incrementally vs your Tax Profile wages.
     </p>
+
+    <div class="form-group" style="margin-bottom:1rem;">
+      <label for="planStrategy">Strategy</label>
+      <select id="planStrategy" style="max-width:28rem;">
+        <option value="auto">Auto — RSU sell + ISO cashless if unexercised</option>
+        <option value="rsu_sell">RSU: sell only</option>
+        <option value="iso_cashless_dd">ISO: cashless (exercise + sell same day) — DD</option>
+        <option value="iso_exercise_hold">ISO: exercise &amp; hold (AMT year only)</option>
+        <option value="iso_exercise_sell_qd">ISO: exercise → hold for QD → sell</option>
+        <option value="iso_sell_held">ISO: sell already-exercised shares</option>
+        <option value="compare_iso">ISO: compare cashless vs hold vs QD path</option>
+      </select>
+      <span class="form-hint" id="strategyHint" style="display:block;margin-top:0.35rem;color:var(--text-muted);font-size:0.8rem;"></span>
+    </div>
+
     <div class="form-row">
+      <div class="form-group">
+        <label for="planExerciseDate">Exercise date</label>
+        <input type="date" id="planExerciseDate" value="{{ profile.tax_year or '' }}-06-15">
+      </div>
+      <div class="form-group">
+        <label for="planExerciseFmv">FMV at exercise / share</label>
+        <input type="number" step="0.01" id="planExerciseFmv" value="{{ '%.2f'|format(live_price) }}">
+      </div>
       <div class="form-group">
         <label for="planSaleDate">Sale date</label>
         <input type="date" id="planSaleDate" value="{{ profile.tax_year or '' }}-07-01">
@@ -72,10 +97,6 @@
       <div class="form-group">
         <label for="planSalePrice">Sale price / share</label>
         <input type="number" step="0.01" id="planSalePrice" value="{{ '%.2f'|format(live_price) }}">
-      </div>
-      <div class="form-group form-check" style="align-self:end;padding-bottom:0.5rem;">
-        <input type="checkbox" id="assumeSameDayEx" checked>
-        <label for="assumeSameDayEx">ISO: assume same-day exercise if none logged</label>
       </div>
     </div>
 
@@ -86,46 +107,92 @@
             <th></th>
             <th>Lot</th>
             <th>Type</th>
-            <th>Available</th>
-            <th>Basis</th>
+            <th>Held / unexercised</th>
+            <th>Strike / basis</th>
+            <th>Ex date</th>
             <th>Hold</th>
-            <th>Unrealized</th>
-            <th>Sell qty</th>
+            <th>Qty</th>
           </tr>
         </thead>
         <tbody>
           {% for lot in lots %}
-          <tr data-vest="{{ lot.vest_event_id }}" data-available="{{ lot.shares_available }}" data-iso="{{ lot.is_iso|tojson }}">
+          <tr
+            data-vest="{{ lot.vest_event_id }}"
+            data-available="{{ lot.shares_available }}"
+            data-unexercised="{{ lot.shares_unexercised }}"
+            data-iso="{{ lot.is_iso|tojson }}"
+            data-exercised="{{ 'true' if lot.exercise_date else 'false' }}"
+          >
             <td><input type="checkbox" class="lot-check" {% if lot.shares_available <= 0 and lot.shares_unexercised <= 0 %}disabled{% endif %}></td>
             <td>{{ lot.label }}</td>
             <td>{{ lot.share_type }}</td>
             <td>
-              {{ "{:,.2f}".format(lot.shares_available) }}
-              {% if lot.is_iso and lot.shares_unexercised > 0 %}
-              <div style="font-size:0.75rem;color:var(--text-muted);">{{ "{:,.2f}".format(lot.shares_unexercised) }} unexercised</div>
+              {% if lot.is_iso %}
+                {{ "{:,.2f}".format(lot.shares_available) }} held
+                <div style="font-size:0.75rem;color:var(--text-muted);">{{ "{:,.2f}".format(lot.shares_unexercised) }} unexercised</div>
+              {% else %}
+                {{ "{:,.2f}".format(lot.shares_available) }} available
               {% endif %}
             </td>
-            <td>${{ "{:,.2f}".format(lot.cost_basis_per_share) }}</td>
+            <td>
+              {% if lot.is_iso %}${{ "{:,.2f}".format(lot.strike_price or lot.cost_basis_per_share) }} strike
+              {% else %}${{ "{:,.2f}".format(lot.cost_basis_per_share) }}
+              {% endif %}
+            </td>
+            <td style="font-size:0.85rem;">{{ lot.exercise_date or '—' }}</td>
             <td>{% if lot.is_long_term %}LT{% else %}ST{% endif %} ({{ lot.holding_days }}d)</td>
-            <td>${{ "{:,.2f}".format(lot.unrealized_gain) }}</td>
-            <td><input type="number" class="lot-qty form-control" step="0.01" min="0" max="{{ lot.shares_available }}" value="0" style="width:6rem;" {% if lot.shares_available <= 0 %}disabled{% endif %}></td>
+            <td>
+              {% set max_q = lot.shares_available if lot.shares_available > 0 else lot.shares_unexercised %}
+              <input type="number" class="lot-qty form-control" step="0.01" min="0"
+                     max="{{ max_q }}" value="0" style="width:6rem;"
+                     {% if max_q <= 0 %}disabled{% endif %}>
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="8">No sellable lots yet.</td></tr>
+          <tr><td colspan="8">No lots yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
 
     <div class="form-actions">
-      <button type="button" class="btn btn-primary" id="btnAnalyze">Analyze tax impact</button>
+      <button type="button" class="btn btn-primary" id="btnAnalyze">Run scenario</button>
       <button type="button" class="btn btn-secondary" id="btnSellMax">Fill max on selected</button>
     </div>
 
     <div id="analysisPanel" class="detail-card" style="margin-top:1.25rem;display:none;">
-      <h2>Tax impact</h2>
+      <h2 id="analysisTitle">Scenario result</h2>
+      <p id="analysisDesc" style="color:var(--text-secondary);font-size:0.9rem;margin:0 0 0.75rem;"></p>
       <div id="analysisWarnings" style="color:var(--warning);margin-bottom:0.75rem;"></div>
+
+      <div id="comparePanel" style="display:none;margin-bottom:1.25rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.75rem;">Strategy comparison</h3>
+        <div class="table-container" style="padding:0;border:none;">
+          <table class="data-table" id="compareTable"></table>
+        </div>
+        <ul id="compareGuidance" style="margin:0.75rem 0 0;padding-left:1.25rem;color:var(--text-secondary);font-size:0.875rem;"></ul>
+      </div>
+
+      <div id="cashPanel" style="display:none;margin-bottom:1rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Cash flow</h3>
+        <div class="stats-grid" id="cashStats"></div>
+      </div>
+
+      <div id="timelinePanel" style="display:none;margin-bottom:1rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Timeline</h3>
+        <ul id="timelineList" style="margin:0;padding-left:1.25rem;font-size:0.9rem;color:var(--text-secondary);"></ul>
+      </div>
+
+      <div id="recsPanel" style="display:none;margin-bottom:1rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Planning notes</h3>
+        <ul id="recsList" style="margin:0;padding-left:1.25rem;font-size:0.875rem;color:var(--text-secondary);"></ul>
+      </div>
+
       <div class="stats-grid" id="analysisStats"></div>
+      <div id="multiYearPanel" style="display:none;margin-top:1rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;">By tax year</h3>
+        <div id="multiYearStats"></div>
+      </div>
       <div id="stateTaxDetail" style="display:none;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border-subtle, rgba(255,255,255,0.08));">
         <h3 style="font-size:1rem;margin:0 0 0.75rem;">State tax detail</h3>
         <div class="stats-grid" id="stateTaxStats"></div>
@@ -134,7 +201,6 @@
       <div class="table-container" style="padding:0;border:none;margin-top:1rem;">
         <table class="data-table" id="analysisLots"></table>
       </div>
-      <pre id="analysisRaw" style="display:none;font-size:0.75rem;color:var(--text-muted);overflow:auto;"></pre>
     </div>
   </div>
 
@@ -264,17 +330,44 @@
     return (100 * Number(n || 0)).toFixed(1) + '%';
   }
 
+  const strategyHints = {
+    auto: 'RSUs sold as capital gains; already-exercised ISOs sold (QD/DD); unexercised ISOs treated as cashless DD.',
+    rsu_sell: 'Sale only vs vest FMV basis. Vest ordinary income is separate (already taxed or tax-withheld).',
+    iso_cashless_dd: 'Exercise + same-day sale. Spread is ordinary income + FICA; no ISO AMT preference.',
+    iso_exercise_hold: 'Exercise only: pay strike cash + possible AMT this year. No sale proceeds. Shows earliest QD date.',
+    iso_exercise_sell_qd: 'Two years when needed: AMT at exercise, then sale on earliest qualifying date at your assumed price.',
+    iso_sell_held: 'Sell shares you already exercised. Uses recorded exercise date/FMV to classify QD vs DD.',
+    compare_iso: 'Runs cashless vs exercise-hold vs hold-to-QD side-by-side on the same ISO lots and prices.'
+  };
+  function updateStrategyHint() {
+    const s = document.getElementById('planStrategy').value;
+    document.getElementById('strategyHint').textContent = strategyHints[s] || '';
+  }
+  document.getElementById('planStrategy').addEventListener('change', updateStrategyHint);
+  updateStrategyHint();
+
   document.getElementById('btnSellMax').addEventListener('click', function () {
+    const strategy = document.getElementById('planStrategy').value;
     document.querySelectorAll('#lotsTable tbody tr').forEach(function (tr) {
       const check = tr.querySelector('.lot-check');
       const qty = tr.querySelector('.lot-qty');
-      if (check && check.checked && qty) {
-        qty.value = tr.dataset.available || 0;
+      if (!check || !check.checked || !qty) return;
+      const held = parseFloat(tr.dataset.available || 0);
+      const unex = parseFloat(tr.dataset.unexercised || 0);
+      const isIso = tr.dataset.iso === 'true';
+      if (!isIso) {
+        qty.value = held;
+      } else if (strategy === 'iso_sell_held') {
+        qty.value = held;
+      } else if (strategy === 'iso_exercise_hold' || strategy === 'iso_exercise_sell_qd' || strategy === 'iso_cashless_dd' || strategy === 'compare_iso') {
+        qty.value = unex > 0 ? unex : held;
+      } else {
+        qty.value = Math.max(held, unex);
       }
     });
   });
 
-  document.getElementById('btnAnalyze').addEventListener('click', function () {
+  function collectLots() {
     const lots = [];
     document.querySelectorAll('#lotsTable tbody tr').forEach(function (tr) {
       const check = tr.querySelector('.lot-check');
@@ -285,14 +378,21 @@
         lots.push({ vest_event_id: parseInt(tr.dataset.vest, 10), shares: shares });
       }
     });
+    return lots;
+  }
+
+  document.getElementById('btnAnalyze').addEventListener('click', function () {
+    const lots = collectLots();
     if (!lots.length) {
       alert('Select lots and enter share quantities.');
       return;
     }
     const body = {
+      strategy: document.getElementById('planStrategy').value,
       sale_date: document.getElementById('planSaleDate').value,
       sale_price: parseFloat(document.getElementById('planSalePrice').value),
-      assume_same_day_exercise: document.getElementById('assumeSameDayEx').checked,
+      exercise_date: document.getElementById('planExerciseDate').value,
+      exercise_fmv: parseFloat(document.getElementById('planExerciseFmv').value),
       lots: lots
     };
     fetch('{{ url_for("tax_center.api_analyze") }}', {
@@ -306,25 +406,128 @@
           alert(data.error);
           return;
         }
-        renderAnalysis(data.analysis);
+        if (data.compare) {
+          renderCompare(data);
+        } else {
+          renderPlan(data.plan || data.scenario, data.analysis);
+        }
       })
       .catch(function (e) { alert(e); });
   });
 
-  function renderAnalysis(a) {
+  function renderCompare(data) {
     const panel = document.getElementById('analysisPanel');
     panel.style.display = 'block';
-    const warn = document.getElementById('analysisWarnings');
-    warn.innerHTML = (a.warnings || []).map(function (w) { return '<div>' + w + '</div>'; }).join('');
+    document.getElementById('analysisTitle').textContent = 'ISO strategy comparison';
+    document.getElementById('analysisDesc').textContent =
+      'Winner by net cash (proceeds − strike outlay − tax): ' + (data.winner_by_net_cash || '—') +
+      '. Rank ignores concentration risk and future wages.';
+    document.getElementById('analysisWarnings').innerHTML = '';
+    document.getElementById('comparePanel').style.display = 'block';
+    document.getElementById('cashPanel').style.display = 'none';
+    document.getElementById('timelinePanel').style.display = 'none';
+    document.getElementById('recsPanel').style.display = 'block';
+    document.getElementById('analysisStats').innerHTML = '';
+    document.getElementById('multiYearPanel').style.display = 'none';
+    document.getElementById('stateTaxDetail').style.display = 'none';
+    document.getElementById('analysisLots').innerHTML = '';
 
+    const rows = data.summary_rows || [];
+    const tbl = document.getElementById('compareTable');
+    tbl.innerHTML = '<thead><tr><th>Strategy</th><th>Net cash</th><th>Tax</th><th>AMT due</th><th>Strike outlay</th><th>Proceeds</th><th>Eff. rate</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        const win = r.strategy === data.winner_by_net_cash ? ' style="font-weight:600;"' : '';
+        return '<tr' + win + '><td>' + (r.name || r.strategy) + '</td><td>' + money(r.net_cash) +
+          '</td><td>' + money(r.total_tax) + '</td><td>' + money(r.amt_due) +
+          '</td><td>' + money(r.exercise_outlay) + '</td><td>' + money(r.sale_proceeds) +
+          '</td><td>' + pct(r.effective_rate) + '</td></tr>';
+      }).join('') + '</tbody>';
+    document.getElementById('compareGuidance').innerHTML =
+      (data.guidance || []).map(function (g) { return '<li>' + g + '</li>'; }).join('');
+    document.getElementById('recsList').innerHTML =
+      (data.guidance || []).map(function (g) { return '<li>' + g + '</li>'; }).join('');
+  }
+
+  function renderPlan(plan, analysisFallback) {
+    const panel = document.getElementById('analysisPanel');
+    panel.style.display = 'block';
+    document.getElementById('comparePanel').style.display = 'none';
+
+    const planObj = plan || {};
+    const a = analysisFallback || planObj.analysis || {};
+    document.getElementById('analysisTitle').textContent = planObj.name || 'Scenario result';
+    document.getElementById('analysisDesc').textContent = planObj.description || '';
+
+    const warns = [].concat(planObj.warnings || [], a.warnings || []);
+    document.getElementById('analysisWarnings').innerHTML =
+      warns.map(function (w) { return '<div>' + w + '</div>'; }).join('');
+
+    // Cash
+    const cash = planObj.cash || {};
+    document.getElementById('cashPanel').style.display = 'block';
+    document.getElementById('cashStats').innerHTML = [
+      ['Strike outlay', money(cash.exercise_cash_outlay)],
+      ['Sale proceeds', money(cash.sale_gross_proceeds)],
+      ['Incremental tax', money(cash.incremental_tax != null ? cash.incremental_tax : planObj.total_incremental_tax)],
+      ['Net cash', money(cash.net_cash != null ? cash.net_cash : planObj.total_net_cash)],
+      ['AMT due (modeled)', money(cash.amt_due_total)],
+      ['Eff. rate on economic gain', pct(planObj.effective_rate_on_economic_gain)]
+    ].map(function (c) {
+      return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
+        '</div><div class="stat-value" style="font-size:1.15rem;">' + c[1] + '</div></div></div>';
+    }).join('');
+
+    // Timeline
+    const tl = planObj.timeline || [];
+    if (tl.length) {
+      document.getElementById('timelinePanel').style.display = 'block';
+      document.getElementById('timelineList').innerHTML = tl.map(function (t) {
+        return '<li><strong>' + t.event_date + '</strong> · ' + t.title +
+          ' — ' + t.detail + (t.amount ? ' (' + money(t.amount) + ')' : '') + '</li>';
+      }).join('');
+    } else {
+      document.getElementById('timelinePanel').style.display = 'none';
+    }
+
+    // Recs
+    const recs = planObj.recommendations || [];
+    if (recs.length) {
+      document.getElementById('recsPanel').style.display = 'block';
+      document.getElementById('recsList').innerHTML = recs.map(function (r) { return '<li>' + r + '</li>'; }).join('');
+    } else {
+      document.getElementById('recsPanel').style.display = 'none';
+    }
+
+    // Multi-year
+    const years = planObj.years || [];
+    if (years.length > 1) {
+      document.getElementById('multiYearPanel').style.display = 'block';
+      document.getElementById('multiYearStats').innerHTML = years.map(function (y) {
+        const ya = y.analysis || {};
+        return '<div style="margin-bottom:0.75rem;"><strong>' + y.tax_year + '</strong> (' + y.role + ') — tax ' +
+          money(ya.total_tax) + ', AMT due ' + money(ya.amt_due) + ', federal ' + money(ya.federal_tax_total) +
+          ', state ' + money(ya.state_tax) + '</div>';
+      }).join('');
+    } else {
+      document.getElementById('multiYearPanel').style.display = 'none';
+    }
+
+    renderAnalysis(a);
+  }
+
+  function renderAnalysis(a) {
+    if (!a) {
+      document.getElementById('analysisStats').innerHTML = '';
+      return;
+    }
     const stateLabel = a.state_engine === 'CA'
       ? 'State (CA)'
       : (a.state_engine === 'flat' ? 'State (flat)' : 'State');
     const stats = document.getElementById('analysisStats');
     const cards = [
-      ['Proceeds', money(a.total_proceeds)],
-      ['After-tax proceeds', money(a.after_tax_proceeds)],
-      ['Total tax', money(a.total_tax)],
+      ['Proceeds (this year)', money(a.total_proceeds)],
+      ['After-tax (this year)', money(a.after_tax_proceeds)],
+      ['Tax (incremental)', money(a.total_tax)],
       ['Federal', money(a.federal_tax_total)],
       [stateLabel, money(a.state_tax)],
       ['NIIT', money(a.niit)],
@@ -333,14 +536,13 @@
       ['Ordinary (equity)', money(a.equity_ordinary)],
       ['STCG', money(a.stcg)],
       ['LTCG', money(a.ltcg)],
-      ['Eff. rate on equity gain', pct(a.effective_rate_on_gain)]
+      ['Eff. rate (year)', pct(a.effective_rate_on_gain)]
     ];
     stats.innerHTML = cards.map(function (c) {
       return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
         '</div><div class="stat-value" style="font-size:1.25rem;">' + c[1] + '</div></div></div>';
     }).join('');
 
-    // State PIT / MHST / marginal detail
     const stateDetail = document.getElementById('stateTaxDetail');
     const stateStats = document.getElementById('stateTaxStats');
     const stateNotes = document.getElementById('stateTaxNotes');
@@ -364,22 +566,24 @@
         return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
           '</div><div class="stat-value" style="font-size:1.05rem;">' + c[1] + '</div></div></div>';
       }).join('');
-      const notes = a.state_notes && a.state_notes.length ? a.state_notes : (a.warnings || []).filter(function (w) {
-        return /California|MHST|state|flat profile/i.test(w);
-      });
+      const notes = a.state_notes && a.state_notes.length ? a.state_notes : [];
       stateNotes.innerHTML = notes.map(function (n) { return '<li>' + n + '</li>'; }).join('');
     } else {
       stateDetail.style.display = 'none';
     }
 
     const t = document.getElementById('analysisLots');
-    t.innerHTML = '<thead><tr><th>Lot</th><th>Shares</th><th>Proceeds</th><th>Ordinary</th><th>CG</th><th>Term</th><th>ISO</th></tr></thead><tbody>' +
-      (a.lots || []).map(function (l) {
-        return '<tr><td>' + (l.label || l.vest_event_id) + '</td><td>' + l.shares +
-          '</td><td>' + money(l.proceeds) + '</td><td>' + money(l.ordinary_income) +
-          '</td><td>' + money(l.capital_gain) + '</td><td>' + (l.is_long_term ? 'LT' : 'ST') +
-          '</td><td>' + (l.iso_disposition || '') + '</td></tr>';
-      }).join('') + '</tbody>';
+    if (a.lots && a.lots.length) {
+      t.innerHTML = '<thead><tr><th>Lot</th><th>Shares</th><th>Proceeds</th><th>Ordinary</th><th>CG</th><th>Term</th><th>ISO</th></tr></thead><tbody>' +
+        a.lots.map(function (l) {
+          return '<tr><td>' + (l.label || l.vest_event_id) + '</td><td>' + l.shares +
+            '</td><td>' + money(l.proceeds) + '</td><td>' + money(l.ordinary_income) +
+            '</td><td>' + money(l.capital_gain) + '</td><td>' + (l.is_long_term ? 'LT' : 'ST') +
+            '</td><td>' + (l.iso_disposition || '') + '</td></tr>';
+        }).join('') + '</tbody>';
+    } else {
+      t.innerHTML = '';
+    }
   }
 
   document.getElementById('btnRecordSale').addEventListener('click', function () {

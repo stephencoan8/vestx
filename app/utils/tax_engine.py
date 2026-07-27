@@ -162,6 +162,33 @@ class LotSaleInput:
 
 
 @dataclass
+class ExerciseInput:
+    """
+    ISO (or NSO) exercise as its own taxable-year event — distinct from sale.
+
+    For ISOs: no regular federal income at exercise; AMT preference = bargain
+    element (FMV − strike) × shares, unless shares are disqualified in the
+    same calendar year (handled by pairing with LotSaleInput / planner).
+    """
+    vest_event_id: int
+    shares: float
+    exercise_date: date
+    strike_price: float
+    fmv_at_exercise: float
+    grant_date: Optional[date] = None
+    label: str = ''
+    is_iso: bool = True
+
+    @property
+    def bargain_element(self) -> float:
+        return max(0.0, self.fmv_at_exercise - self.strike_price) * self.shares
+
+    @property
+    def cash_outlay(self) -> float:
+        return self.strike_price * self.shares
+
+
+@dataclass
 class LotSaleResult:
     vest_event_id: int
     label: str
@@ -221,6 +248,14 @@ class TaxAnalysis:
         return d
 
 
+def _add_years(d: date, years: int) -> date:
+    try:
+        return d.replace(year=d.year + years)
+    except ValueError:
+        # Feb 29 → Feb 28
+        return d.replace(year=d.year + years, month=2, day=28)
+
+
 def classify_iso_disposition(
     grant_date: date,
     exercise_date: Optional[date],
@@ -228,11 +263,15 @@ def classify_iso_disposition(
 ) -> str:
     if exercise_date is None:
         return 'unknown'
-    years_from_grant = (sale_date - grant_date).days / 365.25
-    years_from_exercise = (sale_date - exercise_date).days / 365.25
-    if years_from_grant >= 2 and years_from_exercise >= 1:
+    # IRC §422: hold ≥2 years from grant and ≥1 year from exercise
+    if sale_date >= _add_years(grant_date, 2) and sale_date >= _add_years(exercise_date, 1):
         return 'qualifying'
     return 'disqualifying'
+
+
+def earliest_qualifying_sale_date(grant_date: date, exercise_date: date) -> date:
+    """First calendar date a sale can be a qualifying disposition."""
+    return max(_add_years(grant_date, 2), _add_years(exercise_date, 1))
 
 
 def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
@@ -270,7 +309,9 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
         strike = lot.strike_price
         fmv_ex = lot.fmv_at_exercise if lot.fmv_at_exercise is not None else lot.sale_price
         bargain_per = max(0.0, fmv_ex - strike)
-        amt_bargain = bargain_per * lot.shares
+        # Default: AMT preference is an *exercise-year* item. On a sale-only row it is
+        # usually 0 unless the planner models exercise+hold via ExerciseInput.
+        amt_bargain = 0.0
 
         if iso_disp == 'unknown':
             notes.append('ISO sale requires exercise_date to classify QD vs DD.')
@@ -287,22 +328,33 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
             capital_gain = proceeds - adj_basis
             cost_basis_total = adj_basis
             notes.append('ISO disqualifying disposition: bargain as ordinary; residual as capital gain.')
+            # Same-year DD: bargain is already in regular tax → no ISO AMT preference
+            if lot.exercise_date and lot.exercise_date.year == lot.sale_date.year:
+                notes.append(
+                    'Same-year exercise + DD: spread is ordinary income; no ISO AMT preference on these shares.'
+                )
+            else:
+                notes.append(
+                    'Prior-year exercise: any AMT was in the exercise year; sale year has ordinary/CG only. '
+                    'AMT credit carryforward may apply (set in Tax Profile).'
+                )
             # Holding period for residual CG runs from exercise
             if lot.exercise_date:
                 holding_days = (lot.sale_date - lot.exercise_date).days
                 is_lt = holding_days >= 365
         else:
-            # Qualifying: entire appreciation over strike is LTCG (preferential); AMT paid at exercise
+            # Qualifying: entire appreciation over strike is LTCG (preferential)
             cost_basis_total = strike * lot.shares
             capital_gain = proceeds - cost_basis_total
             is_lt = True
-            notes.append('ISO qualifying disposition: gain over strike as long-term capital gain.')
-            # AMT bargain was at exercise (may be prior year)
-            if lot.exercise_date and lot.exercise_date.year == lot.sale_date.year:
-                notes.append('Exercise and sale in same year — AMT bargain included in this analysis year.')
-            else:
-                amt_bargain = 0.0  # prior-year exercise AMT already settled
-                notes.append('Exercise in a prior year — AMT bargain not re-included; set AMT credit if applicable.')
+            notes.append('ISO qualifying disposition: gain over strike as long-term capital gain (federal).')
+            notes.append(
+                'AMT was generally due in the exercise year on the bargain element; '
+                'sale year is LTCG + possible AMT credit usage (Tax Profile).'
+            )
+            if lot.exercise_date:
+                qd_ready = earliest_qualifying_sale_date(lot.grant_date, lot.exercise_date)
+                notes.append(f'Earliest QD date for this lot was {qd_ready.isoformat()}.')
     else:
         # RSU / ESPP simplified: cost basis = FMV at vest (already taxed as ordinary at vest)
         capital_gain = proceeds - cost_basis_total
@@ -474,13 +526,17 @@ def analyze_sales(
     lots: List[LotSaleInput],
     *,
     include_exercise_amt: bool = True,
+    exercises: Optional[List[ExerciseInput]] = None,
 ) -> TaxAnalysis:
     """
-    Stacked analysis for lot sales in profile['tax_year'].
+    Stacked analysis for lot sales and/or ISO exercises in profile['tax_year'].
 
     Reported federal/state/NIIT/AMT amounts are **incremental**: tax with the
     proposed equity events minus tax on profile income alone (wages + other CG).
     That is the right base for "effective rate on gain" and after-tax proceeds.
+
+    exercises: ISO exercise events in this tax year that still create AMT preference
+    (typically exercise-and-hold; exclude shares that are same-year DD sales).
     """
     year = int(profile.get('tax_year') or date.today().year)
     filing = profile.get('filing_status') or 'single'
@@ -489,6 +545,7 @@ def analyze_sales(
 
     missing: List[str] = []
     warnings: List[str] = []
+    exercises = exercises or []
 
     if profile.get('other_ordinary_income') is None:
         missing.append('other_ordinary_income')
@@ -511,7 +568,21 @@ def analyze_sales(
     # Display ST/LT = equity lots only (netted)
     stcg_pos, ltcg_pos = _net_st_lt(eq_st, eq_lt)
 
-    amt_bargain = sum(r.amt_bargain_element for r in lot_results) if include_exercise_amt else 0.0
+    # AMT bargain: from sale rows (legacy) + standalone exercises in this year
+    amt_bargain = 0.0
+    if include_exercise_amt:
+        amt_bargain += sum(r.amt_bargain_element for r in lot_results)
+        for ex in exercises:
+            if ex.exercise_date.year != year:
+                continue
+            if not ex.is_iso:
+                continue
+            amt_bargain += ex.bargain_element
+            warnings.append(
+                f'ISO exercise AMT preference: ${ex.bargain_element:,.0f} bargain on '
+                f'{ex.shares:g} sh @ FMV ${ex.fmv_at_exercise:.2f} − strike ${ex.strike_price:.2f} '
+                f'({ex.label or "exercise"}).'
+            )
 
     base = _federal_state_layer(
         profile,
@@ -564,7 +635,12 @@ def analyze_sales(
     total_tax = federal_after_credit + state_tax + fica
     # Economic gain from equity events (CG + DD ordinary; RSU vest ordinary is separate)
     gain = (total_proceeds - total_basis) + equity_ordinary
-    # Guard: if basis > proceeds with no ordinary, avoid negative denom noise
+    # Exercise-and-hold: no sale gain — rate tax against AMT bargain so the metric is usable
+    if gain <= 0 and amt_bargain > 0:
+        gain = amt_bargain
+        warnings.append(
+            'No sale proceeds in this year; effective rate uses ISO bargain element (AMT preference) as the base.'
+        )
     if gain <= 0:
         eff = 0.0
     else:

@@ -15,6 +15,7 @@ from app.models.vest_event import VestEvent
 from app.models.grant import Grant, ShareType
 from app.utils.lot_inventory import build_lots_for_user
 from app.utils.tax_engine import LotSaleInput, analyze_sales
+from app.utils.equity_planner import LotSpec, run_plan
 from app.utils.price_utils import get_latest_user_price
 import logging
 
@@ -120,87 +121,138 @@ def api_lots():
     return jsonify({'lots': build_lots_for_user(current_user.id)})
 
 
+def _lot_specs_from_request(data: dict, user_id: int) -> list:
+    """Build LotSpec list from API lots[] payload + DB grant/vest/exercise truth."""
+    items = data.get('lots') or []
+    specs = []
+    for item in items:
+        vest_id = int(item['vest_event_id'])
+        shares = float(item.get('shares') or 0)
+        if shares <= 0:
+            continue
+        vest = VestEvent.query.join(Grant).filter(
+            VestEvent.id == vest_id, Grant.user_id == user_id
+        ).first()
+        if not vest:
+            raise ValueError(f'Vest {vest_id} not found')
+        grant = vest.grant
+        is_iso = _iso(grant.share_type)
+
+        ex_date = item.get('exercise_date')
+        fmv_ex = item.get('fmv_at_exercise')
+        if is_iso:
+            ex = (
+                ISOExercise.query.filter_by(user_id=user_id, vest_event_id=vest_id)
+                .order_by(ISOExercise.exercise_date.desc())
+                .first()
+            )
+            if ex:
+                if not ex_date:
+                    ex_date = ex.exercise_date.isoformat() if ex.exercise_date else None
+                if fmv_ex is None:
+                    fmv_ex = ex.fmv_at_exercise
+
+        specs.append(
+            LotSpec(
+                vest_event_id=vest.id,
+                grant_id=grant.id,
+                share_type=grant.share_type,
+                grant_type=grant.grant_type,
+                is_iso=is_iso,
+                shares=shares,
+                vest_date=vest.vest_date,
+                grant_date=grant.grant_date,
+                strike_price=grant.share_price_at_grant if is_iso else 0.0,
+                cost_basis_per_share=(
+                    grant.share_price_at_grant if is_iso else (vest.share_price_at_vest or 0)
+                ),
+                exercise_date=(
+                    datetime.fromisoformat(ex_date).date() if ex_date else None
+                ),
+                fmv_at_exercise=float(fmv_ex) if fmv_ex is not None else None,
+                label=f"{grant.share_type} {vest.vest_date}",
+                commission=float(item.get('commission', 0) or 0),
+            )
+        )
+    return specs
+
+
 @tax_center_bp.route('/api/analyze', methods=['POST'])
 @login_required
 def api_analyze():
-    """What-if analysis for proposed lot sales."""
+    """
+    What-if planner.
+
+    Preferred: strategy-aware planning via equity_planner (exercise ≠ sale).
+    Legacy body { lots, sale_date, sale_price, assume_same_day_exercise } still works
+    and maps to strategy auto / cashless.
+    """
     try:
         data = request.get_json() or {}
         profile = TaxProfile.for_user(current_user)
         eng = profile.to_engine_dict()
-        # Allow request overrides for scenario year / income
         if data.get('tax_year'):
             eng['tax_year'] = int(data['tax_year'])
         if data.get('other_ordinary_income') is not None:
             eng['other_ordinary_income'] = float(data['other_ordinary_income'])
 
-        sale_date = datetime.fromisoformat(data.get('sale_date', date.today().isoformat())).date()
-        sale_price = float(data.get('sale_price') or get_latest_user_price(current_user.id) or 0)
-        items = data.get('lots') or []
+        sale_date_raw = data.get('sale_date') or date.today().isoformat()
+        sale_date = datetime.fromisoformat(sale_date_raw).date()
+        ex_date_raw = data.get('exercise_date') or sale_date_raw
+        exercise_date = datetime.fromisoformat(ex_date_raw).date()
 
-        lot_inputs = []
-        for item in items:
-            vest_id = int(item['vest_event_id'])
-            shares = float(item['shares'])
-            if shares <= 0:
-                continue
-            vest = VestEvent.query.join(Grant).filter(
-                VestEvent.id == vest_id, Grant.user_id == current_user.id
-            ).first()
-            if not vest:
-                return jsonify({'error': f'Vest {vest_id} not found'}), 404
-            grant = vest.grant
-            is_iso = _iso(grant.share_type)
+        sale_price = float(
+            data.get('sale_price')
+            if data.get('sale_price') is not None
+            else (get_latest_user_price(current_user.id) or 0)
+        )
+        exercise_fmv = float(
+            data.get('exercise_fmv')
+            if data.get('exercise_fmv') is not None
+            else (data.get('fmv_at_exercise') if data.get('fmv_at_exercise') is not None else sale_price)
+        )
 
-            ex_date = item.get('exercise_date')
-            fmv_ex = item.get('fmv_at_exercise')
-            if is_iso:
-                # Prefer latest exercise record
-                ex = (
-                    ISOExercise.query.filter_by(user_id=current_user.id, vest_event_id=vest_id)
-                    .order_by(ISOExercise.exercise_date.desc())
-                    .first()
-                )
-                if ex:
-                    ex_date = ex.exercise_date.isoformat()
-                    fmv_ex = ex.fmv_at_exercise
-                elif not ex_date:
-                    # same-day cashless default only if client says so
-                    if data.get('assume_same_day_exercise'):
-                        ex_date = sale_date.isoformat()
-                        fmv_ex = sale_price
-                    else:
-                        ex_date = None
-                        fmv_ex = None
+        strategy = (data.get('strategy') or '').strip().lower()
+        if not strategy:
+            # Back-compat: old checkbox
+            if data.get('assume_same_day_exercise', True):
+                strategy = 'auto'
+            else:
+                strategy = 'auto'
 
-            lot_inputs.append(
-                LotSaleInput(
-                    vest_event_id=vest.id,
-                    grant_id=grant.id,
-                    share_type=grant.share_type,
-                    grant_type=grant.grant_type,
-                    shares=shares,
-                    sale_price=float(item.get('sale_price', sale_price)),
-                    sale_date=sale_date,
-                    vest_date=vest.vest_date,
-                    grant_date=grant.grant_date,
-                    cost_basis_per_share=(
-                        grant.share_price_at_grant if is_iso else (vest.share_price_at_vest or 0)
-                    ),
-                    is_iso=is_iso,
-                    strike_price=grant.share_price_at_grant if is_iso else 0.0,
-                    exercise_date=datetime.fromisoformat(ex_date).date() if ex_date else None,
-                    fmv_at_exercise=float(fmv_ex) if fmv_ex is not None else None,
-                    commission=float(item.get('commission', 0) or 0),
-                    label=f"{grant.share_type} {vest.vest_date}",
-                )
-            )
+        specs = _lot_specs_from_request(data, current_user.id)
+        if not specs and strategy not in ('compare', 'compare_iso', 'iso_compare'):
+            return jsonify({'error': 'Select lots and enter share quantities.'}), 400
 
-        analysis = analyze_sales(eng, lot_inputs)
-        return jsonify({'success': True, 'analysis': analysis.to_dict()})
+        result = run_plan(
+            eng,
+            specs,
+            strategy=strategy,
+            sale_date=sale_date,
+            sale_price=sale_price,
+            exercise_date=exercise_date,
+            exercise_fmv=exercise_fmv,
+        )
+
+        # Back-compat: surface primary analysis at top level for simple clients
+        if not result.get('compare') and result.get('plan'):
+            plan = result['plan']
+            result['analysis'] = plan.get('analysis')
+            result['scenario'] = plan
+
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error('analyze failed: %s', e, exc_info=True)
         return jsonify({'error': str(e)}), 400
+
+
+@tax_center_bp.route('/api/plan', methods=['POST'])
+@login_required
+def api_plan():
+    """Alias for strategy planner (same body as /api/analyze)."""
+    return api_analyze()
 
 
 @tax_center_bp.route('/api/sales', methods=['POST'])
