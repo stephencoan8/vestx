@@ -28,6 +28,7 @@
                 <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link{% if request.endpoint == 'grants.vest_schedule' %} active{% endif %}">Schedule</a>
                 <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link{% if request.endpoint == 'grants.finance_deep_dive' %} active{% endif %}">Finance</a>
                 <a href="{{ url_for('grants.rules') }}" class="nav-link{% if request.endpoint == 'grants.rules' %} active{% endif %}">Rules</a>
+                <button type="button" class="nav-link advisor-nav-btn" id="navAdvisorOpen" title="Open global advisor (any page)">Advisor</button>
             </div>
 
             <div class="sidebar-section">
@@ -84,27 +85,30 @@
 
     <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
 
-    {# ——— Right-side VestX Advisor (Grok + full account context) ——— #}
-    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="VestX Advisor">
+    {# ——— Global app-shell Advisor (every page; history persists across navigation) ——— #}
+    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="VestX Advisor — available on every page">
       Ask Grok
     </button>
     <aside class="advisor-panel" id="advisorPanel" aria-label="VestX Advisor chat" hidden>
       <header class="advisor-header">
         <div>
           <strong>VestX Advisor</strong>
-          <span class="advisor-sub" id="advisorStatus">Uses your encrypted xAI key · sees your lots &amp; tax profile</span>
+          <span class="advisor-sub" id="advisorStatus">Global · works on every page · chat history saved in this browser tab</span>
         </div>
-        <button type="button" class="advisor-close" id="advisorClose" aria-label="Close">×</button>
+        <div class="advisor-header-actions">
+          <button type="button" class="advisor-newchat" id="advisorNewChat" title="Clear conversation">New</button>
+          <button type="button" class="advisor-close" id="advisorClose" aria-label="Close">×</button>
+        </div>
       </header>
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
-        <div class="advisor-msg bot md-ready">
-          <p class="md-p"><strong>VestX Advisor</strong> loads your full account each message (lots, grants, tax profile, sales) as structured data.</p>
-          <p class="md-p">Computable goals (e.g. net $500k) run on engines first and <strong>update Sales &amp; Tax</strong>. Ask “why” for explanation. Stay on that page for live UI sync.</p>
-          <p class="md-p">Replies use Markdown (tables, headings, lists).</p>
+        <div class="advisor-msg bot md-ready" data-welcome="1">
+          <p class="md-p"><strong>App-wide advisor</strong> — available from any page (dashboard, grants, prices, tax…).</p>
+          <p class="md-p">Your conversation stays open as you navigate. Full account data is loaded on each question.</p>
+          <p class="md-p">Try: <em>net $500k minimize tax</em> · engines update Sales &amp; Tax when you open that page.</p>
         </div>
       </div>
       <div class="advisor-input-row">
-        <textarea id="advisorInput" rows="3" placeholder="e.g. Compare selling LT RSUs first vs cashless ISO to net $500k — show a table of vest_ids"></textarea>
+        <textarea id="advisorInput" rows="3" placeholder="Ask anything about your equity… works on every page"></textarea>
         <button type="button" class="btn btn-primary" id="advisorSend">Send</button>
       </div>
     </aside>
@@ -218,11 +222,36 @@
         var fab = document.getElementById('advisorFab');
         var panel = document.getElementById('advisorPanel');
         var closeBtn = document.getElementById('advisorClose');
+        var newChatBtn = document.getElementById('advisorNewChat');
+        var navAdvisor = document.getElementById('navAdvisorOpen');
         var sendBtn = document.getElementById('advisorSend');
         var input = document.getElementById('advisorInput');
         var log = document.getElementById('advisorMessages');
         var statusEl = document.getElementById('advisorStatus');
         var history = [];
+        var STORAGE_HIST = 'vestx_advisor_history';
+        var STORAGE_OPEN = 'vestx_advisor_open';
+
+        function saveHistory() {
+            try {
+                sessionStorage.setItem(STORAGE_HIST, JSON.stringify(history.slice(-40)));
+            } catch (e) {}
+        }
+        function loadHistory() {
+            try {
+                var raw = sessionStorage.getItem(STORAGE_HIST);
+                if (!raw) return [];
+                var arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        function setOpenFlag(open) {
+            try {
+                sessionStorage.setItem(STORAGE_OPEN, open ? '1' : '0');
+            } catch (e) {}
+        }
 
         function isAdvisorOpen() {
             return panel && !panel.hasAttribute('hidden') && !panel.classList.contains('is-closed');
@@ -234,6 +263,7 @@
             panel.style.display = '';
             document.body.classList.add('advisor-open');
             if (fab) fab.setAttribute('aria-expanded', 'true');
+            setOpenFlag(true);
             if (input) input.focus();
         }
         function closeAdvisor(ev) {
@@ -247,40 +277,10 @@
             panel.style.display = 'none';
             document.body.classList.remove('advisor-open');
             if (fab) fab.setAttribute('aria-expanded', 'false');
+            setOpenFlag(false);
         }
-        // Expose for debugging / other scripts
         window.vestxOpenAdvisor = openAdvisor;
         window.vestxCloseAdvisor = closeAdvisor;
-
-        if (fab) fab.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (isAdvisorOpen()) {
-                closeAdvisor();
-            } else {
-                openAdvisor();
-                if (window.VESTX_ADVISOR_PING_URL && window.vestxFetchJson) {
-                    statusEl.textContent = 'Checking API…';
-                    window.vestxFetchJson(window.VESTX_ADVISOR_PING_URL, { method: 'GET' })
-                        .then(function (d) {
-                            statusEl.textContent = 'API OK · ' + (d.api_version || 'ping') +
-                                (d.grok_enabled ? ' · Grok key ready' : ' · no Grok key (engine Qs still work)');
-                        })
-                        .catch(function (err) {
-                            statusEl.textContent = 'API check failed: ' + (err.message || err);
-                        });
-                }
-            }
-        });
-        if (closeBtn) {
-            closeBtn.addEventListener('click', closeAdvisor);
-            // Capture phase so nothing on the panel steals the click
-            closeBtn.addEventListener('click', closeAdvisor, true);
-        }
-        // Escape key closes chat
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && isAdvisorOpen()) closeAdvisor(e);
-        });
 
         function appendMsg(role, text, opts) {
             opts = opts || {};
@@ -305,6 +305,39 @@
             return div;
         }
 
+        function clearChatDomKeepWelcome() {
+            if (!log) return;
+            var keep = log.querySelector('[data-welcome="1"]');
+            log.innerHTML = '';
+            if (keep) {
+                log.appendChild(keep);
+            } else {
+                var w = document.createElement('div');
+                w.className = 'advisor-msg bot md-ready';
+                w.setAttribute('data-welcome', '1');
+                w.innerHTML = '<p class="md-p"><strong>App-wide advisor</strong> — conversation cleared. Available on every page.</p>';
+                log.appendChild(w);
+            }
+        }
+
+        function restoreChatFromStorage() {
+            history = loadHistory();
+            if (!history.length) return;
+            // Remove welcome-only view and rebuild from history
+            if (log) {
+                Array.prototype.slice.call(log.querySelectorAll('.advisor-msg:not([data-welcome])')).forEach(function (n) {
+                    n.parentNode.removeChild(n);
+                });
+                history.forEach(function (m) {
+                    if (!m || !m.content) return;
+                    appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
+                });
+            }
+            if (statusEl) {
+                statusEl.textContent = 'Restored chat · ' + history.length + ' messages · global across pages';
+            }
+        }
+
         function applyPlanFromChat(data) {
             var plan = data.engine_plan;
             if (!plan) return;
@@ -318,15 +351,69 @@
                 tip.innerHTML = '<strong>Screen updated</strong> from engine' +
                     (n ? ' · ' + n + ' SpecID pick(s)' : '') +
                     (net != null ? ' · net ~$' + Number(net).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '') +
-                    ' · Goal panel + lot table refreshed.';
+                    ' · goal/lots refreshed on this page.';
             } else {
                 tip.innerHTML = '<strong>Plan ready</strong> (' + (n || 0) + ' picks)' +
                     (net != null ? ', net ~$' + Number(net).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '') +
-                    '. <a href="' + window.VESTX_TAX_HUB_URL + '">Open Sales &amp; Tax</a> to see the full table (plan is saved for this session).';
+                    '. Open <a href="' + window.VESTX_TAX_HUB_URL + '">Sales &amp; Tax</a> anytime — plan is saved for this tab.';
             }
             log.appendChild(tip);
             log.scrollTop = log.scrollHeight;
         }
+
+        function pingApi() {
+            if (!window.VESTX_ADVISOR_PING_URL || !window.vestxFetchJson || !statusEl) return;
+            statusEl.textContent = 'Checking API…';
+            window.vestxFetchJson(window.VESTX_ADVISOR_PING_URL, { method: 'GET' })
+                .then(function (d) {
+                    statusEl.textContent = 'API OK · global · ' + (d.api_version || 'ping') +
+                        (d.grok_enabled ? ' · Grok key ready' : ' · no Grok key (engine Qs still work)');
+                })
+                .catch(function (err) {
+                    statusEl.textContent = 'API check failed: ' + (err.message || err);
+                });
+        }
+
+        function toggleOrOpenAdvisor(forceOpen) {
+            if (forceOpen || !isAdvisorOpen()) {
+                openAdvisor();
+                pingApi();
+            } else {
+                closeAdvisor();
+            }
+        }
+
+        if (fab) fab.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleOrOpenAdvisor(false);
+        });
+        if (navAdvisor) {
+            navAdvisor.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                // Close mobile sidebar if open
+                document.body.classList.remove('sidebar-open');
+                openAdvisor();
+                pingApi();
+            });
+        }
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeAdvisor);
+            closeBtn.addEventListener('click', closeAdvisor, true);
+        }
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                history = [];
+                saveHistory();
+                clearChatDomKeepWelcome();
+                if (statusEl) statusEl.textContent = 'New chat · still global across pages';
+            });
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && isAdvisorOpen()) closeAdvisor(e);
+        });
 
         function sendAdvisor() {
             var text = (input.value || '').trim();
@@ -334,8 +421,9 @@
             input.value = '';
             appendMsg('user', text);
             history.push({ role: 'user', content: text });
+            saveHistory();
+            setOpenFlag(true);
 
-            // Visible progress so user is not left waiting blindly
             var loadEl = document.createElement('div');
             loadEl.className = 'advisor-msg bot advisor-loading-msg';
             loadEl.innerHTML =
@@ -344,7 +432,7 @@
                 '<div class="advisor-loading-text">' +
                 '<strong>Calling VestX API…</strong>' +
                 '<span class="advisor-loading-phase">1/2 Tax engines (deterministic)</span>' +
-                '<span class="advisor-loading-hint">If needed: 2/2 Grok with your full account TSV</span>' +
+                '<span class="advisor-loading-hint">If needed: 2/2 Grok with your full account</span>' +
                 '</div></div>';
             log.appendChild(loadEl);
             log.scrollTop = log.scrollHeight;
@@ -373,12 +461,12 @@
                 var ms = Date.now() - t0;
                 var reply = data.reply || '(empty reply)';
                 history.push({ role: 'assistant', content: reply });
+                saveHistory();
                 appendMsg('assistant', reply);
                 if (data.engine_plan) {
                     applyPlanFromChat(data);
                 }
 
-                // Explicit "API worked" status line in chat
                 var ok = document.createElement('div');
                 ok.className = 'advisor-msg bot advisor-api-ok';
                 var usedGrok = data.used_grok === true;
@@ -433,6 +521,14 @@
                 sendAdvisor();
             }
         });
+
+        // Restore conversation + open state across full page navigations
+        restoreChatFromStorage();
+        try {
+            if (sessionStorage.getItem(STORAGE_OPEN) === '1') {
+                openAdvisor();
+            }
+        } catch (e) {}
     })();
     </script>
     {% endif %}

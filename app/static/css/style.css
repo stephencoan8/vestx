@@ -276,6 +276,28 @@ body.app-layout {
     padding: 1rem 1rem 0.75rem;
     border-bottom: 1px solid var(--border-subtle);
 }
+.advisor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+.advisor-newchat {
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-family: inherit;
+    font-weight: 600;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+}
+.advisor-newchat:hover {
+    color: var(--text-primary);
+    border-color: var(--copper-border);
+    background: var(--bg-hover);
+}
 .advisor-header strong {
     display: block;
     font-size: 1rem;
