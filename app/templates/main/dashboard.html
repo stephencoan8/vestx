@@ -588,12 +588,10 @@ if (typeof Chart !== 'undefined') {
             crosshair.style.top = area.top + 'px';
             crosshair.style.height = (area.bottom - area.top) + 'px';
         }
-        const src = pt.source === 'public' ? 'Public' : (pt.source === 'private' ? 'Private' : '');
         hoverTip.hidden = false;
         hoverTip.innerHTML =
             '<div class="price-hover-date">' + fmtDateTime(pt.x) + '</div>' +
-            '<div class="price-hover-price">' + fmtMoney(pt.y) + '</div>' +
-            (src ? '<div class="price-hover-src">' + src + '</div>' : '');
+            '<div class="price-hover-price">' + fmtMoney(pt.y) + '</div>';
 
         // Position tip near cursor, keep inside chart
         const tipW = hoverTip.offsetWidth || 120;
@@ -861,13 +859,6 @@ if (typeof Chart !== 'undefined') {
     font-size: 0.95rem;
     font-weight: 600;
     letter-spacing: -0.02em;
-}
-.price-hover-tip .price-hover-src {
-    margin-top: 0.15rem;
-    font-size: 0.65rem;
-    color: var(--copper, #b87333);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 .price-measure-badge {
     display: flex;
