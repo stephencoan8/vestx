@@ -97,17 +97,19 @@
         <button type="button" class="advisor-close" id="advisorClose" aria-label="Close">×</button>
       </header>
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
-        <div class="advisor-msg bot">
-          Computable questions run on VestX engines first (0 Grok tokens) and <strong>update the Sales &amp; Tax screen</strong> (goal stats, SpecID table, lot checkboxes).
-          Say “why” for a short explanation. Stay on Sales &amp; Tax while chatting for live UI sync.
+        <div class="advisor-msg bot md-ready">
+          <p class="md-p"><strong>VestX Advisor</strong> loads your full account each message (lots, grants, tax profile, sales) as structured data.</p>
+          <p class="md-p">Computable goals (e.g. net $500k) run on engines first and <strong>update Sales &amp; Tax</strong>. Ask “why” for explanation. Stay on that page for live UI sync.</p>
+          <p class="md-p">Replies use Markdown (tables, headings, lists).</p>
         </div>
       </div>
       <div class="advisor-input-row">
-        <textarea id="advisorInput" rows="2" placeholder="e.g. How can I net $500k with the lowest tax?"></textarea>
+        <textarea id="advisorInput" rows="3" placeholder="e.g. Compare selling LT RSUs first vs cashless ISO to net $500k — show a table of vest_ids"></textarea>
         <button type="button" class="btn btn-primary" id="advisorSend">Send</button>
       </div>
     </aside>
 
+    <script src="{{ url_for('static', filename='js/markdown-lite.js') }}"></script>
     <script>
     (function () {
         var sidebar = document.getElementById('sidebar');
@@ -236,7 +238,16 @@
             opts = opts || {};
             var div = document.createElement('div');
             div.className = 'advisor-msg ' + (role === 'user' ? 'user' : 'bot');
-            if (opts.html) {
+            if (role === 'bot' || role === 'assistant') {
+                div.className = 'advisor-msg bot';
+                if (opts.html) {
+                    div.innerHTML = text;
+                } else if (window.vestxMarkdown && window.vestxMarkdown.render) {
+                    div.innerHTML = window.vestxMarkdown.render(text);
+                } else {
+                    div.textContent = text;
+                }
+            } else if (opts.html) {
                 div.innerHTML = text;
             } else {
                 div.textContent = text;
@@ -287,7 +298,7 @@
             .then(function (data) {
                 var reply = data.reply || '(empty reply)';
                 history.push({ role: 'assistant', content: reply });
-                appendMsg('bot', reply);
+                appendMsg('assistant', reply);
                 if (data.engine_plan) {
                     applyPlanFromChat(data);
                 }

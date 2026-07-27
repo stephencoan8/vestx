@@ -225,7 +225,7 @@ body.app-layout {
 
 /* ——— Right-side Advisor chat ——— */
 :root {
-    --advisor-width: 22rem;
+    --advisor-width: 26rem;
 }
 
 .advisor-fab {
@@ -305,24 +305,96 @@ body.app-layout {
 }
 .advisor-msg {
     font-size: 0.875rem;
-    line-height: 1.45;
-    padding: 0.65rem 0.8rem;
+    line-height: 1.5;
+    padding: 0.75rem 0.9rem;
     border-radius: var(--radius-sm);
     max-width: 100%;
-    white-space: pre-wrap;
     word-break: break-word;
 }
 .advisor-msg.bot {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     color: var(--text-secondary);
-    align-self: flex-start;
+    align-self: stretch;
+    white-space: normal;
 }
 .advisor-msg.user {
     background: var(--accent-soft);
     border: 1px solid var(--accent-bright);
     color: var(--text-primary);
     align-self: flex-end;
+    white-space: pre-wrap;
+    max-width: 95%;
+}
+
+/* Markdown inside bot bubbles */
+.advisor-msg.bot .md-h {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    margin: 0.65rem 0 0.35rem;
+    font-weight: 600;
+}
+.advisor-msg.bot .md-h:first-child { margin-top: 0; }
+.advisor-msg.bot .md-p {
+    margin: 0.35rem 0;
+    color: var(--text-secondary);
+}
+.advisor-msg.bot .md-ul,
+.advisor-msg.bot .md-ol {
+    margin: 0.35rem 0 0.35rem 1.1rem;
+    padding: 0;
+}
+.advisor-msg.bot li {
+    margin: 0.2rem 0;
+}
+.advisor-msg.bot strong {
+    color: var(--text-primary);
+}
+.advisor-msg.bot code {
+    font-size: 0.8em;
+    background: var(--bg-primary);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+}
+.advisor-msg.bot .md-pre {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.65rem;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    margin: 0.45rem 0;
+}
+.advisor-msg.bot .md-table-wrap {
+    overflow-x: auto;
+    margin: 0.5rem 0;
+    max-width: 100%;
+}
+.advisor-msg.bot .md-table {
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    width: 100%;
+    min-width: 12rem;
+}
+.advisor-msg.bot .md-table th,
+.advisor-msg.bot .md-table td {
+    border: 1px solid var(--border-subtle);
+    padding: 0.3rem 0.45rem;
+    text-align: left;
+    white-space: nowrap;
+}
+.advisor-msg.bot .md-table th {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.advisor-msg.bot .md-hr {
+    border: none;
+    border-top: 1px solid var(--border-subtle);
+    margin: 0.65rem 0;
+}
+.advisor-msg.bot a {
+    color: var(--copper);
 }
 
 .advisor-input-row {

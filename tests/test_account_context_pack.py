@@ -1,4 +1,4 @@
-"""Token-efficient context packing tests."""
+"""Full account context packing tests."""
 
 import sys
 import os
@@ -6,63 +6,111 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.utils.account_context import (
-    classify_intent,
     estimate_tokens,
-    _aggregate_lots,
-    _top_lot_lines,
+    _lots_tsv,
     _plan_compact,
+    classify_intent,
 )
 
 
-def test_intent_lot_detail():
-    assert classify_intent('how do I net 500k')['need_lot_detail'] is True
-    assert classify_intent('hello')['need_lot_detail'] is False
-    assert classify_intent('what did I sell last year')['need_history'] is True
+def test_lots_tsv_includes_header_and_rows():
+    lots = [
+        {
+            'vest_event_id': 1,
+            'share_type': 'rsu',
+            'is_iso': False,
+            'shares_available': 100,
+            'shares_unexercised': 0,
+            'cost_basis_per_share': 20,
+            'strike_price': None,
+            'is_long_term': True,
+            'holding_days': 400,
+            'vest_date': '2023-01-01',
+            'grant_date': '2022-01-01',
+            'exercise_date': None,
+            'fmv_at_exercise': None,
+            'unrealized_gain': 3000,
+            'label': 'RSU A',
+        },
+        {
+            'vest_event_id': 2,
+            'share_type': 'iso_5y',
+            'is_iso': True,
+            'shares_available': 0,
+            'shares_unexercised': 50,
+            'cost_basis_per_share': 5,
+            'strike_price': 5,
+            'is_long_term': False,
+            'holding_days': 10,
+            'vest_date': '2024-01-01',
+            'grant_date': '2022-06-01',
+            'exercise_date': None,
+            'fmv_at_exercise': None,
+            'unrealized_gain': 0,
+            'label': 'ISO B',
+        },
+    ]
+    tsv = _lots_tsv(lots)
+    assert 'vest_id' in tsv
+    assert 'v' not in tsv.split('\n')[1] or '1' in tsv  # row data
+    assert '\t' in tsv
+    assert tsv.count('\n') >= 2
+    # ~2 rows should be tiny
+    assert estimate_tokens(tsv) < 200
 
 
-def test_aggregate_cheaper_than_raw():
+def test_hundreds_of_rows_still_reasonable():
     lots = []
-    for i in range(30):
+    for i in range(200):
         lots.append({
             'vest_event_id': i,
             'share_type': 'rsu',
             'is_iso': False,
-            'shares_available': 100 + i,
+            'shares_available': 10 + i % 5,
             'shares_unexercised': 0,
-            'cost_basis_per_share': 20,
-            'strike_price': 0,
-            'is_long_term': True,
-            'exercise_date': None,
-            'unrealized_gain': 1000,
+            'cost_basis_per_share': 15 + i % 10,
+            'strike_price': None,
+            'is_long_term': i % 2 == 0,
+            'holding_days': 100 + i,
             'vest_date': '2023-01-01',
+            'grant_date': '2022-01-01',
+            'exercise_date': None,
+            'fmv_at_exercise': None,
+            'unrealized_gain': 100 * i,
+            'label': f'lot{i}',
         })
-    agg = '\n'.join(_aggregate_lots(lots, 50))
-    top = '\n'.join(_top_lot_lines(lots, 50, limit=18))
-    assert estimate_tokens(agg) < 200
-    assert estimate_tokens(top) < 800
-    # Aggregates should be far smaller than 30 full JSON objects
-    assert len(agg) < 500
+    tsv = _lots_tsv(lots)
+    tok = estimate_tokens(tsv)
+    # 200 dense rows should be on the order of a few k tokens, not 50k+
+    assert tok < 15000
+    assert '## LOTS_TSV' in tsv
 
 
-def test_plan_compact_goal_shape():
+def test_plan_compact():
     plan = {
         'success': True,
         'achieved_net_cash': 500000,
         'total_tax': 120000,
         'shortfall': 0,
+        'total_proceeds': 700000,
+        'goal': {'target_net_cash': 500000},
         'picks': [
-            {'vest_event_id': 1, 'action': 'sell_rsu', 'shares': 1000},
-            {'vest_event_id': 2, 'action': 'sell_rsu', 'shares': 500},
+            {'vest_event_id': 1, 'action': 'sell_rsu', 'shares': 1000, 'price': 50,
+             'basis_or_strike': 20, 'is_long_term': True, 'iso_disposition': 'n/a', 'reason': 'LT'},
         ],
     }
     s = _plan_compact(plan)
+    assert 'PLAN' in s
     assert '500000' in s or '500000' in s.replace(',', '')
-    assert 'v1' in s
-    assert len(s) < 300
+
+
+def test_classify_intent_compat():
+    assert classify_intent('x')['need_lot_detail'] is True
 
 
 if __name__ == '__main__':
-    test_intent_lot_detail()
-    test_aggregate_cheaper_than_raw()
-    test_plan_compact_goal_shape()
+    test_lots_tsv_includes_header_and_rows()
+    test_hundreds_of_rows_still_reasonable()
+    test_plan_compact()
+    test_classify_intent_compat()
     print('ACCOUNT CONTEXT PACK TESTS PASSED')

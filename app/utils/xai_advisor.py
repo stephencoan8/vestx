@@ -203,41 +203,57 @@ def advisor_chat(
     *,
     messages: List[Dict[str, str]],
     plan: Optional[dict] = None,
-    profile_summary: str = '',  # unused; kept for call-site compat
-    inventory_summary: str = '',  # unused; packed into account_context
+    profile_summary: str = '',
+    inventory_summary: str = '',
     user=None,
     account_context: Optional[str] = None,
-    max_history: int = 6,
+    max_history: int = 10,
 ) -> str:
     """
-    Chat with compact account snapshot already packed by account_context.pack_context_for_prompt.
+    Chat with full account TSV + optional ENGINE_RESULT.
 
-    Token strategy:
-    - Short system rules (no duplicate data)
-    - Single dense ACCOUNT block (not pretty JSON + summaries)
-    - Short history (default last 6 turns)
-    - Ask model to reply concisely
+    Output contract matches the chat UI markdown renderer (headers, tables, lists).
     """
-    system = """VestX equity advisor. Deterministic ENGINE_RESULT (if present) is authoritative for $.
-Do NOT recompute tax, net cash, or invent picks — only explain risks/tradeoffs using ENGINE_RESULT + ACCOUNT.
-No ENGINE_RESULT: qualitative guidance only; suggest phrasing like "net $500k minimize tax" to run the engine.
-CA: CG as ordinary; MHST 1%>$1M. ISO: exercise≠sale; QD=2y grant+1y exercise. Not a CPA. Concise bullets.
+    system = f"""You are VestX Advisor for this user's private equity account.
 
-""" + (account_context or 'ACCOUNT: (empty)')
+## Data you have
+- ACCOUNT_DATA below: full tax profile, grants, ALL lots (SpecID vest_id), sales, exercises, live price (TSV).
+- ENGINE_RESULT (if present at top): deterministic VestX tax/goal engine output — **authoritative for dollar figures and recommended picks**. Do not invent different $ or pick lists.
 
-    # History: keep last N messages; also cap each prior assistant reply length slightly
-    # by not re-including huge user pastes (rare)
+## How to answer
+1. Prefer ENGINE_RESULT numbers when present; explain *why* those picks fit the data.
+2. Otherwise reason from ACCOUNT_DATA (cite vest_id, share_type, LT/ST, basis/strike).
+3. CA: capital gains taxed as ordinary; MHST 1% over $1M taxable; CA AMT ~7% may apply on ISO bargain.
+4. ISO: exercise ≠ sale; QD = 2 years from grant AND 1 year from exercise.
+5. Planning-grade only — not a CPA or tax filing.
+
+## OUTPUT FORMAT (required — UI renders Markdown)
+Use clean GitHub-flavored Markdown the chat window can display:
+- Start with a one-line **summary**
+- Use `##` section headings (e.g. Recommendation, Numbers, SpecID lots, Risks, Next step)
+- Use bullet lists for steps
+- Use markdown tables for multi-lot comparisons:
+  | vest_id | action | shares | reason |
+  | --- | --- | --- | --- |
+- Bold key $ amounts: **$500,000**
+- Keep tone professional; no ASCII art; no raw HTML
+- Length: thorough when comparing options (2–4 short sections), not a wall of unformatted text
+
+## ACCOUNT_DATA
+{account_context or '(empty)'}
+"""
+
     trimmed: List[Dict[str, str]] = []
     for m in messages[-max_history:]:
         role = m.get('role') or 'user'
         if role not in ('user', 'assistant'):
             continue
-        content = (m.get('content') or '')[:2000]
+        content = (m.get('content') or '')[:6000]
         trimmed.append({'role': role, 'content': content})
 
     api_messages = [{'role': 'system', 'content': system}]
     api_messages.extend(trimmed)
-    return _chat(api_messages, user=user, temperature=0.35)
+    return _chat(api_messages, user=user, temperature=0.4)
 
 
 def compact_plan_for_explain(plan: dict) -> str:

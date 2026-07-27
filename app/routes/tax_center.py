@@ -503,15 +503,21 @@ def api_advisor():
                 'settings_url': url_for('settings.profile'),
             }), 503
 
+        # Full account TSV every Grok turn (lots/grants/sales/profile) — quality over micro-savings
         packed = pack_context_for_prompt(
             current_user.id,
             user_message=last_user,
             plan=plan or routed.engine_payload,
+            mode='full',
         )
-        # Attach engine block so Grok cannot drift on numbers
         account_blob = packed['text']
         if routed.engine_text:
-            account_blob = routed.engine_text + '\n\n' + account_blob
+            account_blob = (
+                '## ENGINE_RESULT (authoritative $ and picks — do not invent alternatives)\n'
+                + routed.engine_text
+                + '\n\n'
+                + account_blob
+            )
 
         reply = xai_advisor.advisor_chat(
             messages=messages,
