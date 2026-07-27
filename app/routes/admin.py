@@ -109,3 +109,51 @@ def users():
     """View all users."""
     all_users = User.query.order_by(User.created_at.desc()).all()
     return render_template('admin/users.html', users=all_users)
+
+
+@admin_bp.route('/apply-stock-split', methods=['POST'])
+@admin_required
+def apply_stock_split():
+    """
+    One-shot 5:1 (or custom ratio) restatement for the logged-in admin's own account.
+    Idempotent: refuses if this ratio was already applied unless confirm_force is set.
+    """
+    from app.utils.stock_split import apply_stock_split_for_user, already_applied
+
+    try:
+        ratio = float(request.form.get('ratio', 5))
+    except (TypeError, ValueError):
+        flash('Invalid ratio', 'error')
+        return redirect(url_for('admin.dashboard'))
+
+    force = request.form.get('force') == '1'
+    confirm = request.form.get('confirm') == 'APPLY'
+
+    if not confirm:
+        flash('Split not applied — confirmation checkbox required.', 'error')
+        return redirect(url_for('admin.dashboard'))
+
+    if already_applied(current_user.id, ratio) and not force:
+        flash(
+            f'{ratio:g}:1 split already applied for your account. '
+            'Check "Force re-apply" only if you know you need it.',
+            'error',
+        )
+        return redirect(url_for('admin.dashboard'))
+
+    try:
+        stats = apply_stock_split_for_user(current_user, ratio=ratio, force=force)
+        flash(
+            f'Applied {ratio:g}:1 split for {current_user.username}: '
+            f'{stats["grants"]} grants, {stats["vests"]} vests, '
+            f'{stats["user_prices"]} prices, {stats["sales"]} sales, '
+            f'{stats["exercises"]} exercises, '
+            f'{stats["cash_grants_skipped"]} cash grants skipped'
+            + (f', {stats["price_errors"]} price errors' if stats.get("price_errors") else ''),
+            'success',
+        )
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Split failed: {e}', 'error')
+
+    return redirect(url_for('admin.dashboard'))
