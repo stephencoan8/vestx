@@ -207,53 +207,71 @@ def advisor_chat(
     inventory_summary: str = '',
     user=None,
     account_context: Optional[str] = None,
-    max_history: int = 10,
+    max_history: int = 8,
 ) -> str:
     """
-    Chat with full account TSV + optional ENGINE_RESULT.
+    Chat with full account data.
 
-    Output contract matches the chat UI markdown renderer (headers, tables, lists).
+    Models attend more to the *latest user message* than a huge system dump, so we:
+    - keep system instructions short
+    - attach ACCOUNT_DATA to the final user turn
     """
-    system = f"""You are VestX Advisor for this user's private equity account.
+    system = """You are VestX Advisor for one logged-in user's equity account.
 
-## Data you have
-- ACCOUNT_DATA below: full tax profile, grants, ALL lots (SpecID vest_id), sales, exercises, live price (TSV).
-- ENGINE_RESULT (if present at top): deterministic VestX tax/goal engine output — **authoritative for dollar figures and recommended picks**. Do not invent different $ or pick lists.
+You receive ACCOUNT_DATA with every question (readable summary + full lot TSV).
+Treat ACCOUNT_DATA as ground truth for holdings. Cite real vest_id values only.
+If ENGINE_RESULT appears in ACCOUNT_DATA, its dollars and SpecID picks are authoritative — explain them; do not invent alternate $ picks.
+If the summary says no lots, say inventory is empty — never fabricate grants/lots.
 
-## How to answer
-1. Prefer ENGINE_RESULT numbers when present; explain *why* those picks fit the data.
-2. Otherwise reason from ACCOUNT_DATA (cite vest_id, share_type, LT/ST, basis/strike).
-3. CA: capital gains taxed as ordinary; MHST 1% over $1M taxable; CA AMT ~7% may apply on ISO bargain.
-4. ISO: exercise ≠ sale; QD = 2 years from grant AND 1 year from exercise.
-5. Planning-grade only — not a CPA or tax filing.
+Tax notes: CA taxes capital gains as ordinary; MHST 1% over $1M; ISO exercise ≠ sale; QD = 2y grant + 1y exercise.
+Planning-grade only (not a CPA).
 
-## OUTPUT FORMAT (required — UI renders Markdown)
-Use clean GitHub-flavored Markdown the chat window can display:
-- Start with a one-line **summary**
-- Use `##` section headings (e.g. Recommendation, Numbers, SpecID lots, Risks, Next step)
-- Use bullet lists for steps
-- Use markdown tables for multi-lot comparisons:
-  | vest_id | action | shares | reason |
-  | --- | --- | --- | --- |
-- Bold key $ amounts: **$500,000**
-- Keep tone professional; no ASCII art; no raw HTML
-- Length: thorough when comparing options (2–4 short sections), not a wall of unformatted text
-
-## ACCOUNT_DATA
-{account_context or '(empty)'}
+## OUTPUT (UI renders Markdown)
+1. One-line **summary**
+2. `##` sections (e.g. What I see in your account, Recommendation, SpecID lots, Risks, Next step)
+3. Bullet lists; markdown tables for multi-lot comps:
+   | vest_id | type | shares | basis | notes |
+   | --- | --- | --- | --- | --- |
+4. Bold key amounts like **$500,000**
+5. Start by reflecting 1–2 concrete facts from READABLE_SUMMARY or LOTS_TSV so the user sees you read the data
+6. No raw HTML, no ASCII art
 """
 
-    trimmed: List[Dict[str, str]] = []
-    for m in messages[-max_history:]:
+    # Prior turns only (exclude last user — we re-wrap it with data)
+    prior: List[Dict[str, str]] = []
+    last_user = ''
+    for m in messages:
         role = m.get('role') or 'user'
         if role not in ('user', 'assistant'):
             continue
-        content = (m.get('content') or '')[:6000]
-        trimmed.append({'role': role, 'content': content})
+        content = (m.get('content') or '')[:5000]
+        if role == 'user':
+            last_user = content
+        prior.append({'role': role, 'content': content})
+
+    # Drop the final user message from prior; we'll re-add with context
+    if prior and prior[-1]['role'] == 'user':
+        prior = prior[:-1]
+    # Cap history length
+    prior = prior[-(max_history - 1) :] if max_history > 1 else []
+
+    acct = (account_context or '').strip() or '(no account data loaded)'
+    # Hard cap to keep request under model limits (~100k chars is plenty for hundreds of lots)
+    if len(acct) > 90000:
+        acct = acct[:90000] + '\n…[truncated]'
+
+    wrapped_user = (
+        f"ACCOUNT_DATA (authoritative for this user — read carefully):\n"
+        f"{acct}\n\n"
+        f"---\n"
+        f"USER_QUESTION:\n{last_user or '(empty)'}\n\n"
+        f"Answer using ACCOUNT_DATA. Quote specific vest_id / share counts from the data."
+    )
 
     api_messages = [{'role': 'system', 'content': system}]
-    api_messages.extend(trimmed)
-    return _chat(api_messages, user=user, temperature=0.4)
+    api_messages.extend(prior)
+    api_messages.append({'role': 'user', 'content': wrapped_user})
+    return _chat(api_messages, user=user, temperature=0.35)
 
 
 def compact_plan_for_explain(plan: dict) -> str:

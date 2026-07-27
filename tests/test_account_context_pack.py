@@ -50,13 +50,12 @@ def test_lots_tsv_includes_header_and_rows():
             'label': 'ISO B',
         },
     ]
-    tsv = _lots_tsv(lots)
+    tsv = _lots_tsv(lots, live_price=50)
     assert 'vest_id' in tsv
-    assert 'v' not in tsv.split('\n')[1] or '1' in tsv  # row data
+    assert 'held_mkt' in tsv
     assert '\t' in tsv
     assert tsv.count('\n') >= 2
-    # ~2 rows should be tiny
-    assert estimate_tokens(tsv) < 200
+    assert estimate_tokens(tsv) < 400
 
 
 def test_hundreds_of_rows_still_reasonable():
@@ -79,10 +78,9 @@ def test_hundreds_of_rows_still_reasonable():
             'unrealized_gain': 100 * i,
             'label': f'lot{i}',
         })
-    tsv = _lots_tsv(lots)
+    tsv = _lots_tsv(lots, live_price=50)
     tok = estimate_tokens(tsv)
-    # 200 dense rows should be on the order of a few k tokens, not 50k+
-    assert tok < 15000
+    assert tok < 20000
     assert '## LOTS_TSV' in tsv
 
 

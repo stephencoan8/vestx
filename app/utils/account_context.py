@@ -166,17 +166,97 @@ def _profile_block(eng: dict) -> str:
     return '\n'.join(lines)
 
 
-def _lots_tsv(lots: Sequence[dict]) -> str:
+def _enrich_lots(lots: Sequence[dict], live_price: float) -> List[dict]:
+    """Add market-value fields models use for ranking."""
+    out = []
+    for lot in lots:
+        row = dict(lot)
+        held = float(lot.get('shares_available') or 0)
+        unex = float(lot.get('shares_unexercised') or 0)
+        basis = float(lot.get('cost_basis_per_share') or 0)
+        strike = float(lot.get('strike_price') or 0) if lot.get('is_iso') else basis
+        px = float(lot.get('current_price') or live_price or 0)
+        held_mkt = held * px
+        held_gain = held * (px - basis) if held else 0.0
+        unex_spread = unex * max(0.0, px - strike) if unex else 0.0
+        row['_held_mkt'] = held_mkt
+        row['_held_gain'] = held_gain
+        row['_unex_spread'] = unex_spread
+        row['_rank'] = held_mkt + unex_spread
+        row['_px'] = px
+        out.append(row)
+    out.sort(key=lambda r: -float(r.get('_rank') or 0))
+    return out
+
+
+def _readable_summary(raw: dict, lots: Sequence[dict], eng: dict, price: float) -> str:
+    """Plain-English inventory the model can quote without parsing TSV."""
+    ps = raw.get('portfolio_summary') or {}
+    lines = [
+        '## READABLE_SUMMARY (use this first; TSV is the full source of truth)',
+        f"- As of {raw.get('as_of')}: live share price **${_n(price, 2)}**.",
+        f"- Sellable shares held: **{_n(ps.get('shares_held_sellable'), 2)}** "
+        f"(~${_n(ps.get('approx_held_value'), 0)} at live price).",
+        f"- Unexercised ISO options: **{_n(ps.get('shares_unexercised_iso'), 2)}**.",
+        f"- Tax lots: **{ps.get('lot_count')}** · Grants: **{ps.get('grant_count')}** · "
+        f"Recorded sales: **{ps.get('recorded_sales')}** · Exercises: **{ps.get('recorded_exercises')}**.",
+        f"- Filing **{eng.get('filing_status') or '?'}** · State **{eng.get('state_code') or '-'}** · "
+        f"Tax year **{eng.get('tax_year') or '?'}** · "
+        f"Other ordinary income **${_n(eng.get('other_ordinary_income'), 0)}** · "
+        f"YTD wages **${_n(eng.get('ytd_wages'), 0)}**.",
+    ]
+    if not lots:
+        lines.append(
+            '- ⚠ **No tax lots loaded.** Do not invent holdings. Tell the user lots may be empty '
+            'or failed to load; suggest checking Grants / Sales & Tax.'
+        )
+        return '\n'.join(lines)
+
+    rsu = [l for l in lots if not l.get('is_iso')]
+    iso = [l for l in lots if l.get('is_iso')]
+    rsu_held = sum(float(l.get('shares_available') or 0) for l in rsu)
+    iso_held = sum(float(l.get('shares_available') or 0) for l in iso)
+    iso_unex = sum(float(l.get('shares_unexercised') or 0) for l in iso)
+    lt_held = sum(
+        float(l.get('shares_available') or 0)
+        for l in lots if l.get('is_long_term') and float(l.get('shares_available') or 0) > 0
+    )
+    st_held = sum(
+        float(l.get('shares_available') or 0)
+        for l in lots if (not l.get('is_long_term')) and float(l.get('shares_available') or 0) > 0
+    )
+    lines.append(
+        f"- Mix: RSU held **{_n(rsu_held, 2)}** · ISO stock held **{_n(iso_held, 2)}** · "
+        f"ISO unexercised **{_n(iso_unex, 2)}** · among held stock LT **{_n(lt_held, 2)}** / "
+        f"ST **{_n(st_held, 2)}**."
+    )
+    lines.append('- Largest lots by economic weight (vest_id / type / held / unex / basis / mkt$ / gain$):')
+    ranked = _enrich_lots(lots, price)[:12]
+    for l in ranked:
+        lines.append(
+            f"  · v{l.get('vest_event_id')} {l.get('share_type')} "
+            f"held={_n(l.get('shares_available'), 2)} unex={_n(l.get('shares_unexercised'), 2)} "
+            f"basis=${_n(l.get('cost_basis_per_share'), 2)} "
+            f"{'LT' if l.get('is_long_term') else 'ST'} "
+            f"mkt=${_n(l.get('_held_mkt'), 0)} gain=${_n(l.get('_held_gain'), 0)} "
+            f"unexSpread=${_n(l.get('_unex_spread'), 0)} "
+            f"| {str(l.get('label') or '')[:50]}"
+        )
+    return '\n'.join(lines)
+
+
+def _lots_tsv(lots: Sequence[dict], live_price: float = 0.0) -> str:
     """
-    Full SpecID table — one row per vest lot.
-    Columns chosen for tax planning accuracy.
+    Full SpecID table — one row per vest lot, sorted by economic weight.
     """
+    enriched = _enrich_lots(lots, live_price)
     header = (
-        'vest_id\tshare_type\tiso\theld\tunex\tbasis\tstrike\t'
-        'lt\thold_days\tvest\tgrant\tex_date\tfmv_ex\tur_gain\tlabel'
+        'vest_id\tshare_type\tiso\theld\tunex\tbasis\tstrike\tpx\t'
+        'held_mkt\theld_gain\tunex_spread\t'
+        'lt\thold_days\tvest\tgrant\tex_date\tfmv_ex\tlabel'
     )
     rows = [header]
-    for lot in lots:
+    for lot in enriched:
         rows.append(
             '\t'.join([
                 str(lot.get('vest_event_id') or ''),
@@ -186,17 +266,26 @@ def _lots_tsv(lots: Sequence[dict]) -> str:
                 _n(lot.get('shares_unexercised')),
                 _n(lot.get('cost_basis_per_share')),
                 _n(lot.get('strike_price') if lot.get('strike_price') is not None else ''),
+                _n(lot.get('_px'), 2),
+                _n(lot.get('_held_mkt'), 2),
+                _n(lot.get('_held_gain'), 2),
+                _n(lot.get('_unex_spread'), 2),
                 '1' if lot.get('is_long_term') else '0',
                 _n(lot.get('holding_days'), 0),
                 _d(lot.get('vest_date')),
                 _d(lot.get('grant_date')),
                 _d(lot.get('exercise_date')),
                 _n(lot.get('fmv_at_exercise') if lot.get('fmv_at_exercise') is not None else ''),
-                _n(lot.get('unrealized_gain'), 2),
                 str(lot.get('label') or '').replace('\t', ' ')[:60],
             ])
         )
-    return '## LOTS_TSV (all tax lots / SpecID)\n' + '\n'.join(rows)
+    return (
+        '## LOTS_TSV (all SpecID tax lots, richest first)\n'
+        'vest_id = SpecID key. held = shares you can sell now. unex = ISO not yet exercised.\n'
+        'basis = cost basis/sh (RSU=FMV at vest). strike = ISO strike. px = live price.\n'
+        'held_mkt/held_gain/unex_spread in $ at live price.\n'
+        + '\n'.join(rows)
+    )
 
 
 def _grants_tsv(grants) -> str:
@@ -315,42 +404,29 @@ def pack_context_for_prompt(
     ps = raw.get('portfolio_summary') or {}
 
     if mode == 'compact':
-        # Minimal path kept for optional callers
-        from collections import defaultdict
+        ranked = _enrich_lots(lots, price)[:max_lot_lines]
         lines = [
-            f"## SNAPSHOT as_of={raw.get('as_of')} px={_n(price)} "
-            f"held={_n(ps.get('shares_held_sellable'))} unexISO={_n(ps.get('shares_unexercised_iso'))} "
-            f"lots={ps.get('lot_count')} val~{_n(ps.get('approx_held_value'))}",
+            _readable_summary(raw, lots, eng, price),
             _profile_block(eng),
+            _lots_tsv(ranked, price),
+            _plan_compact(plan),
         ]
-        # top lots only
-        ranked = sorted(
-            lots,
-            key=lambda l: -(
-                float(l.get('shares_available') or 0) * price
-                + float(l.get('shares_unexercised') or 0) * price
-            ),
-        )[:max_lot_lines]
-        lines.append(_lots_tsv(ranked))
-        lines.append(_plan_compact(plan))
         text = '\n'.join(lines)
     else:
-        # Full feed — default for chat quality
+        # Full feed — readable summary first, then complete tables
         blocks = [
-            f"## SNAPSHOT as_of={raw.get('as_of')} live_price={_n(price)} "
-            f"held_sh={_n(ps.get('shares_held_sellable'))} unex_iso_sh={_n(ps.get('shares_unexercised_iso'))} "
-            f"lot_count={ps.get('lot_count')} grant_count={ps.get('grant_count')} "
-            f"approx_held_value={_n(ps.get('approx_held_value'))}",
+            _readable_summary(raw, lots, eng, price),
             _profile_block(eng),
             _grants_tsv(raw.get('grants') or []),
-            _lots_tsv(lots),
+            _lots_tsv(lots, price),
             _sales_tsv(raw.get('recent_sales') or []),
             _exercises_tsv(raw.get('recent_exercises') or []),
             _plan_compact(plan),
-            '## COLUMN_LEGEND',
-            'lots: vest_id SpecID; held=sellable stock; unex=unexercised options; '
-            'basis=cost basis/sh; strike=ISO strike; lt=1 long-term; ur_gain=unrealized $ on held',
-            'ISO QD needs grant+2y AND exercise+1y. CA taxes CG as ordinary. ENGINE_RESULT overrides $ if present.',
+            '## RULES_FOR_MODEL',
+            'Cite real vest_id values from LOTS_TSV only. Never invent lot IDs or share counts.',
+            'If READABLE_SUMMARY says no lots, say so — do not fabricate inventory.',
+            'ISO QD = 2y from grant AND 1y from exercise. CA taxes capital gains as ordinary income.',
+            'If ENGINE_RESULT is present above this block, its $ and picks are authoritative.',
         ]
         text = '\n'.join(blocks)
 
