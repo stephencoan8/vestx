@@ -396,11 +396,16 @@ def api_goal():
             prompt or result.picks
         ):
             try:
+                # Compact inventory: only picks + short profile (not full lot dump)
+                inv_compact = '; '.join(
+                    f"v{p.vest_event_id}:{p.action}:{p.shares:.2f}sh"
+                    for p in (result.picks or [])[:15]
+                ) or 'no picks'
                 payload['explanation'] = xai_advisor.explain_plan_with_grok(
                     user_request=prompt or f"Net ${goal.target_net_cash or 0:,.0f} minimize tax",
                     plan=payload,
                     profile_summary=xai_advisor.summarize_profile(eng),
-                    inventory_summary=xai_advisor.summarize_inventory(lots),
+                    inventory_summary=f'picks: {inv_compact}',
                     user=current_user,
                 )
             except Exception as e:
@@ -444,30 +449,38 @@ def api_advisor():
         if not messages:
             return jsonify({'error': 'messages required'}), 400
 
-        from app.utils.account_context import (
-            build_account_context,
-            format_account_context_for_prompt,
+        from app.utils.account_context import pack_context_for_prompt
+
+        # Latest user message drives how much lot detail we inject (token tiering)
+        last_user = ''
+        for m in reversed(messages):
+            if (m.get('role') or '') == 'user':
+                last_user = m.get('content') or ''
+                break
+
+        packed = pack_context_for_prompt(
+            current_user.id,
+            user_message=last_user,
+            plan=data.get('plan'),
         )
-        profile = TaxProfile.for_user(current_user)
-        eng = profile.to_engine_dict()
-        lots = build_lots_for_user(current_user.id)
-        ctx = build_account_context(current_user.id)
         reply = xai_advisor.advisor_chat(
             messages=messages,
             plan=data.get('plan'),
-            profile_summary=xai_advisor.summarize_profile(eng),
-            inventory_summary=xai_advisor.summarize_inventory(lots),
             user=current_user,
-            account_context=format_account_context_for_prompt(ctx),
+            account_context=packed['text'],
         )
+        meta = packed.get('meta') or {}
         return jsonify({
             'success': True,
             'reply': reply,
             'grok_enabled': True,
             'context_meta': {
-                'lots': len(lots),
-                'live_price': ctx.get('live_price'),
-                'as_of': ctx.get('as_of'),
+                'lots': meta.get('lot_count'),
+                'live_price': meta.get('live_price'),
+                'as_of': meta.get('as_of'),
+                'est_context_tokens': meta.get('est_tokens'),
+                'context_chars': meta.get('chars'),
+                'tier': meta.get('tier'),
             },
         })
     except Exception as e:

@@ -228,8 +228,10 @@
                 history.push({ role: 'assistant', content: reply });
                 appendMsg('bot', reply);
                 if (data.context_meta) {
-                    statusEl.textContent = 'Context: ' + (data.context_meta.lots || 0) +
-                        ' lots · live $' + Number(data.context_meta.live_price || 0).toFixed(2);
+                    var cm = data.context_meta;
+                    statusEl.textContent = 'Context ~' + (cm.est_context_tokens || '?') +
+                        ' tok · ' + (cm.lots || 0) + ' lots · $' +
+                        Number(cm.live_price || 0).toFixed(2);
                 } else {
                     statusEl.textContent = 'Ready';
                 }

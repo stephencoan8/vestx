@@ -178,16 +178,17 @@ federal vs California nuances, AMT/credit if relevant, risks and what to confirm
 Be concise but precise. Use short sections with headings.
 Disclaimer: planning estimate, not tax advice.
 """
-    user_msg = f"""User asked: {user_request}
-
-Profile: {profile_summary}
-
-Inventory:
-{inventory_summary}
-
-Computed plan JSON:
-{json.dumps(plan, indent=2, default=str)[:12000]}
-"""
+    # Prefer compact plan + short profile/inventory already provided by caller
+    from app.utils.account_context import _plan_compact
+    user_msg = (
+        f"User: {user_request}\n"
+        f"{profile_summary}\n"
+        f"{inventory_summary}\n"
+        f"{_plan_compact(plan) if plan else 'plan: none'}"
+    )
+    # Cap explain payload hard — plan detail is in compact form
+    if len(user_msg) > 3500:
+        user_msg = user_msg[:3500] + '\n…'
     return _chat(
         [
             {'role': 'system', 'content': system},
@@ -201,43 +202,49 @@ Computed plan JSON:
 def advisor_chat(
     *,
     messages: List[Dict[str, str]],
-    plan: Optional[dict],
-    profile_summary: str,
-    inventory_summary: str,
+    plan: Optional[dict] = None,
+    profile_summary: str = '',  # unused; kept for call-site compat
+    inventory_summary: str = '',  # unused; packed into account_context
     user=None,
     account_context: Optional[str] = None,
+    max_history: int = 6,
 ) -> str:
-    system = f"""You are VestX Advisor, a side-panel chatbot for this logged-in user's equity account.
-You have live access to their VestX data below (grants, tax lots, tax profile, sales, exercises, live price).
-Use that data when answering. Be specific: cite vest IDs, share types, LT vs ST, ISO QD/DD when relevant.
+    """
+    Chat with compact account snapshot already packed by account_context.pack_context_for_prompt.
 
-Rules:
-- Do not invent holdings or prices that contradict the account snapshot.
-- Tax dollar amounts from a "plan" JSON are authoritative when present; otherwise give qualitative or approximate guidance and suggest running Goal optimizer / scenario planner for exact engine numbers.
-- California: capital gains taxed as ordinary; MHST 1% over $1M; CA AMT 7% exists in the engine.
-- ISO: exercise and sale are separate events; QD needs 2y from grant + 1y from exercise.
-- You are not a CPA; label estimates as planning-grade.
-- Prefer concise, structured answers (bullets / short sections).
-- If they ask to "net $X after tax", describe which lots look tax-efficient and tell them to hit Compute on Goal optimizer for SpecID quantities.
+    Token strategy:
+    - Short system rules (no duplicate data)
+    - Single dense ACCOUNT block (not pretty JSON + summaries)
+    - Short history (default last 6 turns)
+    - Ask model to reply concisely
+    """
+    system = """VestX equity advisor. Use ACCOUNT data only for holdings; do not invent vest IDs or prices.
+Exact $ tax: prefer PLAN numbers or tell user to run Goal optimizer. Planning-grade, not a CPA.
+CA: CG as ordinary; MHST 1%>$1M; CA AMT~7%. ISO: exercise≠sale; QD=2y grant+1y exercise.
+Reply concise bullets. Cite v{id} when recommending lots.
 
-Tax profile summary: {profile_summary}
+ACCOUNT:
+""" + (account_context or '(empty)')
 
-Lot inventory summary:
-{inventory_summary}
-
-Full account snapshot (JSON):
-{account_context or '(not provided)'}
-
-Current goal/plan JSON (if any):
-{json.dumps(plan, indent=2, default=str)[:8000] if plan else 'None yet.'}
-"""
-    api_messages = [{'role': 'system', 'content': system}]
-    for m in messages[-16:]:
+    # History: keep last N messages; also cap each prior assistant reply length slightly
+    # by not re-including huge user pastes (rare)
+    trimmed: List[Dict[str, str]] = []
+    for m in messages[-max_history:]:
         role = m.get('role') or 'user'
-        if role not in ('user', 'assistant', 'system'):
-            role = 'user'
-        api_messages.append({'role': role, 'content': m.get('content') or ''})
-    return _chat(api_messages, user=user, temperature=0.4)
+        if role not in ('user', 'assistant'):
+            continue
+        content = (m.get('content') or '')[:2000]
+        trimmed.append({'role': role, 'content': content})
+
+    api_messages = [{'role': 'system', 'content': system}]
+    api_messages.extend(trimmed)
+    return _chat(api_messages, user=user, temperature=0.35)
+
+
+def compact_plan_for_explain(plan: dict) -> str:
+    """Small plan blob for one-shot explain calls."""
+    from app.utils.account_context import _plan_compact
+    return _plan_compact(plan)
 
 
 def _extract_json(text: str) -> Dict[str, Any]:
