@@ -360,7 +360,7 @@
       shares_exercised: parseFloat(document.getElementById('exShares').value),
       fmv_at_exercise: parseFloat(document.getElementById('exFmv').value)
     };
-    fetch('{{ url_for("tax_center.api_exercises") }}', {
+    fetch('{{ url_for("tax_center.api_record_exercise") }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
       body: JSON.stringify(body)
