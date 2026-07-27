@@ -9,54 +9,18 @@
         <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">Add grant</a>
     </header>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-content">
-                <div class="stat-label">Total grants</div>
-                <div class="stat-value">{{ total_grants }}</div>
+    <div class="hero-metrics">
+        <div class="hero-metric-card">
+            <div class="hero-metric">
+                <div class="hero-metric-label">Portfolio value</div>
+                <div class="hero-metric-value">${{ "{:,.2f}".format(total_value) }}</div>
+                <div class="hero-metric-note">All grants at current price</div>
             </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-content">
-                <div class="stat-label">Total shares</div>
-                <div class="stat-value">{{ "{:,.0f}".format(total_shares) }}</div>
-            </div>
-        </div>
-
-        <div class="stat-card accent">
-            <div class="stat-content">
-                <div class="stat-label">Portfolio value</div>
-                <div class="stat-value">${{ "{:,.2f}".format(total_value) }}</div>
-            </div>
-        </div>
-
-        <div class="stat-card success">
-            <div class="stat-content">
-                <div class="stat-label">Shares received</div>
-                <div class="stat-value">{{ "{:,.0f}".format(vested_shares_net) }}</div>
-                <small>After tax withholding</small>
-            </div>
-        </div>
-
-        <div class="stat-card success">
-            <div class="stat-content">
-                <div class="stat-label">Vested inventory</div>
-                <div class="stat-value">${{ "{:,.2f}".format(vested_value_net) }}</div>
-                <small>Current value of received shares</small>
-            </div>
-        </div>
-
-        <div class="stat-card {% if needs_info_count > 0 %}warning{% else %}info{% endif %} clickable"
-             onclick="window.location.href='{{ url_for('grants.needs_tax_info') }}';"
-             role="link"
-             tabindex="0">
-            <div class="stat-content">
-                <div class="stat-label">{% if needs_info_count > 0 %}Needs tax info{% else %}Tax info status{% endif %}</div>
-                <div class="stat-value">{{ needs_info_count }}</div>
-                <small>
-                    {% if needs_info_count > 0 %}Click to update vested events{% else %}All vests updated{% endif %}
-                </small>
+            <div class="hero-metric-divider" aria-hidden="true"></div>
+            <div class="hero-metric">
+                <div class="hero-metric-label">Vested value</div>
+                <div class="hero-metric-value">${{ "{:,.2f}".format(vested_value_net) }}</div>
+                <div class="hero-metric-note">Net shares received, current price</div>
             </div>
         </div>
     </div>
@@ -64,10 +28,6 @@
     <div class="chart-section">
         <div class="chart-header">
             <h2>Vesting timeline</h2>
-            <div class="chart-toggle">
-                <button type="button" class="toggle-btn active" data-view="value">Value ($)</button>
-                <button type="button" class="toggle-btn" data-view="shares">Shares</button>
-            </div>
         </div>
 
         <div class="chart-controls">
@@ -104,7 +64,6 @@
                 {% for vest in upcoming_vests %}
                 <div class="vest-item">
                     <div class="vest-date">{{ vest.vest_date.strftime('%b %d, %Y') }}</div>
-                    <div class="vest-shares">{{ "{:,.2f}".format(vest.shares_vested) }} shares</div>
                     <div class="vest-value">${{ "{:,.2f}".format(vest.shares_vested * current_price) }}</div>
                 </div>
                 {% endfor %}
