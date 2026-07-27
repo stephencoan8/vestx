@@ -46,12 +46,12 @@ def main():
             sys.exit(2)
 
         if not args.apply:
-            print("Dry-run: pass --apply to commit. Or use Admin → Apply split on production.")
-            # Still run inside a transaction then rollback for preview counts
+            print("Dry-run only (no commit). Pass --apply to write.")
             try:
-                stats = apply_stock_split_for_user(user, ratio=args.ratio, force=True)
+                stats = apply_stock_split_for_user(
+                    user, ratio=args.ratio, force=True, commit=False
+                )
                 db.session.rollback()
-                # Remove accidental audit if any — we rolled back
                 print("Would apply:", stats)
                 print("DRY-RUN rolled back.")
             except Exception as e:
@@ -60,7 +60,9 @@ def main():
                 sys.exit(1)
             return
 
-        stats = apply_stock_split_for_user(user, ratio=args.ratio, force=args.force)
+        stats = apply_stock_split_for_user(
+            user, ratio=args.ratio, force=args.force, commit=True
+        )
         print("APPLIED:", stats)
 
 

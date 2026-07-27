@@ -77,10 +77,13 @@ def record_applied(user_id: int, ratio: float) -> None:
     )
 
 
-def apply_stock_split_for_user(user, ratio: float = 5.0, force: bool = False) -> dict:
+def apply_stock_split_for_user(
+    user, ratio: float = 5.0, force: bool = False, commit: bool = True
+) -> dict:
     """
-    Apply split restatement for one user. Commits on success.
-    Raises RuntimeError if already applied and force is False.
+    Apply split restatement for one user.
+    Commits when commit=True (default). Raises RuntimeError if already applied
+    and force is False.
     """
     from app.models.grant import Grant
     from app.models.vest_event import VestEvent
@@ -178,12 +181,9 @@ def apply_stock_split_for_user(user, ratio: float = 5.0, force: bool = False) ->
             pt.price = _round_price((pt.price or 0) / ratio)
             stats["scenario_points"] += 1
 
-    if not force:
+    if not already_applied(user.id, ratio):
         record_applied(user.id, ratio)
-    else:
-        # force re-apply: still log a new attempt if unique allows; else skip marker
-        if not already_applied(user.id, ratio):
-            record_applied(user.id, ratio)
 
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return stats
