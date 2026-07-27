@@ -41,10 +41,16 @@ def _public_start() -> date:
 
 def _load_private_history(user_id: int) -> List[Tuple[date, float]]:
     """Decrypt user-entered prices strictly before public market start."""
-    if not current_user.is_authenticated or current_user.id != user_id:
+    try:
+        authed = bool(getattr(current_user, 'is_authenticated', False))
+        cuid = getattr(current_user, 'id', None) if authed else None
+    except Exception:
+        authed, cuid = False, None
+
+    if not authed or cuid != user_id:
         logger.warning(
             "Attempt to decrypt user price for user %s while %s is authenticated",
-            user_id, getattr(current_user, 'id', None),
+            user_id, cuid,
         )
         return []
 
@@ -52,6 +58,9 @@ def _load_private_history(user_id: int) -> List[Tuple[date, float]]:
         user_key = current_user.get_decrypted_user_key()
     except EncryptionError:
         logger.error("Cannot load private prices for user %s: encryption key failure", user_id)
+        return []
+    except Exception as e:
+        logger.error("Cannot load private prices for user %s: %s", user_id, e)
         return []
 
     cutover = _public_start()
