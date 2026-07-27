@@ -262,6 +262,11 @@ body.app-layout {
     flex-direction: column;
     box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
 }
+/* class {display:flex} overrides bare [hidden] in some browsers — force hide */
+.advisor-panel[hidden],
+.advisor-panel.is-closed {
+    display: none !important;
+}
 
 .advisor-header {
     display: flex;
@@ -286,14 +291,23 @@ body.app-layout {
 }
 .advisor-close {
     background: transparent;
-    border: none;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     line-height: 1;
     cursor: pointer;
-    padding: 0 0.25rem;
+    padding: 0.25rem 0.5rem;
+    flex-shrink: 0;
+    z-index: 2;
+    min-width: 2rem;
+    min-height: 2rem;
 }
-.advisor-close:hover { color: var(--copper); }
+.advisor-close:hover {
+    color: var(--text-primary);
+    border-color: var(--copper-border);
+    background: var(--bg-hover);
+}
 
 .advisor-messages {
     flex: 1;

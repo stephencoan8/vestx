@@ -224,21 +224,41 @@
         var statusEl = document.getElementById('advisorStatus');
         var history = [];
 
+        function isAdvisorOpen() {
+            return panel && !panel.hasAttribute('hidden') && !panel.classList.contains('is-closed');
+        }
         function openAdvisor() {
-            panel.hidden = false;
+            if (!panel) return;
+            panel.removeAttribute('hidden');
+            panel.classList.remove('is-closed');
+            panel.style.display = '';
             document.body.classList.add('advisor-open');
-            fab.setAttribute('aria-expanded', 'true');
-            input && input.focus();
+            if (fab) fab.setAttribute('aria-expanded', 'true');
+            if (input) input.focus();
         }
-        function closeAdvisor() {
-            panel.hidden = true;
+        function closeAdvisor(ev) {
+            if (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+            }
+            if (!panel) return;
+            panel.setAttribute('hidden', '');
+            panel.classList.add('is-closed');
+            panel.style.display = 'none';
             document.body.classList.remove('advisor-open');
-            fab.setAttribute('aria-expanded', 'false');
+            if (fab) fab.setAttribute('aria-expanded', 'false');
         }
-        if (fab) fab.addEventListener('click', function () {
-            if (panel.hidden) {
+        // Expose for debugging / other scripts
+        window.vestxOpenAdvisor = openAdvisor;
+        window.vestxCloseAdvisor = closeAdvisor;
+
+        if (fab) fab.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isAdvisorOpen()) {
+                closeAdvisor();
+            } else {
                 openAdvisor();
-                // Prove API path on open
                 if (window.VESTX_ADVISOR_PING_URL && window.vestxFetchJson) {
                     statusEl.textContent = 'Checking API…';
                     window.vestxFetchJson(window.VESTX_ADVISOR_PING_URL, { method: 'GET' })
@@ -246,15 +266,21 @@
                             statusEl.textContent = 'API OK · ' + (d.api_version || 'ping') +
                                 (d.grok_enabled ? ' · Grok key ready' : ' · no Grok key (engine Qs still work)');
                         })
-                        .catch(function (e) {
-                            statusEl.textContent = 'API check failed: ' + (e.message || e);
+                        .catch(function (err) {
+                            statusEl.textContent = 'API check failed: ' + (err.message || err);
                         });
                 }
-            } else {
-                closeAdvisor();
             }
         });
-        if (closeBtn) closeBtn.addEventListener('click', closeAdvisor);
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeAdvisor);
+            // Capture phase so nothing on the panel steals the click
+            closeBtn.addEventListener('click', closeAdvisor, true);
+        }
+        // Escape key closes chat
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && isAdvisorOpen()) closeAdvisor(e);
+        });
 
         function appendMsg(role, text, opts) {
             opts = opts || {};
