@@ -39,7 +39,8 @@ class TaxProfile(db.Model):
 
     # NIIT & AMT
     include_niit = db.Column(db.Boolean, default=True)
-    amt_credit_carryforward = db.Column(db.Float, default=0.0)
+    amt_credit_carryforward = db.Column(db.Float, default=0.0)  # federal minimum tax credit
+    ca_amt_credit_carryforward = db.Column(db.Float, default=0.0)  # CA Schedule P credit
     prior_year_amt_paid = db.Column(db.Float, default=0.0)
 
     # Analysis year default
@@ -93,5 +94,6 @@ class TaxProfile(db.Model):
             'ss_wage_base_maxed': bool(self.ss_wage_base_maxed),
             'include_niit': bool(self.include_niit),
             'amt_credit_carryforward': self.amt_credit_carryforward or 0.0,
+            'ca_amt_credit_carryforward': self.ca_amt_credit_carryforward or 0.0,
             'tax_year': self.tax_year or datetime.utcnow().year,
         }

@@ -79,6 +79,7 @@ class ScenarioPlan:
     effective_rate_on_economic_gain: float = 0.0
     economic_gain: float = 0.0
     warnings: List[str] = field(default_factory=list)
+    amt_credit_ledger: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -104,6 +105,7 @@ class ScenarioPlan:
             'effective_rate_on_economic_gain': self.effective_rate_on_economic_gain,
             'economic_gain': self.economic_gain,
             'warnings': self.warnings,
+            'amt_credit_ledger': self.amt_credit_ledger,
             # Convenience: primary year analysis (first) for simple UI
             'analysis': self.years[0].analysis if self.years else None,
         }
@@ -219,7 +221,9 @@ def _assemble(
     years: List[YearSlice] = []
     total_tax = 0.0
     amt_total = 0.0
+    ca_amt_total = 0.0
     warnings: List[str] = list(extra_warnings or [])
+    ledger: List[Dict[str, Any]] = []
 
     for year, role, analysis, ex_meta, sale_meta in year_payloads:
         years.append(
@@ -233,7 +237,22 @@ def _assemble(
         )
         total_tax += analysis.total_tax
         amt_total += analysis.amt_due
+        ca_amt_total += getattr(analysis, 'ca_amt_due', 0.0) or 0.0
         warnings.extend(analysis.warnings or [])
+        ledger.append({
+            'tax_year': year,
+            'role': role,
+            'federal_amt_due': analysis.amt_due,
+            'ca_amt_due': getattr(analysis, 'ca_amt_due', 0.0) or 0.0,
+            'federal_credit_opening': getattr(analysis, 'federal_amt_credit_opening', 0.0) or 0.0,
+            'federal_credit_generated': getattr(analysis, 'federal_amt_credit_generated', 0.0) or 0.0,
+            'federal_credit_used': getattr(analysis, 'federal_amt_credit_used', 0.0) or 0.0,
+            'federal_credit_ending': getattr(analysis, 'federal_amt_credit_ending', 0.0) or 0.0,
+            'ca_credit_opening': getattr(analysis, 'ca_amt_credit_opening', 0.0) or 0.0,
+            'ca_credit_generated': getattr(analysis, 'ca_amt_credit_generated', 0.0) or 0.0,
+            'ca_credit_used': getattr(analysis, 'ca_amt_credit_used', 0.0) or 0.0,
+            'ca_credit_ending': getattr(analysis, 'ca_amt_credit_ending', 0.0) or 0.0,
+        })
 
     net = sale_proceeds - cash_outlay - total_tax
     eff = (total_tax / economic_gain) if economic_gain > 0 else 0.0
@@ -243,10 +262,11 @@ def _assemble(
         sale_gross_proceeds=sale_proceeds,
         incremental_tax=total_tax,
         net_cash=net,
-        amt_due_total=amt_total,
+        amt_due_total=amt_total + ca_amt_total,
         notes=[
             'Net cash = sale proceeds − exercise strike outlay − incremental tax across modeled years.',
-            'Does not model margin interest, AMT credit timing precisely, or estimated-tax underpayment penalties.',
+            f'Federal AMT due (sum of years): ${amt_total:,.0f}; CA AMT due (sum): ${ca_amt_total:,.0f}.',
+            'AMT credit ledger shows opening → generated → used → ending by year.',
         ],
     )
 
@@ -264,6 +284,7 @@ def _assemble(
         effective_rate_on_economic_gain=eff,
         economic_gain=economic_gain,
         warnings=_dedupe(warnings),
+        amt_credit_ledger=ledger,
     )
 
 
@@ -552,12 +573,9 @@ def plan_iso_exercise_sell_qd(
             'Sale year equals exercise year — ISO holding period for QD cannot be met; treated as DD.'
         ]
     else:
-        # Year 1: exercise AMT only
-        a_ex = analyze_sales(
-            _profile_for_year(profile, ex_year),
-            lots=[],
-            exercises=exercises,
-        )
+        # Year 1: exercise AMT only — generates federal (+ CA) AMT credit
+        prof_ex = _profile_for_year(profile, ex_year)
+        a_ex = analyze_sales(prof_ex, lots=[], exercises=exercises)
         year_payloads.append(
             (
                 ex_year,
@@ -567,12 +585,15 @@ def plan_iso_exercise_sell_qd(
                 [],
             )
         )
-        # Year 2+: sale as QD (hopefully)
-        a_sale = analyze_sales(
-            _profile_for_year(profile, sale_year),
-            sales,
-            exercises=[],
+        # Year 2+: hand off ending AMT credits into sale-year profile
+        prof_sale = _profile_for_year(profile, sale_year)
+        prof_sale['amt_credit_carryforward'] = float(
+            a_ex.federal_amt_credit_ending or profile.get('amt_credit_carryforward') or 0.0
         )
+        prof_sale['ca_amt_credit_carryforward'] = float(
+            a_ex.ca_amt_credit_ending or profile.get('ca_amt_credit_carryforward') or 0.0
+        )
+        a_sale = analyze_sales(prof_sale, sales, exercises=[])
         year_payloads.append(
             (
                 sale_year,
@@ -593,6 +614,10 @@ def plan_iso_exercise_sell_qd(
         extra_w = [
             f'Assumes other ordinary income in {sale_year} matches Tax Profile '
             f'(wages may change — re-run with updated profile).',
+            f'AMT credit handoff: federal ending ${a_ex.federal_amt_credit_ending:,.0f} → '
+            f'sale-year opening; CA ending ${a_ex.ca_amt_credit_ending:,.0f} → sale-year opening.',
+            f'Sale year federal credit used ${a_sale.federal_amt_credit_used:,.0f}; '
+            f'ending ${a_sale.federal_amt_credit_ending:,.0f}.',
         ]
 
     timeline = [
@@ -929,8 +954,10 @@ def run_plan(
     sale_price: Optional[float] = None,
     exercise_date: Optional[date] = None,
     exercise_fmv: Optional[float] = None,
+    cover_strike: bool = True,
+    cover_tax: bool = True,
 ) -> Dict[str, Any]:
-    """Dispatch strategy → ScenarioPlan or compare payload."""
+    """Dispatch strategy → ScenarioPlan, compare, or liquidity cover payload."""
     strategy = (strategy or 'auto').strip().lower()
     today = date.today()
     sale_date = sale_date or today
@@ -947,6 +974,50 @@ def run_plan(
             sale_price=sale_price or exercise_fmv,
             sale_date=sale_date,
         )
+
+    if strategy in (
+        'iso_sell_to_cover', 'sell_to_cover', 'cover',
+        'rsu_fund_iso', 'rsu_cover',
+    ):
+        from app.utils.liquidity import run_liquidity
+        mode = 'rsu_fund_iso' if strategy in ('rsu_fund_iso', 'rsu_cover') else 'iso_sell_to_cover'
+        liq = run_liquidity(
+            profile,
+            lots,
+            mode=mode,
+            sale_date=sale_date,
+            sale_price=sale_price or exercise_fmv,
+            exercise_date=exercise_date,
+            exercise_fmv=exercise_fmv,
+            cover_strike=cover_strike,
+            cover_tax=cover_tax,
+        )
+        # Also attach a cashless plan on the recommended sell qty for tax detail
+        cover = liq.get('cover') or {}
+        plan_dict = None
+        if cover.get('shares_to_sell', 0) > 0 and mode == 'iso_sell_to_cover':
+            sell_lots = []
+            remaining = cover['shares_to_sell']
+            for lot in lots:
+                if not lot.is_iso or remaining <= 0:
+                    continue
+                take = min(lot.shares, remaining)
+                if take > 0:
+                    nl = LotSpec(**{**lot.__dict__, 'shares': take})
+                    sell_lots.append(nl)
+                    remaining -= take
+            if sell_lots:
+                plan_dict = plan_iso_cashless_dd(
+                    profile, sell_lots, event_date=exercise_date, price=exercise_fmv
+                ).to_dict()
+        return {
+            'success': True,
+            'compare': False,
+            'liquidity': True,
+            'cover': cover,
+            'plan': plan_dict,
+            'analysis': plan_dict.get('analysis') if plan_dict else None,
+        }
 
     if strategy in ('auto', 'mixed', 'default'):
         plan = plan_mixed_default(

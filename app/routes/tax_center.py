@@ -92,6 +92,7 @@ def tax_profile():
             profile.other_short_term_gains = _f('other_short_term_gains', 0) or 0
             profile.ytd_wages = _f('ytd_wages', 0) or 0
             profile.amt_credit_carryforward = _f('amt_credit_carryforward', 0) or 0
+            profile.ca_amt_credit_carryforward = _f('ca_amt_credit_carryforward', 0) or 0
             profile.include_fica = request.form.get('include_fica') == 'on'
             profile.ss_wage_base_maxed = request.form.get('ss_wage_base_maxed') == 'on'
             profile.include_niit = request.form.get('include_niit') == 'on'
@@ -232,6 +233,8 @@ def api_analyze():
             sale_price=sale_price,
             exercise_date=exercise_date,
             exercise_fmv=exercise_fmv,
+            cover_strike=data.get('cover_strike', True) is not False,
+            cover_tax=data.get('cover_tax', True) is not False,
         )
 
         # Back-compat: surface primary analysis at top level for simple clients

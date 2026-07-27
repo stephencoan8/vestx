@@ -34,11 +34,15 @@ def migrate_tax_profile_state(app):
             _add('use_state_engine BOOLEAN DEFAULT 1', 'use_state_engine')
             _add('state_code VARCHAR(2)', 'state_code')
             _add('state_cg_rate FLOAT DEFAULT 0', 'state_cg_rate')
+            _add('ca_amt_credit_carryforward FLOAT DEFAULT 0', 'ca_amt_credit_carryforward')
+            _add('amt_credit_carryforward FLOAT DEFAULT 0', 'amt_credit_carryforward')
         else:
             # Postgres
             _add('use_state_engine BOOLEAN DEFAULT TRUE', 'use_state_engine')
             _add('state_code VARCHAR(2)', 'state_code')
             _add('state_cg_rate DOUBLE PRECISION DEFAULT 0', 'state_cg_rate')
+            _add('ca_amt_credit_carryforward DOUBLE PRECISION DEFAULT 0', 'ca_amt_credit_carryforward')
+            _add('amt_credit_carryforward DOUBLE PRECISION DEFAULT 0', 'amt_credit_carryforward')
 
         # Default existing null CA users who have no state set — leave null alone;
         # for_user() seeds CA on create only.

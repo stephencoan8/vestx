@@ -118,10 +118,19 @@
         <input type="checkbox" id="include_niit" name="include_niit" {% if profile.include_niit %}checked{% endif %}>
         <label for="include_niit">Include NIIT (3.8%) when MAGI thresholds apply</label>
       </div>
-      <div class="form-group">
-        <label for="amt_credit_carryforward">AMT credit carryforward ($)</label>
-        <input type="number" step="0.01" id="amt_credit_carryforward" name="amt_credit_carryforward"
-               value="{{ profile.amt_credit_carryforward or 0 }}">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="amt_credit_carryforward">Federal AMT credit carryforward ($)</label>
+          <input type="number" step="0.01" id="amt_credit_carryforward" name="amt_credit_carryforward"
+                 value="{{ profile.amt_credit_carryforward or 0 }}">
+          <span class="form-hint">Prior-year Form 8801 minimum tax credit. Used when regular tax exceeds federal TMT.</span>
+        </div>
+        <div class="form-group">
+          <label for="ca_amt_credit_carryforward">CA AMT credit carryforward ($)</label>
+          <input type="number" step="0.01" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
+                 value="{{ profile.ca_amt_credit_carryforward or 0 }}">
+          <span class="form-hint">Prior-year CA Schedule P credit. Used when CA regular tax exceeds CA TMT (7%).</span>
+        </div>
       </div>
 
       <div class="form-actions">

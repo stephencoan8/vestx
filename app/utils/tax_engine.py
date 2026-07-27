@@ -66,23 +66,17 @@ NIIT_THRESHOLD = {
     'mfj': 250000,
 }
 
-# AMT exemption (approx 2025/2026)
-AMT_EXEMPTION = {
-    2025: {'single': 88100, 'mfs': 44050, 'mfj': 137000, 'hoh': 88100},
-    2026: {'single': 90100, 'mfs': 45050, 'mfj': 140200, 'hoh': 90100},
-}
-AMT_PHASEOUT_START = {
-    2025: {'single': 626350, 'mfs': 313175, 'mfj': 1_268_500, 'hoh': 626350},
-    2026: {'single': 640600, 'mfs': 320300, 'mfj': 1_281_200, 'hoh': 640600},
-}
-AMT_RATE_LOW = 0.26
-AMT_RATE_HIGH = 0.28
-AMT_HIGH_THRESHOLD = {
-    'single': 220700,
-    'mfs': 110350,
-    'mfj': 220700,
-    'hoh': 220700,
-}
+# Federal AMT tables live in app.utils.amt (kept re-exports for older imports)
+from app.utils.amt import (  # noqa: E402
+    compute_federal_tmt,
+    compute_ca_tmt,
+    compute_amt_stack,
+    FED_AMT_EXEMPTION as AMT_EXEMPTION,
+    FED_AMT_PHASEOUT_START as AMT_PHASEOUT_START,
+    FED_AMT_RATE_LOW as AMT_RATE_LOW,
+    FED_AMT_RATE_HIGH as AMT_RATE_HIGH,
+    FED_AMT_28_THRESHOLD as AMT_HIGH_THRESHOLD,
+)
 
 SS_RATE = 0.062
 MEDICARE_RATE = 0.0145
@@ -241,6 +235,18 @@ class TaxAnalysis:
     rates_used: Dict[str, float] = field(default_factory=dict)
     state_breakdown: Dict[str, Any] = field(default_factory=dict)
     state_notes: List[str] = field(default_factory=list)
+    # AMT credit rollforward (federal + CA)
+    ca_amt_due: float = 0.0
+    ca_amt_tmt: float = 0.0
+    federal_amt_credit_opening: float = 0.0
+    federal_amt_credit_used: float = 0.0
+    federal_amt_credit_generated: float = 0.0
+    federal_amt_credit_ending: float = 0.0
+    ca_amt_credit_opening: float = 0.0
+    ca_amt_credit_used: float = 0.0
+    ca_amt_credit_generated: float = 0.0
+    ca_amt_credit_ending: float = 0.0
+    amt_detail: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -401,19 +407,9 @@ def compute_amt(
     filing: str,
     year: int,
 ) -> float:
-    """Tentative minimum tax on AMTI."""
-    if amti_base <= 0:
-        return 0.0
-    exempt = _year_table(AMT_EXEMPTION, year).get(filing, 90100)
-    phase_start = _year_table(AMT_PHASEOUT_START, year).get(filing, 640600)
-    # Phase out exemption 25 cents per dollar over start
-    if amti_base > phase_start:
-        exempt = max(0.0, exempt - 0.25 * (amti_base - phase_start))
-    taxable_amt = max(0.0, amti_base - exempt)
-    high_thr = AMT_HIGH_THRESHOLD.get(filing, 220700)
-    if taxable_amt <= high_thr:
-        return taxable_amt * AMT_RATE_LOW
-    return high_thr * AMT_RATE_LOW + (taxable_amt - high_thr) * AMT_RATE_HIGH
+    """Tentative minimum tax on federal AMTI (wrapper for app.utils.amt)."""
+    tmt, _ = compute_federal_tmt(amti_base, filing, year)
+    return tmt
 
 
 def _net_st_lt(net_st: float, net_lt: float) -> Tuple[float, float]:
@@ -491,12 +487,36 @@ def _federal_state_layer(
         state_cg_rate=state_cg_rate,
     )
 
-    amti = other_ord + equity_ordinary + stcg_pos + ltcg_pos + amt_bargain
-    amt_tax = compute_amt(amti, filing, year)
-    credit = float(profile.get('amt_credit_carryforward') or 0.0)
-    amt_due = max(0.0, amt_tax - regular_federal)
-    credit_used = min(credit, regular_federal) if amt_due == 0 else 0.0
+    # Federal + CA AMT with minimum-tax credit rollforward
+    amti_base = other_ord + equity_ordinary + stcg_pos + ltcg_pos
+    amt_stack = compute_amt_stack(
+        filing=filing,
+        year=year,
+        federal_regular_tax=regular_federal,
+        ca_regular_tax=float(state_result.regular_tax or 0.0),
+        ordinary_and_cg_base=amti_base,
+        iso_bargain_preference=amt_bargain,
+        federal_credit_opening=float(profile.get('amt_credit_carryforward') or 0.0),
+        ca_credit_opening=float(profile.get('ca_amt_credit_carryforward') or 0.0),
+        state_code=profile.get('state_code'),
+        compute_ca=bool(profile.get('use_state_engine', True)),
+    )
+    fed_amt = amt_stack.federal
+    amt_tax = fed_amt.tentative_minimum_tax
+    amt_due = fed_amt.amt_due
+    credit_used = fed_amt.credit_used
     federal_after_credit = regular_federal - credit_used + amt_due + niit
+
+    # State tax = regular PIT/MHST + CA AMT due − CA AMT credit used
+    ca_amt_due = amt_stack.ca_amt_due
+    ca_credit_used = amt_stack.california.credit_used if amt_stack.california else 0.0
+    state_tax_total = (
+        float(state_result.total_tax)
+        + ca_amt_due
+        - ca_credit_used
+    )
+    # Credit can't reduce state below 0
+    state_tax_total = max(0.0, state_tax_total)
 
     return {
         'total_ordinary': total_ordinary,
@@ -508,7 +528,7 @@ def _federal_state_layer(
         'amt_tax': amt_tax,
         'amt_due': amt_due,
         'federal_tax_total': federal_after_credit,
-        'state_tax': state_result.total_tax,
+        'state_tax': state_tax_total,
         'state_regular_tax': state_result.regular_tax,
         'state_surtax': state_result.surtax,
         'state_engine': state_result.engine,
@@ -518,6 +538,26 @@ def _federal_state_layer(
         'ltcg_rate': ltcg_rate,
         'state_ord_rate': state_ord_rate,
         'state_cg_rate': state_cg_rate,
+        'ca_amt_due': ca_amt_due,
+        'ca_amt_tmt': (
+            amt_stack.california.tentative_minimum_tax if amt_stack.california else 0.0
+        ),
+        'federal_amt_credit_opening': fed_amt.credit_opening,
+        'federal_amt_credit_used': fed_amt.credit_used,
+        'federal_amt_credit_generated': fed_amt.credit_generated,
+        'federal_amt_credit_ending': fed_amt.credit_ending,
+        'ca_amt_credit_opening': (
+            amt_stack.california.credit_opening if amt_stack.california else 0.0
+        ),
+        'ca_amt_credit_used': ca_credit_used,
+        'ca_amt_credit_generated': (
+            amt_stack.california.credit_generated if amt_stack.california else 0.0
+        ),
+        'ca_amt_credit_ending': (
+            amt_stack.california.credit_ending if amt_stack.california else 0.0
+        ),
+        'amt_detail': amt_stack.to_dict(),
+        'amt_bargain': amt_bargain,
     }
 
 
@@ -663,10 +703,18 @@ def analyze_sales(
     state_breakdown['incremental_state_tax'] = state_tax
     state_breakdown['baseline_state_tax'] = float(base['state_tax'])
     state_breakdown['full_stack_state_tax'] = float(full['state_tax'])
+    state_breakdown['ca_amt_due_incremental'] = _delta('ca_amt_due')
     state_notes = list(state_result.notes) + [
         f'Incremental state tax on this activity: ${state_tax:,.2f} '
         f'(full-year CA/stack ${float(full["state_tax"]):,.2f} − baseline ${float(base["state_tax"]):,.2f}).',
     ]
+    # Surface AMT notes from full stack
+    amt_detail = full.get('amt_detail') or {}
+    for n in (amt_detail.get('notes') or []):
+        if n not in warnings:
+            warnings.append(n)
+
+    ca_amt_due_inc = _delta('ca_amt_due')
 
     return TaxAnalysis(
         tax_year=year,
@@ -716,4 +764,16 @@ def analyze_sales(
         },
         state_breakdown=state_breakdown,
         state_notes=state_notes,
+        # Credit positions from the *with-activity* stack (for multi-year handoff)
+        ca_amt_due=ca_amt_due_inc,
+        ca_amt_tmt=float(full.get('ca_amt_tmt') or 0.0),
+        federal_amt_credit_opening=float(full.get('federal_amt_credit_opening') or 0.0),
+        federal_amt_credit_used=float(full.get('federal_amt_credit_used') or 0.0),
+        federal_amt_credit_generated=float(full.get('federal_amt_credit_generated') or 0.0),
+        federal_amt_credit_ending=float(full.get('federal_amt_credit_ending') or 0.0),
+        ca_amt_credit_opening=float(full.get('ca_amt_credit_opening') or 0.0),
+        ca_amt_credit_used=float(full.get('ca_amt_credit_used') or 0.0),
+        ca_amt_credit_generated=float(full.get('ca_amt_credit_generated') or 0.0),
+        ca_amt_credit_ending=float(full.get('ca_amt_credit_ending') or 0.0),
+        amt_detail=amt_detail,
     )

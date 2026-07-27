@@ -6,8 +6,11 @@ Key CA rules modeled:
 - Mental Health Services Tax (MHST): 1% on taxable income over $1,000,000
 - Filing statuses: single, mfj, mfs, hoh
 
-Not modeled (by design / scope): full CA AMT, credits, itemized vs standard,
-part-year residency, community property splits, SDI (payroll withholding).
+CA AMT (Schedule P, 7%) is computed in app.utils.amt and layered on top of PIT
+in the tax engine — not inside this PIT-only function.
+
+Still not modeled: itemized vs standard, part-year residency, community property,
+SDI (payroll withholding), full credit schedules beyond AMT credit.
 """
 
 from __future__ import annotations

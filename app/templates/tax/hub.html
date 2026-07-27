@@ -69,13 +69,15 @@
 
     <div class="form-group" style="margin-bottom:1rem;">
       <label for="planStrategy">Strategy</label>
-      <select id="planStrategy" style="max-width:28rem;">
+      <select id="planStrategy" style="max-width:32rem;">
         <option value="auto">Auto — RSU sell + ISO cashless if unexercised</option>
         <option value="rsu_sell">RSU: sell only</option>
         <option value="iso_cashless_dd">ISO: cashless (exercise + sell same day) — DD</option>
         <option value="iso_exercise_hold">ISO: exercise &amp; hold (AMT year only)</option>
-        <option value="iso_exercise_sell_qd">ISO: exercise → hold for QD → sell</option>
+        <option value="iso_exercise_sell_qd">ISO: exercise → hold for QD → sell (credit handoff)</option>
         <option value="iso_sell_held">ISO: sell already-exercised shares</option>
+        <option value="iso_sell_to_cover">ISO: sell-to-cover (min cashless to fund hold)</option>
+        <option value="rsu_fund_iso">RSU: sell enough to fund ISO exercise+AMT</option>
         <option value="compare_iso">ISO: compare cashless vs hold vs QD path</option>
       </select>
       <span class="form-hint" id="strategyHint" style="display:block;margin-top:0.35rem;color:var(--text-muted);font-size:0.8rem;"></span>
@@ -186,6 +188,19 @@
       <div id="recsPanel" style="display:none;margin-bottom:1rem;">
         <h3 style="font-size:1rem;margin:0 0 0.5rem;">Planning notes</h3>
         <ul id="recsList" style="margin:0;padding-left:1.25rem;font-size:0.875rem;color:var(--text-secondary);"></ul>
+      </div>
+
+      <div id="coverPanel" style="display:none;margin-bottom:1rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Sell-to-cover / liquidity</h3>
+        <div class="stats-grid" id="coverStats"></div>
+        <ul id="coverNotes" style="margin:0.75rem 0 0;padding-left:1.25rem;font-size:0.875rem;color:var(--text-secondary);"></ul>
+      </div>
+
+      <div id="amtCreditPanel" style="display:none;margin-bottom:1rem;">
+        <h3 style="font-size:1rem;margin:0 0 0.5rem;">AMT credit ledger (federal + CA)</h3>
+        <div class="table-container" style="padding:0;border:none;">
+          <table class="data-table" id="amtCreditTable"></table>
+        </div>
       </div>
 
       <div class="stats-grid" id="analysisStats"></div>
@@ -335,8 +350,10 @@
     rsu_sell: 'Sale only vs vest FMV basis. Vest ordinary income is separate (already taxed or tax-withheld).',
     iso_cashless_dd: 'Exercise + same-day sale. Spread is ordinary income + FICA; no ISO AMT preference.',
     iso_exercise_hold: 'Exercise only: pay strike cash + possible AMT this year. No sale proceeds. Shows earliest QD date.',
-    iso_exercise_sell_qd: 'Two years when needed: AMT at exercise, then sale on earliest qualifying date at your assumed price.',
+    iso_exercise_sell_qd: 'Two years when needed: AMT at exercise (generates credit), then sale on earliest QD date with credit handoff + CA AMT.',
     iso_sell_held: 'Sell shares you already exercised. Uses recorded exercise date/FMV to classify QD vs DD.',
+    iso_sell_to_cover: 'Binary-search the minimum cashless DD tranche so net proceeds fund strike + tax/AMT on the shares you keep.',
+    rsu_fund_iso: 'Sell the fewest RSUs so after-tax proceeds fund ISO exercise-and-hold (strike + federal/CA AMT).',
     compare_iso: 'Runs cashless vs exercise-hold vs hold-to-QD side-by-side on the same ISO lots and prices.'
   };
   function updateStrategyHint() {
@@ -408,12 +425,63 @@
         }
         if (data.compare) {
           renderCompare(data);
+        } else if (data.liquidity) {
+          renderCover(data);
         } else {
           renderPlan(data.plan || data.scenario, data.analysis);
         }
       })
       .catch(function (e) { alert(e); });
   });
+
+  function renderCover(data) {
+    const panel = document.getElementById('analysisPanel');
+    panel.style.display = 'block';
+    document.getElementById('comparePanel').style.display = 'none';
+    document.getElementById('timelinePanel').style.display = 'none';
+    document.getElementById('multiYearPanel').style.display = 'none';
+    document.getElementById('stateTaxDetail').style.display = 'none';
+    document.getElementById('amtCreditPanel').style.display = 'none';
+    document.getElementById('cashPanel').style.display = 'none';
+
+    const c = data.cover || {};
+    document.getElementById('analysisTitle').textContent = c.success
+      ? 'Sell-to-cover solution'
+      : 'Sell-to-cover — shortfall';
+    document.getElementById('analysisDesc').textContent = c.mode || '';
+    document.getElementById('analysisWarnings').innerHTML = '';
+
+    document.getElementById('coverPanel').style.display = 'block';
+    document.getElementById('coverStats').innerHTML = [
+      ['Shares to sell', Number(c.shares_to_sell || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })],
+      ['Shares to hold', Number(c.shares_to_hold || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })],
+      ['Sale proceeds', money(c.sale_proceeds)],
+      ['Tax on sale tranche', money(c.incremental_tax_on_sale)],
+      ['Tax/AMT on hold', money(c.tax_on_hold_path)],
+      ['Strike on held', money(c.strike_outlay_held)],
+      ['Cash needed', money(c.total_cash_needed)],
+      ['Net surplus', money(c.net_cash_after)],
+      ['Shortfall', money(c.shortfall)]
+    ].map(function (row) {
+      return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + row[0] +
+        '</div><div class="stat-value" style="font-size:1.1rem;">' + row[1] + '</div></div></div>';
+    }).join('');
+    document.getElementById('coverNotes').innerHTML =
+      (c.notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
+
+    document.getElementById('recsPanel').style.display = 'block';
+    document.getElementById('recsList').innerHTML =
+      (c.notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
+
+    if (data.analysis) {
+      renderAnalysis(data.analysis);
+    } else if (data.plan && data.plan.analysis) {
+      renderAnalysis(data.plan.analysis);
+    } else {
+      document.getElementById('analysisStats').innerHTML = '';
+      document.getElementById('analysisLots').innerHTML = '';
+    }
+  }
 
   function renderCompare(data) {
     const panel = document.getElementById('analysisPanel');
@@ -452,6 +520,7 @@
     const panel = document.getElementById('analysisPanel');
     panel.style.display = 'block';
     document.getElementById('comparePanel').style.display = 'none';
+    document.getElementById('coverPanel').style.display = 'none';
 
     const planObj = plan || {};
     const a = analysisFallback || planObj.analysis || {};
@@ -470,7 +539,7 @@
       ['Sale proceeds', money(cash.sale_gross_proceeds)],
       ['Incremental tax', money(cash.incremental_tax != null ? cash.incremental_tax : planObj.total_incremental_tax)],
       ['Net cash', money(cash.net_cash != null ? cash.net_cash : planObj.total_net_cash)],
-      ['AMT due (modeled)', money(cash.amt_due_total)],
+      ['AMT due (fed+CA)', money(cash.amt_due_total)],
       ['Eff. rate on economic gain', pct(planObj.effective_rate_on_economic_gain)]
     ].map(function (c) {
       return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
@@ -498,6 +567,24 @@
       document.getElementById('recsPanel').style.display = 'none';
     }
 
+    // AMT credit ledger
+    const ledger = planObj.amt_credit_ledger || [];
+    if (ledger.length) {
+      document.getElementById('amtCreditPanel').style.display = 'block';
+      document.getElementById('amtCreditTable').innerHTML =
+        '<thead><tr><th>Year</th><th>Role</th><th>Fed AMT</th><th>Fed credit gen</th><th>Fed credit used</th><th>Fed ending</th>' +
+        '<th>CA AMT</th><th>CA credit gen</th><th>CA credit used</th><th>CA ending</th></tr></thead><tbody>' +
+        ledger.map(function (r) {
+          return '<tr><td>' + r.tax_year + '</td><td>' + (r.role || '') + '</td><td>' + money(r.federal_amt_due) +
+            '</td><td>' + money(r.federal_credit_generated) + '</td><td>' + money(r.federal_credit_used) +
+            '</td><td>' + money(r.federal_credit_ending) + '</td><td>' + money(r.ca_amt_due) +
+            '</td><td>' + money(r.ca_credit_generated) + '</td><td>' + money(r.ca_credit_used) +
+            '</td><td>' + money(r.ca_credit_ending) + '</td></tr>';
+        }).join('') + '</tbody>';
+    } else {
+      document.getElementById('amtCreditPanel').style.display = 'none';
+    }
+
     // Multi-year
     const years = planObj.years || [];
     if (years.length > 1) {
@@ -505,8 +592,8 @@
       document.getElementById('multiYearStats').innerHTML = years.map(function (y) {
         const ya = y.analysis || {};
         return '<div style="margin-bottom:0.75rem;"><strong>' + y.tax_year + '</strong> (' + y.role + ') — tax ' +
-          money(ya.total_tax) + ', AMT due ' + money(ya.amt_due) + ', federal ' + money(ya.federal_tax_total) +
-          ', state ' + money(ya.state_tax) + '</div>';
+          money(ya.total_tax) + ', fed AMT ' + money(ya.amt_due) + ', CA AMT ' + money(ya.ca_amt_due) +
+          ', federal ' + money(ya.federal_tax_total) + ', state ' + money(ya.state_tax) + '</div>';
       }).join('');
     } else {
       document.getElementById('multiYearPanel').style.display = 'none';
@@ -531,7 +618,10 @@
       ['Federal', money(a.federal_tax_total)],
       [stateLabel, money(a.state_tax)],
       ['NIIT', money(a.niit)],
-      ['AMT due', money(a.amt_due)],
+      ['Fed AMT due', money(a.amt_due)],
+      ['CA AMT due', money(a.ca_amt_due)],
+      ['Fed AMT credit used', money(a.federal_amt_credit_used)],
+      ['Fed AMT credit end', money(a.federal_amt_credit_ending)],
       ['FICA', money(a.fica_tax)],
       ['Ordinary (equity)', money(a.equity_ordinary)],
       ['STCG', money(a.stcg)],
