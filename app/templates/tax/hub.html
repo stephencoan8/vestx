@@ -37,13 +37,32 @@
         <div class="stat-value">{{ sales|length }}</div>
       </div>
     </div>
+    <div class="stat-card">
+      <div class="stat-content">
+        <div class="stat-label">State engine</div>
+        <div class="stat-value" style="font-size:1.1rem;">
+          {% if (profile.state_code or '')|upper == 'CA' and (profile.use_state_engine is none or profile.use_state_engine) %}
+          CA PIT + MHST
+          {% elif profile.state_code %}
+          {{ profile.state_code|upper }} (flat)
+          {% else %}
+          Not set
+          {% endif %}
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Planner -->
   <div class="detail-card">
     <h2>What-if sale planner</h2>
     <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.9rem;">
-      Select lots and shares. The engine stacks your tax profile income with equity ordinary, ST/LT gains, NIIT, state rates you set, and AMT for ISO bargain elements.
+      Select lots and shares. Stacks federal brackets, NIIT, FICA, AMT (ISO), and
+      {% if (profile.state_code or '')|upper == 'CA' and (profile.use_state_engine is none or profile.use_state_engine) %}
+      <strong>California progressive PIT + MHST</strong> (gains taxed as ordinary).
+      {% else %}
+      state tax from your profile rates.
+      {% endif %}
     </p>
     <div class="form-row">
       <div class="form-group">
@@ -107,6 +126,11 @@
       <h2>Tax impact</h2>
       <div id="analysisWarnings" style="color:var(--warning);margin-bottom:0.75rem;"></div>
       <div class="stats-grid" id="analysisStats"></div>
+      <div id="stateTaxDetail" style="display:none;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border-subtle, rgba(255,255,255,0.08));">
+        <h3 style="font-size:1rem;margin:0 0 0.75rem;">State tax detail</h3>
+        <div class="stats-grid" id="stateTaxStats"></div>
+        <ul id="stateTaxNotes" style="margin:0.75rem 0 0;padding-left:1.25rem;color:var(--text-secondary);font-size:0.875rem;"></ul>
+      </div>
       <div class="table-container" style="padding:0;border:none;margin-top:1rem;">
         <table class="data-table" id="analysisLots"></table>
       </div>
@@ -293,13 +317,16 @@
     const warn = document.getElementById('analysisWarnings');
     warn.innerHTML = (a.warnings || []).map(function (w) { return '<div>' + w + '</div>'; }).join('');
 
+    const stateLabel = a.state_engine === 'CA'
+      ? 'State (CA)'
+      : (a.state_engine === 'flat' ? 'State (flat)' : 'State');
     const stats = document.getElementById('analysisStats');
     const cards = [
       ['Proceeds', money(a.total_proceeds)],
       ['After-tax proceeds', money(a.after_tax_proceeds)],
       ['Total tax', money(a.total_tax)],
       ['Federal', money(a.federal_tax_total)],
-      ['State', money(a.state_tax)],
+      [stateLabel, money(a.state_tax)],
       ['NIIT', money(a.niit)],
       ['AMT due', money(a.amt_due)],
       ['FICA', money(a.fica_tax)],
@@ -312,6 +339,38 @@
       return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
         '</div><div class="stat-value" style="font-size:1.25rem;">' + c[1] + '</div></div></div>';
     }).join('');
+
+    // State PIT / MHST / marginal detail
+    const stateDetail = document.getElementById('stateTaxDetail');
+    const stateStats = document.getElementById('stateTaxStats');
+    const stateNotes = document.getElementById('stateTaxNotes');
+    if (a.state_tax != null && (a.state_engine === 'CA' || a.state_engine === 'flat' || a.state_tax > 0)) {
+      stateDetail.style.display = 'block';
+      const rates = a.rates_used || {};
+      const bd = a.state_breakdown || {};
+      const stateCards = [
+        ['Engine', a.state_engine === 'CA' ? 'California' : (a.state_engine || '—')],
+        ['State taxable income', money(a.state_taxable_income)],
+        ['PIT / regular', money(a.state_regular_tax)],
+        ['Surtax (MHST)', money(a.state_surtax)],
+        ['Total state tax', money(a.state_tax)],
+        ['Marginal (state)', pct(rates.state_marginal)],
+        ['Effective (state)', pct(rates.state_effective)]
+      ];
+      if (a.state_engine === 'CA' && bd.capital_gains_as_ordinary != null) {
+        stateCards.push(['CG taxed as ordinary', money(bd.capital_gains_as_ordinary)]);
+      }
+      stateStats.innerHTML = stateCards.map(function (c) {
+        return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
+          '</div><div class="stat-value" style="font-size:1.05rem;">' + c[1] + '</div></div></div>';
+      }).join('');
+      const notes = a.state_notes && a.state_notes.length ? a.state_notes : (a.warnings || []).filter(function (w) {
+        return /California|MHST|state|flat profile/i.test(w);
+      });
+      stateNotes.innerHTML = notes.map(function (n) { return '<li>' + n + '</li>'; }).join('');
+    } else {
+      stateDetail.style.display = 'none';
+    }
 
     const t = document.getElementById('analysisLots');
     t.innerHTML = '<thead><tr><th>Lot</th><th>Shares</th><th>Proceeds</th><th>Ordinary</th><th>CG</th><th>Term</th><th>ISO</th></tr></thead><tbody>' +

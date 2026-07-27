@@ -70,6 +70,7 @@ def tax_profile():
             profile.filing_status = request.form.get('filing_status') or 'single'
             profile.state_code = (request.form.get('state_code') or '').upper()[:2] or None
             profile.use_bracket_engine = request.form.get('use_bracket_engine') == 'on'
+            profile.use_state_engine = request.form.get('use_state_engine') == 'on'
 
             def _f(name, default=None):
                 raw = request.form.get(name, '')

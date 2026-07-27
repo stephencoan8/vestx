@@ -22,8 +22,10 @@ class TaxProfile(db.Model):
     federal_ordinary_rate = db.Column(db.Float, nullable=True)  # if null, estimate from brackets + income
     federal_ltcg_rate = db.Column(db.Float, nullable=True)  # if null, estimate from LTCG brackets
     state_ordinary_rate = db.Column(db.Float, default=0.0)
-    state_cg_rate = db.Column(db.Float, default=0.0)  # often same as ordinary; user sets
+    state_cg_rate = db.Column(db.Float, default=0.0)  # flat fallback / non-CA
     use_bracket_engine = db.Column(db.Boolean, default=True)
+    # When True and state_code has an engine (CA), use progressive state brackets
+    use_state_engine = db.Column(db.Boolean, default=True)
 
     # Non-equity income for the tax year under analysis (required for AMT / NIIT / brackets)
     other_ordinary_income = db.Column(db.Float, default=0.0)  # wages, bonus cash, etc. excl. modeled equity
@@ -59,12 +61,14 @@ class TaxProfile(db.Model):
             return profile
         profile = cls(
             user_id=user.id,
+            state_code='CA',  # default for this product audience; user can change
             federal_ordinary_rate=user.federal_tax_rate if user.federal_tax_rate is not None else 0.24,
             state_ordinary_rate=user.state_tax_rate if user.state_tax_rate is not None else 0.0,
             state_cg_rate=user.state_tax_rate if user.state_tax_rate is not None else 0.0,
             include_fica=user.include_fica if user.include_fica is not None else True,
             ss_wage_base_maxed=bool(getattr(user, 'ss_wage_base_maxed', False)),
             use_bracket_engine=True,
+            use_state_engine=True,
             tax_year=datetime.utcnow().year,
         )
         db.session.add(profile)
@@ -74,11 +78,13 @@ class TaxProfile(db.Model):
     def to_engine_dict(self) -> dict:
         return {
             'filing_status': self.filing_status or 'single',
+            'state_code': (self.state_code or '').upper() or None,
             'federal_ordinary_rate': self.federal_ordinary_rate,
             'federal_ltcg_rate': self.federal_ltcg_rate,
             'state_ordinary_rate': self.state_ordinary_rate or 0.0,
             'state_cg_rate': self.state_cg_rate if self.state_cg_rate is not None else (self.state_ordinary_rate or 0.0),
             'use_bracket_engine': bool(self.use_bracket_engine),
+            'use_state_engine': bool(self.use_state_engine if self.use_state_engine is not None else True),
             'other_ordinary_income': self.other_ordinary_income or 0.0,
             'other_long_term_gains': self.other_long_term_gains or 0.0,
             'other_short_term_gains': self.other_short_term_gains or 0.0,

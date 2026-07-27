@@ -195,19 +195,25 @@ class TaxAnalysis:
     federal_stcg_tax: float  # included in ordinary progressive for STCG
     niit: float
     state_tax: float
-    fica_tax: float
-    regular_federal_tax: float
-    amt_tax: float
-    amt_due: float  # max(0, amt - regular)
-    federal_tax_total: float
-    total_tax: float
-    total_proceeds: float
-    total_cost_basis: float
-    after_tax_proceeds: float
-    effective_rate_on_gain: float
+    state_regular_tax: float = 0.0
+    state_surtax: float = 0.0  # e.g. CA MHST 1% over $1M
+    state_engine: str = 'flat'
+    state_taxable_income: float = 0.0
+    fica_tax: float = 0.0
+    regular_federal_tax: float = 0.0
+    amt_tax: float = 0.0
+    amt_due: float = 0.0  # max(0, amt - regular)
+    federal_tax_total: float = 0.0
+    total_tax: float = 0.0
+    total_proceeds: float = 0.0
+    total_cost_basis: float = 0.0
+    after_tax_proceeds: float = 0.0
+    effective_rate_on_gain: float = 0.0
     missing_inputs: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     rates_used: Dict[str, float] = field(default_factory=dict)
+    state_breakdown: Dict[str, Any] = field(default_factory=dict)
+    state_notes: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -449,10 +455,28 @@ def analyze_sales(
         niit_base = min(investment, max(0.0, magi - thr))
         niit = niit_base * 0.038
 
-    # State
+    # State tax (CA full engine when state_code=CA and use_state_engine)
+    from app.utils.state_tax import compute_state_tax
+
     state_ord_rate = float(profile.get('state_ordinary_rate') or 0.0)
-    state_cg_rate = float(profile.get('state_cg_rate') if profile.get('state_cg_rate') is not None else state_ord_rate)
-    state_tax = (other_ord + equity_ordinary) * state_ord_rate + (stcg_pos + ltcg_pos) * state_cg_rate
+    state_cg_rate = float(
+        profile.get('state_cg_rate') if profile.get('state_cg_rate') is not None else state_ord_rate
+    )
+    state_result = compute_state_tax(
+        state_code=profile.get('state_code'),
+        filing_status=filing,
+        tax_year=year,
+        ordinary_income=other_ord + equity_ordinary,
+        capital_gains=stcg_pos + ltcg_pos,
+        use_state_engine=bool(profile.get('use_state_engine', True)),
+        state_ordinary_rate=state_ord_rate,
+        state_cg_rate=state_cg_rate,
+    )
+    state_tax = state_result.total_tax
+    # Surface missing-engine notes as warnings; CA PIT/MHST notes live in state_notes only
+    for n in state_result.notes:
+        if 'No full bracket engine' in n or 'No state selected' in n:
+            warnings.append(n)
 
     # FICA on equity ordinary only (vest/DD)
     fica = compute_fica(equity_ordinary, profile)
@@ -497,6 +521,10 @@ def analyze_sales(
         federal_stcg_tax=federal_stcg_tax,
         niit=niit,
         state_tax=state_tax,
+        state_regular_tax=state_result.regular_tax,
+        state_surtax=state_result.surtax,
+        state_engine=state_result.engine,
+        state_taxable_income=state_result.taxable_income,
         fica_tax=fica,
         regular_federal_tax=regular_federal,
         amt_tax=amt_tax,
@@ -514,6 +542,10 @@ def analyze_sales(
             'ltcg': ltcg_rate,
             'state_ordinary': state_ord_rate,
             'state_cg': state_cg_rate,
+            'state_marginal': state_result.marginal_rate,
+            'state_effective': state_result.effective_rate,
             'niit': 0.038 if profile.get('include_niit', True) else 0.0,
         },
+        state_breakdown=state_result.breakdown,
+        state_notes=list(state_result.notes),
     )

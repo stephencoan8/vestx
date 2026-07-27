@@ -79,17 +79,29 @@
         </div>
       </div>
 
-      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">State rates (you confirm)</h3>
-      <div class="form-row">
+      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">State tax</h3>
+      <div class="form-group form-check">
+        <input type="checkbox" id="use_state_engine" name="use_state_engine"
+               {% if profile.use_state_engine is none or profile.use_state_engine %}checked{% endif %}>
+        <label for="use_state_engine">Use built-in state engine when available (recommended for CA)</label>
+      </div>
+      <p class="form-hint" style="margin: 0 0 1rem; max-width: 40rem; color: var(--text-secondary); font-size: 0.875rem;">
+        <strong>California (CA)</strong> is fully modeled: progressive PIT brackets (1%–12.3%), capital gains taxed as ordinary
+        income (no federal-style LTCG preference), and Mental Health Services Tax of 1% on taxable income over $1,000,000.
+        Flat rates below are used for other states, or for CA if you turn the engine off.
+      </p>
+      <div class="form-row" id="flatStateRates">
         <div class="form-group">
-          <label for="state_ordinary_rate">State ordinary (%)</label>
+          <label for="state_ordinary_rate">Flat state ordinary (%)</label>
           <input type="number" step="0.01" id="state_ordinary_rate" name="state_ordinary_rate"
                  value="{{ ((profile.state_ordinary_rate or 0) * 100)|round(2) }}">
+          <span class="form-hint">Fallback / non-CA. Ignored for CA when state engine is on.</span>
         </div>
         <div class="form-group">
-          <label for="state_cg_rate">State capital gains (%)</label>
+          <label for="state_cg_rate">Flat state capital gains (%)</label>
           <input type="number" step="0.01" id="state_cg_rate" name="state_cg_rate"
                  value="{{ ((profile.state_cg_rate if profile.state_cg_rate is not none else profile.state_ordinary_rate or 0) * 100)|round(2) }}">
+          <span class="form-hint">Many states tax CG as ordinary; enter the same rate if so.</span>
         </div>
       </div>
 
