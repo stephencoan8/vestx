@@ -364,6 +364,111 @@ def compute_amt(
     return high_thr * AMT_RATE_LOW + (taxable_amt - high_thr) * AMT_RATE_HIGH
 
 
+def _net_st_lt(net_st: float, net_lt: float) -> Tuple[float, float]:
+    """Simplified ST/LT loss netting → positive ST and LT for tax."""
+    if net_st < 0 and net_lt > 0:
+        offset = min(net_lt, -net_st)
+        net_lt -= offset
+        net_st += offset
+    elif net_lt < 0 and net_st > 0:
+        offset = min(net_st, -net_lt)
+        net_st -= offset
+        net_lt += offset
+    return max(0.0, net_st), max(0.0, net_lt)
+
+
+def _federal_state_layer(
+    profile: dict,
+    *,
+    year: int,
+    filing: str,
+    other_ord: float,
+    equity_ordinary: float,
+    stcg_pos: float,
+    ltcg_pos: float,
+    amt_bargain: float,
+) -> Dict[str, Any]:
+    """
+    Compute federal + state tax for one income stack (full dollars, not incremental).
+    FICA is omitted here — it is equity-only and applied once on the delta path.
+    """
+    from app.utils.state_tax import compute_state_tax
+
+    total_ordinary = other_ord + equity_ordinary + stcg_pos
+    ordinary_brackets = _year_table(ORDINARY_BRACKETS, year)[filing]
+    use_brackets = profile.get('use_bracket_engine', True)
+
+    if use_brackets and profile.get('federal_ordinary_rate') is None:
+        federal_ordinary_tax = progressive_tax(total_ordinary, ordinary_brackets)
+        ord_marginal = marginal_rate(total_ordinary, ordinary_brackets)
+    else:
+        ord_rate = float(profile.get('federal_ordinary_rate') or 0.24)
+        federal_ordinary_tax = total_ordinary * ord_rate
+        ord_marginal = ord_rate
+
+    taxable_for_ltcg = total_ordinary + ltcg_pos
+    if profile.get('federal_ltcg_rate') is not None:
+        ltcg_rate = float(profile['federal_ltcg_rate'])
+    else:
+        ltcg_rate = ltcg_rate_for_income(taxable_for_ltcg, filing, year)
+    federal_ltcg_tax = ltcg_pos * ltcg_rate
+    federal_stcg_tax = stcg_pos * ord_marginal  # illustrative
+
+    regular_federal = federal_ordinary_tax + federal_ltcg_tax
+
+    niit = 0.0
+    if profile.get('include_niit', True):
+        magi = total_ordinary + ltcg_pos
+        thr = NIIT_THRESHOLD.get(filing, 200000)
+        investment = stcg_pos + ltcg_pos
+        niit_base = min(investment, max(0.0, magi - thr))
+        niit = niit_base * 0.038
+
+    state_ord_rate = float(profile.get('state_ordinary_rate') or 0.0)
+    state_cg_rate = float(
+        profile.get('state_cg_rate') if profile.get('state_cg_rate') is not None else state_ord_rate
+    )
+    state_result = compute_state_tax(
+        state_code=profile.get('state_code'),
+        filing_status=filing,
+        tax_year=year,
+        ordinary_income=other_ord + equity_ordinary,
+        capital_gains=stcg_pos + ltcg_pos,
+        use_state_engine=bool(profile.get('use_state_engine', True)),
+        state_ordinary_rate=state_ord_rate,
+        state_cg_rate=state_cg_rate,
+    )
+
+    amti = other_ord + equity_ordinary + stcg_pos + ltcg_pos + amt_bargain
+    amt_tax = compute_amt(amti, filing, year)
+    credit = float(profile.get('amt_credit_carryforward') or 0.0)
+    amt_due = max(0.0, amt_tax - regular_federal)
+    credit_used = min(credit, regular_federal) if amt_due == 0 else 0.0
+    federal_after_credit = regular_federal - credit_used + amt_due + niit
+
+    return {
+        'total_ordinary': total_ordinary,
+        'federal_ordinary_tax': federal_ordinary_tax,
+        'federal_ltcg_tax': federal_ltcg_tax,
+        'federal_stcg_tax': federal_stcg_tax,
+        'regular_federal_tax': regular_federal,
+        'niit': niit,
+        'amt_tax': amt_tax,
+        'amt_due': amt_due,
+        'federal_tax_total': federal_after_credit,
+        'state_tax': state_result.total_tax,
+        'state_regular_tax': state_result.regular_tax,
+        'state_surtax': state_result.surtax,
+        'state_engine': state_result.engine,
+        'state_taxable_income': state_result.taxable_income,
+        'state_result': state_result,
+        'ord_marginal': ord_marginal,
+        'ltcg_rate': ltcg_rate,
+        'state_ord_rate': state_ord_rate,
+        'state_cg_rate': state_cg_rate,
+    }
+
+
 def analyze_sales(
     profile: dict,
     lots: List[LotSaleInput],
@@ -371,7 +476,11 @@ def analyze_sales(
     include_exercise_amt: bool = True,
 ) -> TaxAnalysis:
     """
-    Full stacked analysis for a set of lot sales in profile['tax_year'].
+    Stacked analysis for lot sales in profile['tax_year'].
+
+    Reported federal/state/NIIT/AMT amounts are **incremental**: tax with the
+    proposed equity events minus tax on profile income alone (wages + other CG).
+    That is the right base for "effective rate on gain" and after-tax proceeds.
     """
     year = int(profile.get('tax_year') or date.today().year)
     filing = profile.get('filing_status') or 'single'
@@ -389,123 +498,99 @@ def analyze_sales(
     lot_results = [analyze_lot(lot) for lot in lots]
 
     equity_ordinary = sum(r.ordinary_income for r in lot_results)
-    stcg = sum(r.capital_gain for r in lot_results if not r.is_long_term and r.capital_gain)
-    ltcg = sum(r.capital_gain for r in lot_results if r.is_long_term and r.capital_gain)
-    # losses
-    st_loss = sum(r.capital_gain for r in lot_results if not r.is_long_term and r.capital_gain < 0)
-    lt_loss = sum(r.capital_gain for r in lot_results if r.is_long_term and r.capital_gain < 0)
-    stcg = max(0.0, stcg)  # net later
-    # Net ST and LT
-    net_st = sum(r.capital_gain for r in lot_results if not r.is_long_term)
-    net_lt = sum(r.capital_gain for r in lot_results if r.is_long_term)
+    # Equity lot capital gains only (exclude profile "other" CG until netting)
+    eq_st = sum(r.capital_gain for r in lot_results if not r.is_long_term)
+    eq_lt = sum(r.capital_gain for r in lot_results if r.is_long_term)
 
     other_ord = float(profile.get('other_ordinary_income') or 0.0)
     other_lt = float(profile.get('other_long_term_gains') or 0.0)
     other_st = float(profile.get('other_short_term_gains') or 0.0)
 
-    net_st += other_st
-    net_lt += other_lt
+    base_st, base_lt = _net_st_lt(other_st, other_lt)
+    full_st, full_lt = _net_st_lt(eq_st + other_st, eq_lt + other_lt)
+    # Display ST/LT = equity lots only (netted)
+    stcg_pos, ltcg_pos = _net_st_lt(eq_st, eq_lt)
 
-    # Netting: ST and LT nets, then combined if opposite signs (simplified)
-    if net_st < 0 and net_lt > 0:
-        offset = min(net_lt, -net_st)
-        net_lt -= offset
-        net_st += offset
-    elif net_lt < 0 and net_st > 0:
-        offset = min(net_st, -net_lt)
-        net_st -= offset
-        net_lt += offset
+    amt_bargain = sum(r.amt_bargain_element for r in lot_results) if include_exercise_amt else 0.0
 
-    stcg_pos = max(0.0, net_st)
-    ltcg_pos = max(0.0, net_lt)
-
-    # Ordinary stack: other + equity ordinary + STCG (taxed as ordinary)
-    total_ordinary = other_ord + equity_ordinary + stcg_pos
-
-    ordinary_brackets = _year_table(ORDINARY_BRACKETS, year)[filing]
-    use_brackets = profile.get('use_bracket_engine', True)
-
-    if use_brackets and profile.get('federal_ordinary_rate') is None:
-        federal_ordinary_tax = progressive_tax(total_ordinary, ordinary_brackets)
-        ord_marginal = marginal_rate(total_ordinary, ordinary_brackets)
-    else:
-        ord_rate = float(profile.get('federal_ordinary_rate') or 0.24)
-        federal_ordinary_tax = total_ordinary * ord_rate
-        ord_marginal = ord_rate
-
-    # LTCG tax: use override or bracket based on ordinary + LTCG stack
-    taxable_for_ltcg = total_ordinary + ltcg_pos
-    if profile.get('federal_ltcg_rate') is not None:
-        ltcg_rate = float(profile['federal_ltcg_rate'])
-    else:
-        ltcg_rate = ltcg_rate_for_income(taxable_for_ltcg, filing, year)
-    federal_ltcg_tax = ltcg_pos * ltcg_rate
-
-    # STCG already in ordinary progressive; report slice for display
-    federal_stcg_tax = stcg_pos * ord_marginal  # illustrative marginal
-
-    regular_federal = federal_ordinary_tax + federal_ltcg_tax
-
-    # NIIT on investment income
-    niit = 0.0
-    if profile.get('include_niit', True):
-        magi = total_ordinary + ltcg_pos  # simplified MAGI
-        thr = NIIT_THRESHOLD.get(filing, 200000)
-        investment = stcg_pos + ltcg_pos
-        niit_base = min(investment, max(0.0, magi - thr))
-        niit = niit_base * 0.038
-
-    # State tax (CA full engine when state_code=CA and use_state_engine)
-    from app.utils.state_tax import compute_state_tax
-
-    state_ord_rate = float(profile.get('state_ordinary_rate') or 0.0)
-    state_cg_rate = float(
-        profile.get('state_cg_rate') if profile.get('state_cg_rate') is not None else state_ord_rate
+    base = _federal_state_layer(
+        profile,
+        year=year,
+        filing=filing,
+        other_ord=other_ord,
+        equity_ordinary=0.0,
+        stcg_pos=base_st,
+        ltcg_pos=base_lt,
+        amt_bargain=0.0,
     )
-    state_result = compute_state_tax(
-        state_code=profile.get('state_code'),
-        filing_status=filing,
-        tax_year=year,
-        ordinary_income=other_ord + equity_ordinary,
-        capital_gains=stcg_pos + ltcg_pos,
-        use_state_engine=bool(profile.get('use_state_engine', True)),
-        state_ordinary_rate=state_ord_rate,
-        state_cg_rate=state_cg_rate,
+    full = _federal_state_layer(
+        profile,
+        year=year,
+        filing=filing,
+        other_ord=other_ord,
+        equity_ordinary=equity_ordinary,
+        stcg_pos=full_st,
+        ltcg_pos=full_lt,
+        amt_bargain=amt_bargain,
     )
-    state_tax = state_result.total_tax
-    # Surface missing-engine notes as warnings; CA PIT/MHST notes live in state_notes only
+
+    def _delta(key: str) -> float:
+        return max(0.0, float(full[key]) - float(base[key]))
+
+    # Incremental taxes caused by this equity activity
+    federal_ordinary_tax = _delta('federal_ordinary_tax')
+    federal_ltcg_tax = _delta('federal_ltcg_tax')
+    federal_stcg_tax = _delta('federal_stcg_tax')
+    niit = _delta('niit')
+    state_tax = _delta('state_tax')
+    state_regular_tax = _delta('state_regular_tax')
+    state_surtax = _delta('state_surtax')
+    regular_federal = _delta('regular_federal_tax')
+    amt_due = _delta('amt_due')
+    # AMT TMT on full stack (informational); due is incremental
+    amt_tax = float(full['amt_tax'])
+    federal_after_credit = _delta('federal_tax_total')
+
+    # FICA only on equity ordinary — already incremental
+    fica = compute_fica(equity_ordinary, profile)
+
+    state_result = full['state_result']
     for n in state_result.notes:
         if 'No full bracket engine' in n or 'No state selected' in n:
             warnings.append(n)
 
-    # FICA on equity ordinary only (vest/DD)
-    fica = compute_fica(equity_ordinary, profile)
-
-    # AMT: AMTI ≈ ordinary + LTCG preferred + ISO bargain (preference)
-    amt_bargain = sum(r.amt_bargain_element for r in lot_results) if include_exercise_amt else 0.0
-    # Regular taxable-like base for AMT comparison
-    amti = other_ord + equity_ordinary + stcg_pos + ltcg_pos + amt_bargain
-    amt_tax = compute_amt(amti, filing, year)
-    credit = float(profile.get('amt_credit_carryforward') or 0.0)
-    # AMT due is excess over regular federal (excluding NIIT)
-    amt_due = max(0.0, amt_tax - regular_federal)
-    # Credit can offset regular tax (not below AMT) — simplified: reduce federal by min(credit, regular)
-    credit_used = min(credit, regular_federal) if amt_due == 0 else 0.0
-    federal_after_credit = regular_federal - credit_used + amt_due + niit
-
     total_proceeds = sum(r.proceeds for r in lot_results)
     total_basis = sum(r.cost_basis for r in lot_results)
     total_tax = federal_after_credit + state_tax + fica
+    # Economic gain from equity events (CG + DD ordinary; RSU vest ordinary is separate)
     gain = (total_proceeds - total_basis) + equity_ordinary
-    eff = (total_tax / gain) if gain > 0 else 0.0
+    # Guard: if basis > proceeds with no ordinary, avoid negative denom noise
+    if gain <= 0:
+        eff = 0.0
+    else:
+        eff = total_tax / gain
 
     if any(r.iso_disposition == 'unknown' or 'Assumed disqualifying' in ' '.join(r.notes) for r in lot_results):
         warnings.append('One or more ISO lots lack exercise_date; disposition classification may be incomplete.')
-    if other_ord == 0 and (ltcg_pos + stcg_pos + equity_ordinary) > 0:
+    if other_ord == 0 and (full_lt + full_st + equity_ordinary) > 0:
         warnings.append(
             'other_ordinary_income is $0 — brackets, NIIT, and AMT are highly sensitive to total income. '
             'Enter wages/other income in Tax Profile.'
         )
+    warnings.append(
+        'Tax amounts are incremental: extra tax from this equity activity vs your profile income alone '
+        '(wages/other CG). Effective rate = incremental tax ÷ equity gain.'
+    )
+
+    # State detail: show incremental PIT/MHST but keep full-stack taxable income for context
+    state_breakdown = dict(state_result.breakdown or {})
+    state_breakdown['incremental_state_tax'] = state_tax
+    state_breakdown['baseline_state_tax'] = float(base['state_tax'])
+    state_breakdown['full_stack_state_tax'] = float(full['state_tax'])
+    state_notes = list(state_result.notes) + [
+        f'Incremental state tax on this activity: ${state_tax:,.2f} '
+        f'(full-year CA/stack ${float(full["state_tax"]):,.2f} − baseline ${float(base["state_tax"]):,.2f}).',
+    ]
 
     return TaxAnalysis(
         tax_year=year,
@@ -515,16 +600,17 @@ def analyze_sales(
         equity_ordinary=equity_ordinary,
         stcg=stcg_pos,
         ltcg=ltcg_pos,
-        total_ordinary=total_ordinary,
+        total_ordinary=float(full['total_ordinary']),
         federal_ordinary_tax=federal_ordinary_tax,
         federal_ltcg_tax=federal_ltcg_tax,
         federal_stcg_tax=federal_stcg_tax,
         niit=niit,
         state_tax=state_tax,
-        state_regular_tax=state_result.regular_tax,
-        state_surtax=state_result.surtax,
-        state_engine=state_result.engine,
-        state_taxable_income=state_result.taxable_income,
+        state_regular_tax=state_regular_tax,
+        state_surtax=state_surtax,
+        state_engine=str(full['state_engine']),
+        # Full-stack CA taxable income (wages + equity) — useful for MHST proximity
+        state_taxable_income=float(full['state_taxable_income']),
         fica_tax=fica,
         regular_federal_tax=regular_federal,
         amt_tax=amt_tax,
@@ -538,14 +624,20 @@ def analyze_sales(
         missing_inputs=missing,
         warnings=warnings,
         rates_used={
-            'ordinary_marginal': ord_marginal,
-            'ltcg': ltcg_rate,
-            'state_ordinary': state_ord_rate,
-            'state_cg': state_cg_rate,
+            'ordinary_marginal': float(full['ord_marginal']),
+            'ltcg': float(full['ltcg_rate']),
+            'state_ordinary': float(full['state_ord_rate']),
+            'state_cg': float(full['state_cg_rate']),
             'state_marginal': state_result.marginal_rate,
-            'state_effective': state_result.effective_rate,
+            'state_effective': (state_tax / (stcg_pos + ltcg_pos + equity_ordinary))
+            if (stcg_pos + ltcg_pos + equity_ordinary) > 0
+            else 0.0,
             'niit': 0.038 if profile.get('include_niit', True) else 0.0,
+            'baseline_federal': float(base['federal_tax_total']),
+            'full_federal': float(full['federal_tax_total']),
+            'baseline_state': float(base['state_tax']),
+            'full_state': float(full['state_tax']),
         },
-        state_breakdown=state_result.breakdown,
-        state_notes=list(state_result.notes),
+        state_breakdown=state_breakdown,
+        state_notes=state_notes,
     )

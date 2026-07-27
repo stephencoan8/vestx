@@ -115,6 +115,54 @@ def test_analyze_sales_with_profile_income():
     assert a.federal_ltcg_tax > 0
     # NIIT likely applies at 200k + gain
     assert a.niit >= 0
+    # Incremental: tax on $10k LTCG must be well below tax-on-all-wages bug territory
+    assert a.effective_rate_on_gain < 0.45
+    assert a.total_tax < 5000  # ~15% fed + 5% state + NIIT on 10k gain
+
+
+def test_incremental_not_full_wage_tax():
+    """Regression: effective rate must not include tax on profile wages."""
+    profile = {
+        'filing_status': 'single',
+        'tax_year': 2025,
+        'state_code': 'CA',
+        'use_bracket_engine': True,
+        'use_state_engine': True,
+        'federal_ordinary_rate': None,
+        'federal_ltcg_rate': None,
+        'state_ordinary_rate': 0.0,
+        'state_cg_rate': 0.0,
+        'other_ordinary_income': 250000,
+        'other_long_term_gains': 0,
+        'other_short_term_gains': 0,
+        'include_fica': False,
+        'include_niit': True,
+        'ytd_wages': 250000,
+        'ss_wage_base_maxed': True,
+        'amt_credit_carryforward': 0,
+    }
+    lot = LotSaleInput(
+        vest_event_id=1,
+        grant_id=1,
+        share_type='rsu',
+        grant_type='new_hire',
+        shares=1000,
+        sale_price=150,
+        sale_date=date(2025, 7, 1),
+        vest_date=date(2023, 1, 1),
+        grant_date=date(2022, 1, 1),
+        cost_basis_per_share=50,  # $100k LTCG
+        is_iso=False,
+    )
+    a = analyze_sales(profile, [lot])
+    # CA top-ish LTCG stack: ~15% fed + 3.8% NIIT + ~9–13% CA ≈ mid-30s max for this income
+    assert abs(a.ltcg - 100_000) < 1
+    assert a.effective_rate_on_gain < 0.40
+    assert a.effective_rate_on_gain > 0.20
+    # Must NOT charge full CA tax on $250k wages (~$20k+) alone as "sale tax"
+    assert a.state_tax < 15_000
+    assert a.federal_tax_total < 25_000
+    assert a.total_tax < 40_000
 
 
 def test_amt_positive_with_large_bargain():
@@ -137,6 +185,7 @@ if __name__ == '__main__':
     test_rsu_sale_capital_gain()
     test_iso_disqualifying_ordinary()
     test_analyze_sales_with_profile_income()
+    test_incremental_not_full_wage_tax()
     test_amt_positive_with_large_bargain()
     test_ltcg_rate_brackets()
     print('ALL TAX ENGINE TESTS PASSED')
