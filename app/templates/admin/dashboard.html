@@ -28,34 +28,5 @@
         <a href="{{ url_for('admin.stock_prices') }}" class="btn btn-primary">Manage stock prices</a>
         <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">View users</a>
     </div>
-
-    <div class="detail-card" style="margin-top: 2rem;">
-        <h2>Stock split (your account only)</h2>
-        <p style="color: var(--text-secondary); margin-bottom: 1rem; max-width: 40rem;">
-            Applies a one-time restatement for <strong>{{ current_user.username }}</strong>:
-            equity share counts &times; ratio, per-share prices &divide; ratio.
-            Cash grants are skipped. Dollar amounts (cash paid, sale proceeds) stay the same.
-            Run this <strong>once</strong> before entering a new post-split price.
-        </p>
-        <form method="POST" action="{{ url_for('admin.apply_stock_split') }}"
-              onsubmit="return confirm('Apply stock split to YOUR account only? This cannot be undone without a DB restore.');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="ratio">Ratio (e.g. 5 for 5:1)</label>
-                    <input type="number" id="ratio" name="ratio" value="5" min="1" step="1" required>
-                </div>
-            </div>
-            <div class="form-group form-check">
-                <input type="checkbox" id="confirm" name="confirm" value="APPLY" required>
-                <label for="confirm">I understand this rewrites my share counts and historical prices</label>
-            </div>
-            <div class="form-group form-check">
-                <input type="checkbox" id="force" name="force" value="1">
-                <label for="force">Force re-apply if already recorded (dangerous)</label>
-            </div>
-            <button type="submit" class="btn btn-primary">Apply split to my account</button>
-        </form>
-    </div>
 </div>
 {% endblock %}
