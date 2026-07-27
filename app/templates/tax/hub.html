@@ -99,7 +99,7 @@
       <label class="form-check"><input type="checkbox" id="goalAllowIsoHeld" checked> Sell exercised ISOs</label>
       <label class="form-check"><input type="checkbox" id="goalAllowCashless" checked> ISO cashless (if needed)</label>
       <label class="form-check"><input type="checkbox" id="goalAllowHold"> Also model ISO hold split</label>
-      <label class="form-check"><input type="checkbox" id="goalExplain" {% if grok_enabled %}checked{% endif %} {% if not grok_enabled %}disabled{% endif %}> Grok explanation</label>
+      <label class="form-check"><input type="checkbox" id="goalExplain" {% if not grok_enabled %}disabled{% endif %}> Grok explanation (optional — uses API tokens)</label>
     </div>
 
     <div class="form-actions">
@@ -441,7 +441,7 @@
       allow_iso_exercise_hold: document.getElementById('goalAllowHold').checked,
       explain: document.getElementById('goalExplain').checked,
       prompt: document.getElementById('goalPrompt').value,
-      use_grok_parse: true
+      use_grok_parse: false
     };
     if (extra) Object.assign(body, extra);
     return body;

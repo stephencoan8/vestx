@@ -218,13 +218,12 @@ def advisor_chat(
     - Short history (default last 6 turns)
     - Ask model to reply concisely
     """
-    system = """VestX equity advisor. Use ACCOUNT data only for holdings; do not invent vest IDs or prices.
-Exact $ tax: prefer PLAN numbers or tell user to run Goal optimizer. Planning-grade, not a CPA.
-CA: CG as ordinary; MHST 1%>$1M; CA AMT~7%. ISO: exercise≠sale; QD=2y grant+1y exercise.
-Reply concise bullets. Cite v{id} when recommending lots.
+    system = """VestX equity advisor. Deterministic ENGINE_RESULT (if present) is authoritative for $.
+Do NOT recompute tax, net cash, or invent picks — only explain risks/tradeoffs using ENGINE_RESULT + ACCOUNT.
+No ENGINE_RESULT: qualitative guidance only; suggest phrasing like "net $500k minimize tax" to run the engine.
+CA: CG as ordinary; MHST 1%>$1M. ISO: exercise≠sale; QD=2y grant+1y exercise. Not a CPA. Concise bullets.
 
-ACCOUNT:
-""" + (account_context or '(empty)')
+""" + (account_context or 'ACCOUNT: (empty)')
 
     # History: keep last N messages; also cap each prior assistant reply length slightly
     # by not re-including huge user pastes (rare)

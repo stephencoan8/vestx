@@ -324,7 +324,8 @@ def api_goal():
         lots = build_lots_for_user(current_user.id)
 
         prompt = (data.get('prompt') or data.get('raw_text') or '').strip()
-        explain = bool(data.get('explain', True))
+        # Default: no Grok explanation (saves tokens). Opt-in via explain=true.
+        explain = bool(data.get('explain', False))
 
         goal = _goal_from_payload(data, live)
         parse_meta = {'source': 'form', 'interpretation': None, 'clarifications': []}
@@ -337,11 +338,29 @@ def api_goal():
                 'exercise_date': goal.exercise_date,
                 'exercise_fmv': goal.exercise_fmv,
             }
-            if data.get('use_grok_parse', True) and xai_advisor.is_configured(current_user):
+            # Always try free heuristic first (0 tokens)
+            heur = parse_goal_heuristic(prompt, defaults)
+            if heur.target_net_cash is not None and goal.target_net_cash is None:
+                goal.target_net_cash = heur.target_net_cash
+            goal.objective = heur.objective or goal.objective
+            goal.allow_iso_cashless = heur.allow_iso_cashless
+            goal.allow_iso_exercise_hold = (
+                goal.allow_iso_exercise_hold or heur.allow_iso_exercise_hold
+            )
+            parse_meta = {'source': 'heuristic', 'interpretation': None}
+
+            # Grok parse only if still ambiguous AND user opted in
+            need_grok_parse = (
+                bool(data.get('use_grok_parse'))
+                and xai_advisor.is_configured(current_user)
+                and goal.target_net_cash is None
+                and len(prompt) > 20
+            )
+            if need_grok_parse:
                 try:
                     parsed = xai_advisor.parse_goal_with_grok(
                         prompt,
-                        inventory_summary=xai_advisor.summarize_inventory(lots),
+                        inventory_summary='(compact; heuristic already applied)',
                         profile_summary=xai_advisor.summarize_profile(eng),
                         defaults=defaults,
                         user=current_user,
@@ -350,7 +369,6 @@ def api_goal():
                         'source': 'grok',
                         'interpretation': parsed.get('interpretation'),
                         'clarifications': parsed.get('clarifications') or [],
-                        'raw_parse': parsed,
                     }
                     if parsed.get('target_net_cash') is not None:
                         goal.target_net_cash = float(parsed['target_net_cash'])
@@ -364,29 +382,9 @@ def api_goal():
                     ):
                         if flag in parsed and parsed[flag] is not None:
                             setattr(goal, flag, bool(parsed[flag]))
-                    if parsed.get('iso_prefer_hold_fraction') is not None:
-                        goal.iso_prefer_hold_fraction = float(parsed['iso_prefer_hold_fraction'])
-                    if parsed.get('iso_max_exercise') is not None:
-                        goal.iso_max_exercise = float(parsed['iso_max_exercise'])
-                    if parsed.get('max_tax') is not None:
-                        goal.max_tax = float(parsed['max_tax'])
                 except Exception as e:
-                    logger.warning('Grok parse failed, using heuristic: %s', e)
-                    goal = parse_goal_heuristic(prompt, defaults)
-                    # Keep form price/dates
-                    goal.sale_price = float(data.get('sale_price') or live or 0)
-                    goal.sale_date = goal.sale_date or date.today()
+                    logger.warning('Grok parse failed: %s', e)
                     parse_meta = {'source': 'heuristic_fallback', 'error': str(e)}
-            else:
-                heur = parse_goal_heuristic(prompt, defaults)
-                if heur.target_net_cash is not None:
-                    goal.target_net_cash = heur.target_net_cash
-                goal.objective = heur.objective or goal.objective
-                goal.allow_iso_cashless = heur.allow_iso_cashless
-                goal.allow_iso_exercise_hold = (
-                    goal.allow_iso_exercise_hold or heur.allow_iso_exercise_hold
-                )
-                parse_meta = {'source': 'heuristic', 'interpretation': None}
 
         result = optimize_goal(eng, lots, goal)
         payload = result.to_dict()
@@ -434,53 +432,116 @@ def api_advisor():
     Free-form Grok chat with full account context.
     Body: { messages: [{role, content}], plan?: object }
     """
-    if not xai_advisor.is_configured(current_user):
-        return jsonify({
-            'error': 'Add your xAI API key under Settings → profile (stored encrypted for your account only).',
-            'grok_enabled': False,
-            'settings_url': url_for('settings.profile'),
-        }), 503
     try:
         data = request.get_json(silent=True) or {}
         messages = data.get('messages') or []
-        # Single message convenience: { message: "..." }
         if not messages and data.get('message'):
             messages = [{'role': 'user', 'content': str(data['message'])}]
         if not messages:
             return jsonify({'error': 'messages required'}), 400
 
         from app.utils.account_context import pack_context_for_prompt
+        from app.utils.advisor_router import route_and_compute
+        from app.utils.price_utils import get_latest_user_price
 
-        # Latest user message drives how much lot detail we inject (token tiering)
         last_user = ''
         for m in reversed(messages):
             if (m.get('role') or '') == 'user':
                 last_user = m.get('content') or ''
                 break
 
+        profile = TaxProfile.for_user(current_user)
+        eng = profile.to_engine_dict()
+        lots = build_lots_for_user(current_user.id)
+        live = get_latest_user_price(current_user.id) or 0.0
+        plan = data.get('plan')
+
+        # 1) Deterministic tools first
+        routed = route_and_compute(
+            user_message=last_user,
+            profile_dict=eng,
+            inventory_lots=lots,
+            live_price=live,
+            plan=plan,
+            force_grok=bool(data.get('force_grok')),
+        )
+
+        # 2) Pure engine answer — no Grok tokens
+        if routed.skip_grok and routed.deterministic_reply:
+            return jsonify({
+                'success': True,
+                'reply': routed.deterministic_reply,
+                'grok_enabled': xai_advisor.is_configured(current_user),
+                'used_grok': False,
+                'engine_plan': routed.engine_payload or None,
+                'context_meta': {
+                    **routed.to_meta(),
+                    'live_price': live,
+                    'lots': len(lots),
+                    'est_context_tokens': 0,
+                },
+            })
+
+        # 3) Need Grok (open-ended or explain-on-top-of-engine)
+        if not xai_advisor.is_configured(current_user):
+            # Still return engine answer if we have one
+            if routed.deterministic_reply:
+                return jsonify({
+                    'success': True,
+                    'reply': routed.deterministic_reply + (
+                        '\n\n_Add an xAI key in Settings for narrative explanations._'
+                    ),
+                    'used_grok': False,
+                    'engine_plan': routed.engine_payload or None,
+                    'grok_enabled': False,
+                    'context_meta': {**routed.to_meta(), 'live_price': live, 'lots': len(lots)},
+                })
+            return jsonify({
+                'error': 'Add your xAI API key under Settings for open-ended questions. '
+                         'Or ask a computable question like “net $500k minimize tax”.',
+                'grok_enabled': False,
+                'settings_url': url_for('settings.profile'),
+            }), 503
+
         packed = pack_context_for_prompt(
             current_user.id,
             user_message=last_user,
-            plan=data.get('plan'),
+            plan=plan or routed.engine_payload,
         )
+        # Attach engine block so Grok cannot drift on numbers
+        account_blob = packed['text']
+        if routed.engine_text:
+            account_blob = routed.engine_text + '\n\n' + account_blob
+
         reply = xai_advisor.advisor_chat(
             messages=messages,
-            plan=data.get('plan'),
+            plan=plan or routed.engine_payload,
             user=current_user,
-            account_context=packed['text'],
+            account_context=account_blob,
         )
+        # Prepend short engine summary when we have deterministic picks
+        if routed.deterministic_reply and routed.mode == 'engine_then_grok':
+            reply = (
+                routed.deterministic_reply
+                + '\n\n---\n**Explanation**\n'
+                + reply
+            )
+
         meta = packed.get('meta') or {}
         return jsonify({
             'success': True,
             'reply': reply,
             'grok_enabled': True,
+            'used_grok': True,
+            'engine_plan': routed.engine_payload or None,
             'context_meta': {
-                'lots': meta.get('lot_count'),
-                'live_price': meta.get('live_price'),
+                'lots': meta.get('lot_count') or len(lots),
+                'live_price': meta.get('live_price') or live,
                 'as_of': meta.get('as_of'),
                 'est_context_tokens': meta.get('est_tokens'),
                 'context_chars': meta.get('chars'),
                 'tier': meta.get('tier'),
+                **routed.to_meta(),
             },
         })
     except Exception as e:

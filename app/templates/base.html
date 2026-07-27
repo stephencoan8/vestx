@@ -98,8 +98,8 @@
       </header>
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
         <div class="advisor-msg bot">
-          Ask about net-cash goals, which lots to sell, ISO exercise vs hold, CA tax, or AMT.
-          I load your live VestX account data with each message.
+          Computable questions (net cash, which lots, portfolio totals, ISO QD dates) run on VestX engines first — no Grok tokens.
+          Add “why” or “explain” for a short Grok narrative. Open-ended strategy questions use Grok + compact account data.
         </div>
       </div>
       <div class="advisor-input-row">
@@ -229,11 +229,18 @@
                 appendMsg('bot', reply);
                 if (data.context_meta) {
                     var cm = data.context_meta;
-                    statusEl.textContent = 'Context ~' + (cm.est_context_tokens || '?') +
-                        ' tok · ' + (cm.lots || 0) + ' lots · $' +
-                        Number(cm.live_price || 0).toFixed(2);
+                    if (data.used_grok === false) {
+                        statusEl.textContent = 'Engine only (0 Grok tokens) · ' + (cm.intent || cm.mode || '');
+                    } else {
+                        statusEl.textContent = 'Grok · ctx ~' + (cm.est_context_tokens || '?') +
+                            ' tok · ' + (cm.mode || '') + ' · $' +
+                            Number(cm.live_price || 0).toFixed(2);
+                    }
                 } else {
                     statusEl.textContent = 'Ready';
+                }
+                if (data.engine_plan) {
+                    window.VESTX_LAST_PLAN = data.engine_plan;
                 }
             })
             .catch(function (e) {
