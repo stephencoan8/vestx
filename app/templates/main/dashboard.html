@@ -97,6 +97,7 @@
                 <canvas id="stockPriceChart"></canvas>
                 <div class="price-selection-overlay" id="priceSelectionOverlay" hidden></div>
                 <div class="price-crosshair" id="priceCrosshair" hidden></div>
+                <div class="price-hover-tip" id="priceHoverTip" hidden></div>
             </div>
         </div>
     </div>
@@ -295,6 +296,7 @@ if (typeof Chart !== 'undefined') {
     const overlay = document.getElementById('priceSelectionOverlay');
     const badge = document.getElementById('priceMeasureBadge');
     const crosshair = document.getElementById('priceCrosshair');
+    const hoverTip = document.getElementById('priceHoverTip');
     const changeEl = document.getElementById('sharePriceChange');
     const headline = document.getElementById('sharePriceHeadline');
 
@@ -308,6 +310,13 @@ if (typeof Chart !== 'undefined') {
     }
     function fmtDate(ms) {
         return new Date(ms).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric'
+        });
+    }
+    function fmtDateTime(ms) {
+        const d = new Date(ms);
+        // Prefer date only; include time if series has intraday (same calendar day span)
+        return d.toLocaleDateString('en-US', {
             year: 'numeric', month: 'short', day: 'numeric'
         });
     }
@@ -549,9 +558,53 @@ if (typeof Chart !== 'undefined') {
             badge.innerHTML = '';
         }
         if (crosshair) crosshair.hidden = true;
+        if (hoverTip) hoverTip.hidden = true;
         if (resetDrag !== false) {
             dragging = false;
         }
+    }
+
+    function showHoverTip(clientX, pixelX) {
+        if (!hoverTip || !priceChart || dragging) {
+            if (hoverTip) hoverTip.hidden = true;
+            return;
+        }
+        const area = chartArea();
+        if (!area || pixelX < area.left || pixelX > area.right) {
+            hoverTip.hidden = true;
+            return;
+        }
+        const ts = priceChart.scales.x.getValueForPixel(pixelX);
+        const pt = nearestInView(ts);
+        if (!pt) {
+            hoverTip.hidden = true;
+            return;
+        }
+        // Snap crosshair to nearest data point for clarity
+        const snapX = priceChart.scales.x.getPixelForValue(pt.x);
+        if (crosshair && !isNaN(snapX)) {
+            crosshair.hidden = false;
+            crosshair.style.left = snapX + 'px';
+            crosshair.style.top = area.top + 'px';
+            crosshair.style.height = (area.bottom - area.top) + 'px';
+        }
+        const src = pt.source === 'public' ? 'Public' : (pt.source === 'private' ? 'Private' : '');
+        hoverTip.hidden = false;
+        hoverTip.innerHTML =
+            '<div class="price-hover-date">' + fmtDateTime(pt.x) + '</div>' +
+            '<div class="price-hover-price">' + fmtMoney(pt.y) + '</div>' +
+            (src ? '<div class="price-hover-src">' + src + '</div>' : '');
+
+        // Position tip near cursor, keep inside chart
+        const tipW = hoverTip.offsetWidth || 120;
+        const tipH = hoverTip.offsetHeight || 56;
+        let left = snapX + 12;
+        let top = area.top + 8;
+        if (left + tipW > area.right - 4) left = snapX - tipW - 12;
+        if (left < area.left) left = area.left + 4;
+        if (top + tipH > area.bottom) top = area.bottom - tipH - 4;
+        hoverTip.style.left = left + 'px';
+        hoverTip.style.top = top + 'px';
     }
 
     function showMeasure(x1, x2) {
@@ -596,6 +649,7 @@ if (typeof Chart !== 'undefined') {
         dragging = true;
         dragStartX = x;
         dragEndX = x;
+        if (hoverTip) hoverTip.hidden = true;
         wrap.setPointerCapture(e.pointerId);
         showMeasure(dragStartX, dragEndX);
         e.preventDefault();
@@ -604,18 +658,20 @@ if (typeof Chart !== 'undefined') {
     function onMove(e) {
         const area = chartArea();
         const x = relX(e.clientX);
-        if (area && x >= area.left && x <= area.right) {
-            crosshair.hidden = false;
-            crosshair.style.left = x + 'px';
-            crosshair.style.top = area.top + 'px';
-            crosshair.style.height = (area.bottom - area.top) + 'px';
-        } else if (!dragging) {
-            crosshair.hidden = true;
+        if (dragging) {
+            if (crosshair && area && x >= area.left && x <= area.right) {
+                crosshair.hidden = false;
+                crosshair.style.left = x + 'px';
+                crosshair.style.top = area.top + 'px';
+                crosshair.style.height = (area.bottom - area.top) + 'px';
+            }
+            dragEndX = x;
+            showMeasure(dragStartX, dragEndX);
+            e.preventDefault();
+            return;
         }
-        if (!dragging) return;
-        dragEndX = x;
-        showMeasure(dragStartX, dragEndX);
-        e.preventDefault();
+        // Hover: date + price at nearest sample
+        showHoverTip(e.clientX, x);
     }
 
     function onUp(e) {
@@ -625,16 +681,26 @@ if (typeof Chart !== 'undefined') {
         try { wrap.releasePointerCapture(e.pointerId); } catch (err) {}
         const dist = Math.abs(dragEndX - dragStartX);
         dragging = false;
-        if (dist < 6) clearMeasureUI(true);
+        if (dist < 6) {
+            clearMeasureUI(true);
+            // Click without drag → still show hover tip at that point
+            showHoverTip(e.clientX, dragEndX);
+        }
         e.preventDefault();
     }
 
     wrap.addEventListener('pointerdown', onDown);
     wrap.addEventListener('pointermove', onMove);
     wrap.addEventListener('pointerup', onUp);
-    wrap.addEventListener('pointercancel', function () { dragging = false; });
+    wrap.addEventListener('pointercancel', function () {
+        dragging = false;
+        if (hoverTip) hoverTip.hidden = true;
+    });
     wrap.addEventListener('pointerleave', function () {
-        if (!dragging) crosshair.hidden = true;
+        if (!dragging) {
+            if (crosshair) crosshair.hidden = true;
+            if (hoverTip) hoverTip.hidden = true;
+        }
     });
     wrap.addEventListener('dblclick', function () { clearMeasureUI(true); });
 
@@ -770,6 +836,38 @@ if (typeof Chart !== 'undefined') {
     border-left: 1px dashed rgba(232, 228, 220, 0.35);
     pointer-events: none;
     z-index: 1;
+}
+.price-hover-tip {
+    position: absolute;
+    z-index: 4;
+    pointer-events: none;
+    min-width: 7.5rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius-sm, 0.5rem);
+    border: 1px solid rgba(184, 115, 51, 0.45);
+    background: rgba(12, 13, 11, 0.94);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+.price-hover-tip .price-hover-date {
+    color: var(--text-muted, #6b665c);
+    font-size: 0.68rem;
+    margin-bottom: 0.15rem;
+}
+.price-hover-tip .price-hover-price {
+    color: var(--text-primary, #e8e4dc);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+.price-hover-tip .price-hover-src {
+    margin-top: 0.15rem;
+    font-size: 0.65rem;
+    color: var(--copper, #b87333);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 .price-measure-badge {
     display: flex;
