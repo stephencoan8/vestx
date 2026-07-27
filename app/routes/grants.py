@@ -49,45 +49,8 @@ def add_grant():
                 # Default 15% for ESPP, 0% for others
                 espp_discount = 0.15 if grant_type == 'espp' else 0.0
             
-            # Get stock price at grant date from user's encrypted prices
-            share_price = 0.0
-            # Debug logging for stock price retrieval
-            import logging
-            logger = logging.getLogger(__name__)
+            share_price = get_latest_user_price(current_user.id, as_of_date=grant_date) or 0.0
 
-            try:
-                from app.models.user_price import UserPrice
-                from app.utils.encryption import decrypt_for_user
-                user_key = current_user.get_decrypted_user_key()
-
-                # Ensure user is authenticated before retrieving prices
-                if not current_user.is_authenticated:
-                    logger.warning("User not authenticated when retrieving share_price_at_grant")
-                    flash("You must be logged in to add a grant.", "error")
-                    return redirect(url_for('grants.list_grants'))
-
-                # Use grant's user_id for price retrieval (if applicable)
-                user_id = current_user.id
-
-                # Retrieve stock price at grant date
-                price_entry = UserPrice.query.filter_by(user_id=user_id).filter(
-                    UserPrice.valuation_date <= grant_date
-                ).order_by(UserPrice.valuation_date.desc()).first()
-                
-                if price_entry:
-                    # Use centralized helper to retrieve latest decrypted price
-                    price = get_latest_user_price(current_user.id, as_of_date=grant_date)
-                    if price is not None:
-                        share_price = price
-                        logger.debug(f"Found price {share_price} for user {current_user.id} on or before {grant_date}")
-                    else:
-                        logger.warning(f"No UserPrice entry found or could not decrypt for user {current_user.id} on or before {grant_date}")
-                else:
-                    logger.warning(f"No UserPrice entry found for user {current_user.id} on or before {grant_date}")
-            except Exception as price_error:
-                logger.error(f"Error retrieving or decrypting price: {price_error}", exc_info=True)
-                share_price = 0.0
-            
             # Get vesting configuration
             if vest_years:
                 vest_years = int(vest_years)
@@ -225,31 +188,27 @@ def edit_grant(grant_id):
             grant.bonus_type = bonus_type
             grant.espp_discount = espp_discount
             grant.notes = notes
-            
-            # Delete old vest events and recalculate
-            VestEvent.query.filter_by(grant_id=grant.id).delete()
-            
-            # Recalculate and create new vest events
+
+            # Recalculate schedule and sync vest rows WITHOUT wiping tax/sale data
+            from app.utils.sync_vest_schedule import sync_vest_events_for_grant
             vest_schedule = calculate_vest_schedule(grant)
-            
-            for vest in vest_schedule:
-                vest_event = VestEvent(
-                    grant_id=grant.id,
-                    vest_date=vest['vest_date'],
-                    shares_vested=vest['shares'],
-                    tax_year=vest['vest_date'].year
-                )
-                db.session.add(vest_event)
-            
+            sync_stats = sync_vest_events_for_grant(grant, vest_schedule)
+
             db.session.commit()
-            
-            flash('Grant updated successfully!', 'success')
+
+            msg = 'Grant updated successfully!'
+            if sync_stats.get('preserved'):
+                msg += (
+                    f" {sync_stats['preserved']} prior vest event(s) with tax or sale data "
+                    "were kept even though they are no longer on the new schedule."
+                )
+            flash(msg, 'success')
             return redirect(url_for('grants.view_grant', grant_id=grant.id))
-            
+
         except Exception as e:
             db.session.rollback()
             flash(f'Error updating grant: {str(e)}', 'error')
-    
+
     return render_template('grants/edit.html',
                          grant=grant,
                          grant_types=GrantType,
@@ -267,97 +226,63 @@ def update_vest_event(event_id):
         return jsonify({'error': 'Access denied'}), 403
     
     try:
-        # Log incoming form for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.debug(f"update_vest_event called for event_id={event_id} form={dict(request.form)}")
+        import re
 
-        # New simplified tax fields (defensive parsing)
         def _parse_numeric(val):
-             """Parse a numeric form input tolerant of common formats like "$1,234.56".
+            """Parse numeric form input tolerant of formats like "$1,234.56"."""
+            if val is None:
+                return 0.0
+            if isinstance(val, (int, float)):
+                return float(val)
+            s = str(val).strip()
+            if s == '':
+                return 0.0
+            s_clean = s.replace(',', '').replace('$', '').replace('(', '-').replace(')', '')
+            m = re.search(r"[-+]?[0-9]*\.?[0-9]+", s_clean)
+            if m:
+                try:
+                    return float(m.group(0))
+                except ValueError:
+                    pass
+            logger.warning("Could not parse numeric value %r - coercing to 0.0", s)
+            return 0.0
 
-             Returns a float or raises ValueError on invalid input.
-             """
-             if val is None:
-                 return 0.0
-             if isinstance(val, (int, float)):
-                 return float(val)
-             s = str(val).strip()
-             if s == '':
-                 return 0.0
-             # Remove common thousands separators and currency symbols
-             s_clean = s.replace(',', '').replace('$', '').replace('(', '-').replace(')', '')
-             # Allow locale variants by extracting the first numeric-looking substring
-             import re
-             m = re.search(r"[-+]?[0-9]*\.?[0-9]+", s_clean)
-             if m:
-                 try:
-                     return float(m.group(0))
-                 except ValueError:
-                     pass
-
-             # As a last resort, log and coerce to 0.0 rather than raising
-             import logging
-             logging.getLogger(__name__).warning("_parse_numeric: could not parse numeric value '%s' - coercing to 0.0", s)
-             return 0.0
-
-        # For ESPP and nqESPP, taxes are already handled prior to receipt
-        # So we automatically set cash_paid to 0 and skip validation
         grant = vest_event.grant
         is_espp_type = grant.grant_type in ['espp', 'nqespp']
-        
+
         if is_espp_type:
             cash_paid = 0.0
             cash_covered_all = True
             shares_sold = 0.0
         else:
-            try:
-                cash_paid = _parse_numeric(request.form.get('cash_paid', 0) or 0)
-            except ValueError:
-                return jsonify({'error': 'Invalid cash_paid value'}), 400
+            cash_paid = _parse_numeric(request.form.get('cash_paid', 0) or 0)
             cash_covered_all = str(request.form.get('cash_covered_all', 'true')).lower() == 'true'
-            try:
-                shares_sold = _parse_numeric(request.form.get('shares_sold', 0) or 0)
-            except ValueError:
-                return jsonify({'error': 'Invalid shares_sold value'}), 400
-            
-            # Validate non-negative
+            shares_sold = _parse_numeric(request.form.get('shares_sold', 0) or 0)
+
             if cash_paid < 0 or shares_sold < 0:
                 return jsonify({'error': 'Values must be non-negative'}), 400
 
-        # Cap shares_sold to available shares_vested
         if shares_sold > vest_event.shares_vested:
-            logger.warning(f"shares_sold ({shares_sold}) > shares_vested ({vest_event.shares_vested}) for event {event_id}; capping")
             shares_sold = vest_event.shares_vested
-        
-        # Update vest event with new fields
+
         vest_event.cash_paid = cash_paid
         vest_event.cash_covered_all = cash_covered_all
         vest_event.shares_sold = 0.0 if cash_covered_all else shares_sold
-        
-        # Commit to database
+
         db.session.add(vest_event)
         db.session.commit()
-        
-        # Compute derived values to return
-        tax_withheld = vest_event.tax_withheld
-        shares_received = vest_event.shares_received
-        net_value = vest_event.net_value
-        
-        logger.debug(f"Updated vest_event {event_id}: cash_paid={cash_paid}, cash_covered_all={cash_covered_all}, shares_sold={shares_sold}, tax_withheld={tax_withheld}, shares_received={shares_received}, net_value={net_value}")
-        
-        # Return calculated values
+
         return jsonify({
-            'success': True, 
+            'success': True,
             'message': 'Vest event updated',
             'cash_paid': vest_event.cash_paid,
             'cash_covered_all': vest_event.cash_covered_all,
             'shares_sold': vest_event.shares_sold,
-            'shares_received': shares_received,
-            'tax_withheld': tax_withheld,
-            'net_value': net_value
+            'shares_received': vest_event.shares_received,
+            'tax_withheld': vest_event.tax_withheld,
+            'net_value': vest_event.net_value,
         })
-    
+
     except Exception as e:
         db.session.rollback()
         logger.error("Failed to update vest event %s: %s", event_id, e, exc_info=True)
@@ -372,28 +297,27 @@ def vest_schedule():
     from datetime import date
     from sqlalchemy.orm import joinedload
     
-    # Eagerly load grant relationship to avoid N+1 queries
+    from app.utils.price_utils import warm_user_price_history
+
     vest_events = VestEvent.query.options(
         joinedload(VestEvent.grant)
     ).join(Grant).filter(
         Grant.user_id == current_user.id
     ).order_by(VestEvent.vest_date).all()
-    
-    # Get latest stock price for estimating future vests
+
+    warm_user_price_history(current_user.id)
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
-    
-    # Enrich vest events with tax estimates (now uses user's simple tax preferences)
+
     enriched_events = []
     for ve in vest_events:
-        # For future vests, calculate estimated tax using user's tax preferences
         if ve.vest_date > today:
             tax_info = ve.estimate_tax_withholding(latest_stock_price, user=current_user)
             ve.estimated_tax = tax_info['tax_amount']
         else:
-            ve.estimated_tax = None  # Use actual tax_withheld for vested events
+            ve.estimated_tax = None
         enriched_events.append(ve)
-    
+
     return render_template('grants/schedule.html', vest_events=enriched_events)
 
 
@@ -447,6 +371,9 @@ def finance_deep_dive():
     tax_rates = current_user.get_tax_rates()
     tax_rates['ltcg'] = 0.15
 
+    # One decrypt pass for all as-of price lookups in this request
+    from app.utils.price_utils import warm_user_price_history
+    warm_user_price_history(current_user.id)
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
 
@@ -747,10 +674,7 @@ def calculate_sale_taxes():
         data = request.get_json()
         year = int(data.get('year'))
         vest_ids = data.get('vest_ids', [])
-        
-        logging.debug(f"Calculating taxes for year {year} with {len(vest_ids)} vests")
-        
-        # Handle empty vest list
+
         if not vest_ids:
             return jsonify({
                 'success': True,
@@ -815,7 +739,7 @@ def calculate_sale_taxes():
         total_tax = federal_tax_ltcg + federal_tax_stcg + state_tax + niit
         net_proceeds = total_proceeds - total_tax
         
-        result = {
+        return jsonify({
             'success': True,
             'total_proceeds': float(total_proceeds),
             'total_ltcg': float(total_ltcg),
@@ -827,12 +751,9 @@ def calculate_sale_taxes():
             'total_tax': float(total_tax),
             'net_proceeds': float(net_proceeds),
             'ltcg_rate': ltcg_rate * 100,
-            'stcg_rate': stcg_rate * 100
-        }
-        
-        logging.debug(f"Result: proceeds=${total_proceeds:.2f}, tax=${total_tax:.2f}, net=${net_proceeds:.2f}")
-        return jsonify(result)
-        
+            'stcg_rate': stcg_rate * 100,
+        })
+
     except Exception as e:
-        logging.error(f"Error in calculate_sale_taxes: {str(e)}", exc_info=True)
+        logger.error("Error in calculate_sale_taxes: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 400

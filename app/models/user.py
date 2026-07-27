@@ -128,38 +128,51 @@ class User(UserMixin, db.Model):
     
     # Encryption helpers for per-user key
     def ensure_encryption_key(self) -> bytes:
-        """Ensure the user has a per-user symmetric key. Returns decrypted key (bytes).
-        This key is encrypted with server master key and stored in `encrypted_user_key`.
         """
-        from app.utils.encryption import decrypt_with_master, generate_user_key, encrypt_with_master
-        
-        if self.encrypted_user_key:
-            # decrypt and return
-            try:
-                user_key = decrypt_with_master(self.encrypted_user_key)
-                return user_key
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to decrypt encrypted_user_key for user {self.id}: {e}", exc_info=True)
-                # fall through to regenerate
+        Return the user's per-user Fernet key (bytes).
 
-        # generate new user key and store encrypted
+        - If no key exists yet (new user), generate and store one once.
+        - If a key exists but cannot be decrypted, raise EncryptionError and
+          do NOT regenerate. Regenerating would permanently orphan encrypted
+          UserPrice rows under the old key.
+        """
+        from app.utils.encryption import (
+            decrypt_with_master,
+            generate_user_key,
+            encrypt_with_master,
+            EncryptionError,
+        )
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning(f"Generating new encryption key for user {self.id}")
+
+        if self.encrypted_user_key:
+            try:
+                return decrypt_with_master(self.encrypted_user_key)
+            except Exception as e:
+                logger.error(
+                    "Failed to decrypt encrypted_user_key for user %s: %s",
+                    self.id, e, exc_info=True,
+                )
+                raise EncryptionError(
+                    f"Cannot decrypt encryption key for user {self.id}. "
+                    "Verify VESTX_MASTER_KEY matches the key used when prices were saved. "
+                    "Refusing to regenerate the user key to protect existing encrypted data."
+                ) from e
+
+        # Brand-new user only: create key for the first time
+        logger.info("Creating first encryption key for user %s", self.id)
         user_key = generate_user_key()
         self.encrypted_user_key = encrypt_with_master(user_key)
         db.session.add(self)
         db.session.commit()
         return user_key
-    
+
     def get_decrypted_user_key(self) -> bytes:
-        """Return decrypted per-user key. Ensure it exists."""
+        """Return decrypted per-user key. Creates one only if none exists yet."""
         return self.ensure_encryption_key()
-    
+
     def set_encrypted_user_key(self, encrypted_blob: bytes) -> None:
-        """Directly set the encrypted_user_key (blob)."""
+        """Directly set the encrypted_user_key (blob). Use only for recovery tooling."""
         self.encrypted_user_key = encrypted_blob
         db.session.add(self)
         db.session.commit()

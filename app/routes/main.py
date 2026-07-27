@@ -28,9 +28,11 @@ def dashboard():
     from app.models.user_price import UserPrice
     from app.utils.encryption import decrypt_for_user
 
+    from app.utils.price_utils import warm_user_price_history
+
     grants = Grant.query.filter_by(user_id=current_user.id).all()
 
-    # Single price lookup (request-cached for any later grant.current_value access)
+    warm_user_price_history(current_user.id)
     current_price = get_latest_user_price(current_user.id) or 0.0
 
     total_grants = len(grants)

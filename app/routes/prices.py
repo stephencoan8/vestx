@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app, render_template, red
 from flask_login import login_required, current_user
 from app import db
 from app.models.user_price import UserPrice
-from app.utils.encryption import encrypt_for_user, decrypt_for_user
+from app.utils.encryption import encrypt_for_user, decrypt_for_user, EncryptionError
 from app.utils.audit_log import AuditLogger
 
 prices_bp = Blueprint('prices', __name__, url_prefix='/user/prices')
@@ -12,7 +12,16 @@ prices_bp = Blueprint('prices', __name__, url_prefix='/user/prices')
 @login_required
 def list_prices():
     """List decrypted prices for current user as HTML."""
-    user_key = current_user.get_decrypted_user_key()
+    try:
+        user_key = current_user.get_decrypted_user_key()
+    except EncryptionError:
+        flash(
+            'Cannot unlock price data. Server encryption key (VESTX_MASTER_KEY) may be wrong. '
+            'Contact an administrator — prices were not reset.',
+            'danger',
+        )
+        return render_template('prices/list.html', prices=[])
+
     prices = []
     for p in UserPrice.query.filter_by(user_id=current_user.id).order_by(UserPrice.valuation_date.desc()).all():
         try:
@@ -57,7 +66,17 @@ def add_price():
             return jsonify({'error': 'invalid date or price'}), 400
         flash('Invalid date or price.', 'danger')
         return redirect(url_for('prices.add_price'))
-    user_key = current_user.get_decrypted_user_key()
+    try:
+        user_key = current_user.get_decrypted_user_key()
+    except EncryptionError as e:
+        if request.is_json:
+            return jsonify({'error': str(e)}), 500
+        flash(
+            'Cannot unlock encryption key. Check VESTX_MASTER_KEY. Prices were not modified.',
+            'danger',
+        )
+        return redirect(url_for('prices.list_prices'))
+
     token = encrypt_for_user(user_key, str(price_float))
     up = UserPrice(user_id=current_user.id, valuation_date=valuation_date, encrypted_price=token)
     db.session.add(up)
@@ -88,10 +107,16 @@ def edit_price(price_id):
     p = UserPrice.query.filter_by(id=price_id, user_id=current_user.id).first_or_404()
     
     if request.method == 'GET':
-        user_key = current_user.get_decrypted_user_key()
         try:
+            user_key = current_user.get_decrypted_user_key()
             price_str = decrypt_for_user(user_key, p.encrypted_price)
             price_val = float(price_str)
+        except EncryptionError:
+            flash(
+                'Cannot unlock price data. Check VESTX_MASTER_KEY. Existing prices were not modified.',
+                'danger',
+            )
+            return redirect(url_for('prices.list_prices'))
         except Exception:
             price_val = None
         return render_template('prices/edit.html', price=p, decrypted_price=price_val)
@@ -120,15 +145,25 @@ def edit_price(price_id):
         flash('Invalid date or price.', 'danger')
         return redirect(url_for('prices.edit_price', price_id=price_id))
     
-    user_key = current_user.get_decrypted_user_key()
+    try:
+        user_key = current_user.get_decrypted_user_key()
+    except EncryptionError as e:
+        if request.is_json:
+            return jsonify({'error': str(e)}), 500
+        flash(
+            'Cannot unlock encryption key. Check VESTX_MASTER_KEY. Prices were not modified.',
+            'danger',
+        )
+        return redirect(url_for('prices.list_prices'))
+
     token = encrypt_for_user(user_key, str(price_float))
-    
+
     p.valuation_date = valuation_date
     p.encrypted_price = token
     db.session.commit()
-    
+
     AuditLogger.log_security_event('USER_PRICE_UPDATED', {'user_id': current_user.id, 'price_id': p.id, 'date': p.valuation_date.isoformat()})
-    
+
     if request.is_json:
         return jsonify({'id': p.id, 'date': p.valuation_date.isoformat(), 'price': price_float}), 200
     flash('Price updated successfully!', 'success')
