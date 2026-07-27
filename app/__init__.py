@@ -122,29 +122,83 @@ def create_app():
 
 
 
+def _wants_json():
+    """True for API/JSON clients so we never return HTML error pages to fetch()."""
+    from flask import request
+    if request.path.startswith('/tax/api') or request.path.startswith('/api/'):
+        return True
+    if request.is_json:
+        return True
+    accept = (request.accept_mimetypes.best or '')
+    if accept == 'application/json':
+        return True
+    # fetch() with Content-Type application/json
+    if 'application/json' in (request.content_type or ''):
+        return True
+    return False
+
+
 def register_error_handlers(app):
     """Register error handlers for security."""
-    from flask import render_template
+    from flask import render_template, jsonify, request, redirect, url_for
     from app.utils.audit_log import AuditLogger
-    
+    from flask_wtf.csrf import CSRFError
+
+    @app.errorhandler(CSRFError)
+    def csrf_error(e):
+        AuditLogger.log_security_event('CSRF_FAILURE', {'error': str(e)})
+        if _wants_json():
+            return jsonify({
+                'error': 'CSRF validation failed. Refresh the page and try again.',
+                'code': 'csrf',
+            }), 400
+        return render_template('errors/403.html'), 400
+
+    @app.errorhandler(401)
+    def unauthorized(e):
+        if _wants_json():
+            return jsonify({'error': 'Login required', 'code': 'auth'}), 401
+        return redirect(url_for('auth.login'))
+
     @app.errorhandler(403)
     def forbidden(e):
         AuditLogger.log_security_event('403_FORBIDDEN', {'error': str(e)})
+        if _wants_json():
+            return jsonify({'error': 'Forbidden', 'code': 'forbidden'}), 403
         return render_template('errors/403.html'), 403
-    
+
     @app.errorhandler(404)
     def not_found(e):
+        if _wants_json():
+            return jsonify({'error': 'Not found', 'code': 'not_found'}), 404
         return render_template('errors/404.html'), 404
-    
+
     @app.errorhandler(500)
     def internal_error(e):
         AuditLogger.log_security_event('500_ERROR', {'error': str(e)})
+        if _wants_json():
+            return jsonify({
+                'error': 'Server error. Check Railway logs; often a missing DB column migration or encryption key.',
+                'code': 'server_error',
+                'detail': str(e) if app.debug else None,
+            }), 500
         return render_template('errors/500.html'), 500
-    
+
     @app.errorhandler(429)
     def rate_limit_exceeded(e):
         AuditLogger.log_security_event('RATE_LIMIT_EXCEEDED', {'error': str(e)})
+        if _wants_json():
+            return jsonify({'error': 'Rate limit exceeded', 'code': 'rate_limit'}), 429
         return render_template('errors/429.html'), 429
+
+    @login_manager.unauthorized_handler
+    def handle_unauthorized():
+        if _wants_json():
+            return jsonify({
+                'error': 'Session expired or not logged in. Refresh and log in again.',
+                'code': 'auth',
+            }), 401
+        return redirect(url_for('auth.login'))
 
 
 @login_manager.user_loader

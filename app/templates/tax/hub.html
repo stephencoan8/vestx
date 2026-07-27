@@ -508,28 +508,41 @@
     if (data.goal && data.goal.target_net_cash && !document.getElementById('goalTarget').value) {
       document.getElementById('goalTarget').value = data.goal.target_net_cash;
     }
+    window.VESTX_LAST_PLAN = data;
   }
 
   document.getElementById('btnGoalRun').addEventListener('click', function () {
     const btn = document.getElementById('btnGoalRun');
     btn.disabled = true;
     btn.textContent = 'Optimizing…';
-    fetch('{{ url_for("tax_center.api_goal") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-      body: JSON.stringify(goalBody())
-    })
-      .then(function (r) { return r.json(); })
+    const run = window.vestxFetchJson
+      ? window.vestxFetchJson('{{ url_for("tax_center.api_goal") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+          body: JSON.stringify(goalBody())
+        })
+      : fetch('{{ url_for("tax_center.api_goal") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf, 'Accept': 'application/json' },
+          body: JSON.stringify(goalBody())
+        }).then(function (r) {
+          return r.text().then(function (t) {
+            try { return JSON.parse(t); }
+            catch (e) { throw new Error('Server returned non-JSON (HTTP ' + r.status + '). Refresh and try again.'); }
+          });
+        });
+    run
       .then(function (data) {
         btn.disabled = false;
         btn.textContent = 'Compute optimal lots';
         if (data.error) { alert(data.error); return; }
         renderGoal(data);
+        window.VESTX_LAST_PLAN = data;
       })
       .catch(function (e) {
         btn.disabled = false;
         btn.textContent = 'Compute optimal lots';
-        alert(e);
+        alert(e.message || e);
       });
   });
 

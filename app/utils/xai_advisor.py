@@ -205,26 +205,39 @@ def advisor_chat(
     profile_summary: str,
     inventory_summary: str,
     user=None,
+    account_context: Optional[str] = None,
 ) -> str:
-    system = f"""You are VestX Advisor powered by Grok. Help the logged-in user plan RSU/ISO sales and exercises.
-Deterministic engine owns calculations. You explain tradeoffs and suggest what to run next in the optimizer.
-Never invent exact tax dollars that contradict the plan JSON when one is provided.
+    system = f"""You are VestX Advisor, a side-panel chatbot for this logged-in user's equity account.
+You have live access to their VestX data below (grants, tax lots, tax profile, sales, exercises, live price).
+Use that data when answering. Be specific: cite vest IDs, share types, LT vs ST, ISO QD/DD when relevant.
 
-Profile: {profile_summary}
+Rules:
+- Do not invent holdings or prices that contradict the account snapshot.
+- Tax dollar amounts from a "plan" JSON are authoritative when present; otherwise give qualitative or approximate guidance and suggest running Goal optimizer / scenario planner for exact engine numbers.
+- California: capital gains taxed as ordinary; MHST 1% over $1M; CA AMT 7% exists in the engine.
+- ISO: exercise and sale are separate events; QD needs 2y from grant + 1y from exercise.
+- You are not a CPA; label estimates as planning-grade.
+- Prefer concise, structured answers (bullets / short sections).
+- If they ask to "net $X after tax", describe which lots look tax-efficient and tell them to hit Compute on Goal optimizer for SpecID quantities.
 
-Inventory:
+Tax profile summary: {profile_summary}
+
+Lot inventory summary:
 {inventory_summary}
 
-Current plan (if any):
-{json.dumps(plan, indent=2, default=str)[:8000] if plan else 'None yet — suggest setting a net cash goal.'}
+Full account snapshot (JSON):
+{account_context or '(not provided)'}
+
+Current goal/plan JSON (if any):
+{json.dumps(plan, indent=2, default=str)[:8000] if plan else 'None yet.'}
 """
     api_messages = [{'role': 'system', 'content': system}]
-    for m in messages[-12:]:
+    for m in messages[-16:]:
         role = m.get('role') or 'user'
         if role not in ('user', 'assistant', 'system'):
             role = 'user'
         api_messages.append({'role': role, 'content': m.get('content') or ''})
-    return _chat(api_messages, user=user, temperature=0.45)
+    return _chat(api_messages, user=user, temperature=0.4)
 
 
 def _extract_json(text: str) -> Dict[str, Any]:

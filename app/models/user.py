@@ -183,7 +183,11 @@ class User(UserMixin, db.Model):
         db.session.commit()
 
     def has_xai_api_key(self) -> bool:
-        return bool(self.encrypted_xai_api_key)
+        try:
+            return bool(self.encrypted_xai_api_key)
+        except Exception:
+            # Column missing until migration runs
+            return False
 
     def set_xai_api_key(self, api_key: str) -> None:
         """Encrypt and store the user's xAI API key. Empty string clears it."""

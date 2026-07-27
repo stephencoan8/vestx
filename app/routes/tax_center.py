@@ -426,33 +426,67 @@ def api_goal():
 @login_required
 def api_advisor():
     """
-    Free-form Grok chat with plan + inventory context.
+    Free-form Grok chat with full account context.
     Body: { messages: [{role, content}], plan?: object }
     """
     if not xai_advisor.is_configured(current_user):
         return jsonify({
             'error': 'Add your xAI API key under Settings → profile (stored encrypted for your account only).',
             'grok_enabled': False,
+            'settings_url': url_for('settings.profile'),
         }), 503
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         messages = data.get('messages') or []
+        # Single message convenience: { message: "..." }
+        if not messages and data.get('message'):
+            messages = [{'role': 'user', 'content': str(data['message'])}]
         if not messages:
             return jsonify({'error': 'messages required'}), 400
+
+        from app.utils.account_context import (
+            build_account_context,
+            format_account_context_for_prompt,
+        )
         profile = TaxProfile.for_user(current_user)
         eng = profile.to_engine_dict()
         lots = build_lots_for_user(current_user.id)
+        ctx = build_account_context(current_user.id)
         reply = xai_advisor.advisor_chat(
             messages=messages,
             plan=data.get('plan'),
             profile_summary=xai_advisor.summarize_profile(eng),
             inventory_summary=xai_advisor.summarize_inventory(lots),
             user=current_user,
+            account_context=format_account_context_for_prompt(ctx),
         )
-        return jsonify({'success': True, 'reply': reply, 'grok_enabled': True})
+        return jsonify({
+            'success': True,
+            'reply': reply,
+            'grok_enabled': True,
+            'context_meta': {
+                'lots': len(lots),
+                'live_price': ctx.get('live_price'),
+                'as_of': ctx.get('as_of'),
+            },
+        })
     except Exception as e:
         logger.error('advisor failed: %s', e, exc_info=True)
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e), 'code': 'advisor_error'}), 400
+
+
+@tax_center_bp.route('/api/context', methods=['GET'])
+@login_required
+def api_context():
+    """Debug/helper: account snapshot size (no secrets)."""
+    from app.utils.account_context import build_account_context
+    ctx = build_account_context(current_user.id)
+    return jsonify({
+        'success': True,
+        'summary': ctx.get('portfolio_summary'),
+        'live_price': ctx.get('live_price'),
+        'grok_enabled': xai_advisor.is_configured(current_user),
+    })
 
 
 @tax_center_bp.route('/api/sales', methods=['POST'])

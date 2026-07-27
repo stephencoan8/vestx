@@ -83,32 +83,173 @@
     </div><!-- /.app-main -->
 
     <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+    {# ——— Right-side VestX Advisor (Grok + full account context) ——— #}
+    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="VestX Advisor">
+      Ask Grok
+    </button>
+    <aside class="advisor-panel" id="advisorPanel" aria-label="VestX Advisor chat" hidden>
+      <header class="advisor-header">
+        <div>
+          <strong>VestX Advisor</strong>
+          <span class="advisor-sub" id="advisorStatus">Uses your encrypted xAI key · sees your lots &amp; tax profile</span>
+        </div>
+        <button type="button" class="advisor-close" id="advisorClose" aria-label="Close">×</button>
+      </header>
+      <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
+        <div class="advisor-msg bot">
+          Ask about net-cash goals, which lots to sell, ISO exercise vs hold, CA tax, or AMT.
+          I load your live VestX account data with each message.
+        </div>
+      </div>
+      <div class="advisor-input-row">
+        <textarea id="advisorInput" rows="2" placeholder="e.g. How can I net $500k with the lowest tax?"></textarea>
+        <button type="button" class="btn btn-primary" id="advisorSend">Send</button>
+      </div>
+    </aside>
+
     <script>
     (function () {
         var sidebar = document.getElementById('sidebar');
         var toggle = document.getElementById('sidebarToggle');
         var backdrop = document.getElementById('sidebarBackdrop');
-        if (!sidebar || !toggle || !backdrop) return;
-
-        function openNav() {
-            document.body.classList.add('sidebar-open');
-            toggle.setAttribute('aria-expanded', 'true');
-            backdrop.hidden = false;
-        }
-        function closeNav() {
-            document.body.classList.remove('sidebar-open');
-            toggle.setAttribute('aria-expanded', 'false');
-            backdrop.hidden = true;
-        }
-        toggle.addEventListener('click', function () {
-            if (document.body.classList.contains('sidebar-open')) closeNav();
-            else openNav();
-        });
-        backdrop.addEventListener('click', closeNav);
-        sidebar.querySelectorAll('a').forEach(function (a) {
-            a.addEventListener('click', function () {
-                if (window.matchMedia('(max-width: 900px)').matches) closeNav();
+        if (sidebar && toggle && backdrop) {
+            function openNav() {
+                document.body.classList.add('sidebar-open');
+                toggle.setAttribute('aria-expanded', 'true');
+                backdrop.hidden = false;
+            }
+            function closeNav() {
+                document.body.classList.remove('sidebar-open');
+                toggle.setAttribute('aria-expanded', 'false');
+                backdrop.hidden = true;
+            }
+            toggle.addEventListener('click', function () {
+                if (document.body.classList.contains('sidebar-open')) closeNav();
+                else openNav();
             });
+            backdrop.addEventListener('click', closeNav);
+            sidebar.querySelectorAll('a').forEach(function (a) {
+                a.addEventListener('click', function () {
+                    if (window.matchMedia('(max-width: 900px)').matches) closeNav();
+                });
+            });
+        }
+
+        // Safe JSON for all app fetch() calls — HTML error pages caused "Unexpected token <"
+        window.vestxFetchJson = async function (url, options) {
+            options = options || {};
+            options.headers = options.headers || {};
+            if (!options.headers['X-CSRFToken'] && typeof window.VESTX_CSRF === 'string') {
+                options.headers['X-CSRFToken'] = window.VESTX_CSRF;
+            }
+            if (options.body && typeof options.body === 'string' && !options.headers['Content-Type']) {
+                options.headers['Content-Type'] = 'application/json';
+            }
+            options.headers['Accept'] = 'application/json';
+            var res = await fetch(url, options);
+            var text = await res.text();
+            var data = null;
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (e) {
+                var snippet = (text || '').replace(/\s+/g, ' ').slice(0, 160);
+                throw new Error(
+                    'Server returned non-JSON (HTTP ' + res.status + '). ' +
+                    'Often a login redirect, CSRF fail, or 500 HTML page. ' +
+                    (snippet ? 'Body starts: ' + snippet : 'Empty body.')
+                );
+            }
+            if (!res.ok) {
+                var msg = (data && (data.error || data.message)) || ('HTTP ' + res.status);
+                var err = new Error(msg);
+                err.status = res.status;
+                err.data = data;
+                throw err;
+            }
+            return data;
+        };
+
+        window.VESTX_CSRF = '{{ csrf_token() }}';
+        window.VESTX_ADVISOR_URL = '{{ url_for("tax_center.api_advisor") }}';
+        window.VESTX_SETTINGS_URL = '{{ url_for("settings.profile") }}';
+        window.VESTX_LAST_PLAN = window.VESTX_LAST_PLAN || null;
+
+        var fab = document.getElementById('advisorFab');
+        var panel = document.getElementById('advisorPanel');
+        var closeBtn = document.getElementById('advisorClose');
+        var sendBtn = document.getElementById('advisorSend');
+        var input = document.getElementById('advisorInput');
+        var log = document.getElementById('advisorMessages');
+        var statusEl = document.getElementById('advisorStatus');
+        var history = [];
+
+        function openAdvisor() {
+            panel.hidden = false;
+            document.body.classList.add('advisor-open');
+            fab.setAttribute('aria-expanded', 'true');
+            input && input.focus();
+        }
+        function closeAdvisor() {
+            panel.hidden = true;
+            document.body.classList.remove('advisor-open');
+            fab.setAttribute('aria-expanded', 'false');
+        }
+        if (fab) fab.addEventListener('click', function () {
+            if (panel.hidden) openAdvisor(); else closeAdvisor();
+        });
+        if (closeBtn) closeBtn.addEventListener('click', closeAdvisor);
+
+        function appendMsg(role, text) {
+            var div = document.createElement('div');
+            div.className = 'advisor-msg ' + (role === 'user' ? 'user' : 'bot');
+            div.textContent = text;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function sendAdvisor() {
+            var text = (input.value || '').trim();
+            if (!text) return;
+            input.value = '';
+            appendMsg('user', text);
+            history.push({ role: 'user', content: text });
+            statusEl.textContent = 'Thinking with your account data…';
+            sendBtn.disabled = true;
+            window.vestxFetchJson(window.VESTX_ADVISOR_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    messages: history,
+                    plan: window.VESTX_LAST_PLAN || null
+                })
+            })
+            .then(function (data) {
+                var reply = data.reply || '(empty reply)';
+                history.push({ role: 'assistant', content: reply });
+                appendMsg('bot', reply);
+                if (data.context_meta) {
+                    statusEl.textContent = 'Context: ' + (data.context_meta.lots || 0) +
+                        ' lots · live $' + Number(data.context_meta.live_price || 0).toFixed(2);
+                } else {
+                    statusEl.textContent = 'Ready';
+                }
+            })
+            .catch(function (e) {
+                var msg = e.message || String(e);
+                if (e.status === 503 || /API key/i.test(msg)) {
+                    msg += ' → Settings to add your encrypted xAI key.';
+                }
+                appendMsg('bot', 'Error: ' + msg);
+                statusEl.textContent = 'Error — see message above';
+            })
+            .finally(function () { sendBtn.disabled = false; });
+        }
+        if (sendBtn) sendBtn.addEventListener('click', sendAdvisor);
+        if (input) input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendAdvisor();
+            }
         });
     })();
     </script>
