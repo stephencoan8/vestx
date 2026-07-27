@@ -237,14 +237,6 @@ function createChart(view) {
     });
 }
 
-document.querySelectorAll('.toggle-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        currentView = this.dataset.view;
-        createChart(currentView);
-    });
-});
 
 let xZoomValue = 1;
 let yZoomValue = 1;
