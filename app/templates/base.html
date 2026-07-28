@@ -93,7 +93,7 @@
       <header class="advisor-header">
         <div>
           <strong>VestX Advisor</strong>
-          <span class="advisor-sub" id="advisorStatus">Async · navigate freely while loading · history in this tab</span>
+          <span class="advisor-sub" id="advisorStatus">Background jobs · navigate freely · history in this tab</span>
         </div>
         <div class="advisor-header-actions">
           <button type="button" class="advisor-newchat" id="advisorNewChat" title="Clear conversation">New</button>
@@ -103,7 +103,7 @@
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
         <div class="advisor-msg bot md-ready" data-welcome="1">
           <p class="md-p"><strong>App-wide advisor</strong> — available from any page (dashboard, grants, prices, tax…).</p>
-          <p class="md-p">Fully async: keep browsing while a reply loads. Chat and in-flight requests resume after you switch pages.</p>
+          <p class="md-p"><strong>True background jobs:</strong> send a question, then navigate immediately. The app never waits on Grok or tax engines.</p>
           <p class="md-p">Try: <em>net $500k minimize tax</em> · engines update Sales &amp; Tax when you open that page.</p>
         </div>
       </div>
@@ -184,6 +184,8 @@
 
         window.VESTX_CSRF = '{{ csrf_token() }}';
         window.VESTX_ADVISOR_URL = '{{ url_for("tax_center.api_advisor") }}';
+        window.VESTX_ADVISOR_JOBS_URL = '{{ url_for("tax_center.api_advisor_enqueue") }}';
+        window.VESTX_ADVISOR_JOB_URL = '{{ url_for("tax_center.api_advisor_job_status", job_id="__ID__") }}';
         window.VESTX_ADVISOR_PING_URL = '{{ url_for("tax_center.api_ping") }}';
         window.VESTX_SETTINGS_URL = '{{ url_for("settings.profile") }}';
         window.VESTX_TAX_HUB_URL = '{{ url_for("tax_center.hub") }}';

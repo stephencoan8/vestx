@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 tax_center_bp = Blueprint('tax_center', __name__, url_prefix='/tax')
 
-ADVISOR_API_VERSION = '2026-07-27-v4'
+ADVISOR_API_VERSION = '2026-07-27-v5-async'
 
 
 def _iso(share_type: str) -> bool:
@@ -53,26 +53,8 @@ def _api_json(payload: dict, status: int = 200) -> Response:
 
 
 def _slim_engine_plan(payload: Optional[dict]) -> Optional[dict]:
-    """
-    Keep UI-sync fields; drop bulky tax_analysis so chat JSON always encodes cleanly.
-    Full tax stack remains available via Sales & Tax goal API.
-    """
-    if not payload or not isinstance(payload, dict):
-        return payload
-    out = dict(payload)
-    # Nested analysis can contain dates/lots and occasionally non-finite floats
-    out.pop('tax_analysis', None)
-    alts = out.get('alternatives')
-    if isinstance(alts, list):
-        slim_alts = []
-        for a in alts[:5]:
-            if not isinstance(a, dict):
-                continue
-            aa = dict(a)
-            aa.pop('tax_analysis', None)
-            slim_alts.append(aa)
-        out['alternatives'] = slim_alts
-    return out
+    from app.utils.advisor_service import slim_engine_plan
+    return slim_engine_plan(payload)
 
 
 # ensure date is available in template helpers
@@ -497,14 +479,17 @@ def api_ping():
         }, 500)
 
 
-@tax_center_bp.route('/api/advisor', methods=['POST'])
+@tax_center_bp.route('/api/advisor/jobs', methods=['POST'])
 @login_required
-def api_advisor():
+def api_advisor_enqueue():
     """
-    Free-form Grok chat with full account context.
-    Body: { messages: [{role, content}], plan?: object }
+    Async advisor: enqueue a job and return immediately (HTTP 202).
 
-    Always returns application/json via _api_json (never HTML).
+    Body: { messages: [{role, content}], plan?: object, force_grok?: bool }
+    Response: { job_id, status: 'queued', poll_url }
+
+    Background thread runs engines/Grok; poll GET /api/advisor/jobs/<id>.
+    This never blocks page navigation — the HTTP worker is free after enqueue.
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -519,219 +504,126 @@ def api_advisor():
                 'phase': 'validate',
             }, 400)
 
-        last_user = ''
-        for m in reversed(messages):
-            if (m.get('role') or '') == 'user':
-                last_user = m.get('content') or ''
-                break
+        plan = data.get('plan') if isinstance(data.get('plan'), dict) else None
+        from app.utils.advisor_jobs import enqueue_advisor_job, job_public_payload
+        job = enqueue_advisor_job(
+            user_id=current_user.id,
+            messages=messages,
+            plan=plan,
+            force_grok=bool(data.get('force_grok')),
+        )
+        payload = job_public_payload(job)
+        payload.update({
+            'success': True,
+            'api_ok': True,
+            'async': True,
+            'phase': 'queued',
+            'poll_url': url_for('tax_center.api_advisor_job_status', job_id=job.id),
+        })
+        return _api_json(payload, 202)
+    except Exception as e:
+        logger.error('advisor enqueue failed: %s', e, exc_info=True)
+        return _api_json({
+            'success': False,
+            'error': str(e),
+            'code': 'enqueue_error',
+            'phase': 'enqueue',
+            'api_ok': False,
+            'detail': traceback.format_exc()[-1200:],
+        }, 500)
 
-        # --- Load profile / lots (never crash the request) ---
-        eng = {
-            'filing_status': 'single',
-            'state_code': 'CA',
-            'tax_year': date.today().year,
-            'other_ordinary_income': 0.0,
-            'use_bracket_engine': True,
-            'use_state_engine': True,
-            'include_niit': True,
-            'include_fica': False,
-            'ytd_wages': 0.0,
-            'ss_wage_base_maxed': False,
-            'amt_credit_carryforward': 0.0,
-            'ca_amt_credit_carryforward': 0.0,
-            'other_long_term_gains': 0.0,
-            'other_short_term_gains': 0.0,
-        }
-        try:
-            profile = TaxProfile.for_user(current_user)
-            eng = profile.to_engine_dict()
-        except Exception as e:
-            logger.warning('tax profile load failed: %s', e)
 
-        lots = []
-        try:
-            lots = build_lots_for_user(current_user.id) or []
-        except Exception as e:
-            logger.warning('lots load failed: %s', e)
+@tax_center_bp.route('/api/advisor/jobs/<job_id>', methods=['GET'])
+@login_required
+def api_advisor_job_status(job_id: str):
+    """Poll job status. Lightweight — safe to call every few hundred ms."""
+    try:
+        from app.utils.advisor_jobs import get_job_for_user, job_public_payload
+        job = get_job_for_user(job_id, current_user.id)
+        if not job:
+            return _api_json({
+                'success': False,
+                'error': 'Job not found',
+                'code': 'not_found',
+                'phase': 'poll',
+            }, 404)
+        payload = job_public_payload(job)
+        payload['success'] = True
+        payload['api_ok'] = True
+        payload['async'] = True
+        # Flatten result fields for the chat client when done
+        if job.status == 'done' and payload.get('result'):
+            result = payload['result']
+            payload['reply'] = result.get('reply')
+            payload['engine_plan'] = result.get('engine_plan')
+            payload['context_meta'] = result.get('context_meta')
+            payload['used_grok'] = result.get('used_grok')
+            payload['grok_enabled'] = result.get('grok_enabled')
+            payload['phase'] = result.get('phase') or job.phase
+            payload['result_success'] = result.get('success')
+            if result.get('success') is False and not result.get('reply'):
+                payload['error'] = result.get('error') or job.error
+        elif job.status == 'error':
+            payload['error'] = job.error or 'Job failed'
+            if payload.get('result'):
+                payload['reply'] = payload['result'].get('reply')
+                payload['engine_plan'] = payload['result'].get('engine_plan')
+        return _api_json(payload)
+    except Exception as e:
+        logger.error('advisor poll failed: %s', e, exc_info=True)
+        return _api_json({
+            'success': False,
+            'error': str(e),
+            'code': 'poll_error',
+            'phase': 'poll',
+            'api_ok': False,
+        }, 500)
 
-        live = 0.0
-        try:
-            live = float(get_latest_user_price(current_user.id) or 0.0)
-        except Exception:
-            live = 0.0
+
+@tax_center_bp.route('/api/advisor', methods=['POST'])
+@login_required
+def api_advisor():
+    """
+    Sync advisor (compat). Prefer POST /api/advisor/jobs for non-blocking UX.
+
+    Body: { messages, plan?, force_grok?, async?: true }
+    If async is true (default for new clients via jobs endpoint), enqueue instead.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        # Opt-in async on this path too (default false for backward compat)
+        if data.get('async') is True or data.get('background') is True:
+            return api_advisor_enqueue()
+
+        messages = data.get('messages') or []
+        if not messages and data.get('message'):
+            messages = [{'role': 'user', 'content': str(data['message'])}]
+        if not messages:
+            return _api_json({
+                'success': False,
+                'error': 'messages required',
+                'code': 'bad_request',
+                'phase': 'validate',
+            }, 400)
 
         plan = data.get('plan') if isinstance(data.get('plan'), dict) else None
-
-        # --- Deterministic router ---
-        try:
-            from app.utils.advisor_router import route_and_compute
-            routed = route_and_compute(
-                user_message=last_user,
-                profile_dict=eng,
-                inventory_lots=lots,
-                live_price=live,
-                plan=plan,
-                force_grok=bool(data.get('force_grok')),
-            )
-        except Exception as e:
-            logger.error('route_and_compute failed: %s', e, exc_info=True)
-            return _api_json({
-                'success': False,
-                'error': f'Engine failed: {e}',
-                'code': 'engine_error',
-                'phase': 'engine',
-                'detail': traceback.format_exc()[-1500:],
-                'api_ok': False,
-            }, 500)
-
-        # Engine-only (no Grok) — sell / cash / SpecID plans always take this path
-        if routed.skip_grok and routed.deterministic_reply:
-            grok_on = False
-            try:
-                grok_on = xai_advisor.is_configured(current_user)
-            except Exception:
-                pass
-            plan_out = _slim_engine_plan(routed.engine_payload)
-            return _api_json({
-                'success': True,
-                'reply': routed.deterministic_reply,
-                'grok_enabled': grok_on,
-                'used_grok': False,
-                'api_ok': True,
-                'phase': 'engine_done',
-                'engine_plan': plan_out,
-                'context_meta': {
-                    **routed.to_meta(),
-                    'live_price': live,
-                    'lots': len(lots),
-                    'est_context_tokens': 0,
-                },
-            })
-
-        # Need Grok?
-        grok_on = False
-        try:
-            grok_on = xai_advisor.is_configured(current_user)
-        except Exception as e:
-            logger.warning('is_configured failed: %s', e)
-
-        if not grok_on:
-            if routed.deterministic_reply:
-                return _api_json({
-                    'success': True,
-                    'reply': routed.deterministic_reply + (
-                        '\n\n_Add an xAI key in Settings for narrative explanations._'
-                    ),
-                    'used_grok': False,
-                    'api_ok': True,
-                    'phase': 'engine_done_no_key',
-                    'engine_plan': _slim_engine_plan(routed.engine_payload),
-                    'grok_enabled': False,
-                    'context_meta': {
-                        **routed.to_meta(),
-                        'live_price': live,
-                        'lots': len(lots),
-                    },
-                })
-            return _api_json({
-                'success': False,
-                'error': (
-                    'Add your xAI API key under Settings for open-ended questions. '
-                    'Or ask a computable question like “net $500k minimize tax”.'
-                ),
-                'code': 'no_api_key',
-                'grok_enabled': False,
-                'settings_url': url_for('settings.profile'),
-                'phase': 'need_key',
-                'api_ok': True,
-            }, 503)
-
-        # Pack account for Grok
-        try:
-            from app.utils.account_context import pack_context_for_prompt
-            packed = pack_context_for_prompt(
-                current_user.id,
-                user_message=last_user,
-                plan=plan or routed.engine_payload,
-                mode='full',
-            )
-        except Exception as e:
-            logger.error('pack_context failed: %s', e, exc_info=True)
-            packed = {
-                'text': f'## SNAPSHOT\npack_error={e}\nlive_price={live}\nlots={len(lots)}',
-                'meta': {'est_tokens': 20, 'lot_count': len(lots), 'live_price': live},
-            }
-
-        account_blob = packed.get('text') or ''
-        if routed.engine_text:
-            account_blob = (
-                '## ENGINE_RESULT (authoritative $ and picks — do not invent alternatives)\n'
-                + routed.engine_text
-                + '\n\n'
-                + account_blob
-            )
-
-        try:
-            reply = xai_advisor.advisor_chat(
-                messages=messages,
-                plan=plan or routed.engine_payload,
-                user=current_user,
-                account_context=account_blob,
-            )
-        except Exception as e:
-            logger.error('Grok API call failed: %s', e, exc_info=True)
-            if routed.deterministic_reply:
-                return _api_json({
-                    'success': True,
-                    'reply': routed.deterministic_reply + f'\n\n_Grok API error: {e}_',
-                    'used_grok': False,
-                    'api_ok': False,
-                    'grok_error': str(e),
-                    'phase': 'grok_failed_engine_fallback',
-                    'engine_plan': _slim_engine_plan(routed.engine_payload),
-                    'grok_enabled': True,
-                    'context_meta': {
-                        **routed.to_meta(),
-                        'live_price': live,
-                        'lots': len(lots),
-                    },
-                })
-            return _api_json({
-                'success': False,
-                'error': f'Grok API call failed: {e}',
-                'code': 'grok_api_error',
-                'phase': 'grok_failed',
-                'grok_enabled': True,
-                'api_ok': False,
-                'detail': traceback.format_exc()[-1200:],
-            }, 502)
-
-        if routed.deterministic_reply and routed.mode == 'engine_then_grok':
-            reply = (
-                routed.deterministic_reply
-                + '\n\n---\n**Explanation**\n'
-                + reply
-            )
-
-        meta = packed.get('meta') or {}
-        return _api_json({
-            'success': True,
-            'reply': reply or '(empty model reply)',
-            'grok_enabled': True,
-            'used_grok': True,
-            'api_ok': True,
-            'phase': 'grok_done',
-            'engine_plan': _slim_engine_plan(routed.engine_payload),
-            'context_meta': {
-                'lots': meta.get('lot_count') or len(lots),
-                'live_price': meta.get('live_price') or live,
-                'as_of': meta.get('as_of'),
-                'est_context_tokens': meta.get('est_tokens'),
-                'context_chars': meta.get('chars'),
-                'tier': meta.get('tier'),
-                **routed.to_meta(),
-            },
-        })
+        from app.utils.advisor_service import run_advisor_turn
+        result = run_advisor_turn(
+            user_id=current_user.id,
+            messages=messages,
+            plan=plan,
+            force_grok=bool(data.get('force_grok')),
+        )
+        status = 200
+        if result.get('code') == 'no_api_key':
+            status = 503
+        elif result.get('success') is False and result.get('code') in (
+            'engine_error', 'advisor_error',
+        ):
+            status = 500
+        elif result.get('code') == 'grok_api_error':
+            status = 502
+        return _api_json(result, status)
     except Exception as e:
         logger.error('advisor unhandled: %s', e, exc_info=True)
         return _api_json({

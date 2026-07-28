@@ -2,4 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "gunicorn main:app"
+# gthread + 2 workers: page loads never wait on a long advisor/Grok call
+startCommand = "gunicorn main:app -k gthread --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT"

@@ -90,6 +90,7 @@ def create_app():
         # Register models without rebinding local name `app` (import app.models would)
         from app.models import market_price as _market_price  # noqa: F401
         from app.models import tax_profile as _tax_profile  # noqa: F401
+        from app.models import advisor_job as _advisor_job  # noqa: F401
 
         db.create_all()
 
