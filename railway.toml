@@ -2,7 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-# 1 worker + gthread: low RAM (Railway-safe). Async advisor jobs free the HTTP thread
-# immediately so page navigations never wait on Grok/engines.
-# PORT is set by Railway; shell expands $PORT.
-startCommand = "gunicorn main:app -k gthread -w 1 --threads 8 --timeout 120 --graceful-timeout 30 --bind 0.0.0.0:$PORT"
+# Must run under sh so ${PORT} expands (Railway does not expand $PORT in bare exec form).
+startCommand = "sh -c 'gunicorn main:app -k gthread -w 1 --threads 8 --timeout 120 --graceful-timeout 30 --bind 0.0.0.0:${PORT:-5000}'"
