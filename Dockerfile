@@ -20,4 +20,4 @@ ENV FLASK_APP=main.py
 ENV PYTHONUNBUFFERED=1
 
 # Run application
-CMD ["gunicorn", "main:app", "-k", "gthread", "--workers", "2", "--threads", "4", "--timeout", "120", "-b", "0.0.0.0:5000"]
+CMD ["gunicorn", "main:app", "-k", "gthread", "-w", "1", "--threads", "8", "--timeout", "120", "--graceful-timeout", "30", "-b", "0.0.0.0:5000"]

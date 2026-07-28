@@ -85,39 +85,53 @@ def create_app():
     # Register error handlers
     register_error_handlers(app)
     
-    # Create database tables
+    # Create database tables / migrate (never take down the process)
     with app.app_context():
-        # Register models without rebinding local name `app` (import app.models would)
-        from app.models import market_price as _market_price  # noqa: F401
-        from app.models import tax_profile as _tax_profile  # noqa: F401
-        from app.models import advisor_job as _advisor_job  # noqa: F401
+        import logging
+        _log = logging.getLogger(__name__)
 
-        db.create_all()
+        try:
+            # Register models without rebinding local name `app`
+            from app.models import market_price as _market_price  # noqa: F401
+            from app.models import tax_profile as _tax_profile  # noqa: F401
+            from app.models import advisor_job as _advisor_job  # noqa: F401
+            db.create_all()
+        except Exception as e:
+            _log.exception('db.create_all failed (continuing): %s', e)
 
+        def _safe_migrate(name, fn):
+            try:
+                fn(app)
+            except Exception as e:
+                _log.warning('%s migration failed (continuing): %s', name, e)
 
-        # Run migrations
         from app.utils.migrate_transactions import migrate_transactions
-        migrate_transactions(app)
+        _safe_migrate('transactions', migrate_transactions)
 
         from app.utils.migrate_ss_wage_base import migrate_ss_wage_base
-        migrate_ss_wage_base(app)
+        _safe_migrate('ss_wage_base', migrate_ss_wage_base)
 
         from app.utils.migrate_tax_profile_state import migrate_tax_profile_state
-        migrate_tax_profile_state(app)
+        _safe_migrate('tax_profile_state', migrate_tax_profile_state)
 
         from app.utils.migrate_user_xai_key import migrate_user_xai_key
-        migrate_user_xai_key(app)
+        _safe_migrate('user_xai_key', migrate_user_xai_key)
 
-        from app.utils.init_db import init_admin_user
-        init_admin_user()
+        from app.utils.migrate_advisor_jobs import migrate_advisor_jobs
+        _safe_migrate('advisor_jobs', migrate_advisor_jobs)
+
+        try:
+            from app.utils.init_db import init_admin_user
+            init_admin_user()
+        except Exception as e:
+            _log.warning('init_admin_user failed (continuing): %s', e)
 
         # Best-effort public market sync (SPCX); failures must not block boot
         try:
             from app.utils.market_data import sync_market_prices
             sync_market_prices(force=False)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning('Initial market price sync skipped: %s', e)
+            _log.warning('Initial market price sync skipped: %s', e)
 
     return app
 

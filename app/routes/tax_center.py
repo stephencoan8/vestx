@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 tax_center_bp = Blueprint('tax_center', __name__, url_prefix='/tax')
 
-ADVISOR_API_VERSION = '2026-07-27-v5-async'
+ADVISOR_API_VERSION = '2026-07-27-v5b-async'
 
 
 def _iso(share_type: str) -> bool:

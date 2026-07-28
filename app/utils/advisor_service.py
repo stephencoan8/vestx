@@ -298,52 +298,62 @@ def execute_job_in_background(app, job_id: str) -> None:
     from app.models.advisor_job import AdvisorJob
 
     with app.app_context():
-        job = AdvisorJob.query.get(job_id)
-        if not job:
-            logger.error('advisor job missing: %s', job_id)
-            return
         try:
-            job.status = 'running'
-            job.phase = 'engines'
-            job.started_at = datetime.utcnow()
-            db.session.commit()
-
-            result = run_advisor_turn(
-                user_id=job.user_id,
-                messages=job.get_messages(),
-                plan=job.get_plan(),
-                force_grok=bool(job.force_grok),
-            )
-
-            job.phase = (result or {}).get('phase') or 'done'
-            if result.get('success') is False and not result.get('reply'):
-                job.status = 'error'
-                job.error = result.get('error') or 'Advisor failed'
-                job.set_result(result)
-            else:
-                # Even partial/engine fallback with reply counts as done for UI
-                job.status = 'done'
-                job.error = None
-                job.set_result(result)
-            job.finished_at = datetime.utcnow()
-            db.session.commit()
-        except Exception as e:
-            logger.error('advisor job %s crashed: %s', job_id, e, exc_info=True)
+            job = db.session.get(AdvisorJob, job_id) if hasattr(db.session, 'get') else AdvisorJob.query.get(job_id)
+            if not job:
+                logger.error('advisor job missing: %s', job_id)
+                return
             try:
-                db.session.rollback()
-                job = AdvisorJob.query.get(job_id)
-                if job:
+                job.status = 'running'
+                job.phase = 'engines'
+                job.started_at = datetime.utcnow()
+                db.session.commit()
+
+                result = run_advisor_turn(
+                    user_id=job.user_id,
+                    messages=job.get_messages(),
+                    plan=job.get_plan(),
+                    force_grok=bool(job.force_grok),
+                )
+
+                # Re-load in case session was detached mid-run
+                job = db.session.get(AdvisorJob, job_id) if hasattr(db.session, 'get') else AdvisorJob.query.get(job_id)
+                if not job:
+                    return
+                job.phase = (result or {}).get('phase') or 'done'
+                if result.get('success') is False and not result.get('reply'):
                     job.status = 'error'
-                    job.error = str(e)
-                    job.phase = 'job_crash'
-                    job.set_result({
-                        'success': False,
-                        'error': str(e),
-                        'phase': 'job_crash',
-                        'api_ok': False,
-                        'detail': traceback.format_exc()[-1200:],
-                    })
-                    job.finished_at = datetime.utcnow()
-                    db.session.commit()
+                    job.error = result.get('error') or 'Advisor failed'
+                    job.set_result(result)
+                else:
+                    job.status = 'done'
+                    job.error = None
+                    job.set_result(result)
+                job.finished_at = datetime.utcnow()
+                db.session.commit()
+            except Exception as e:
+                logger.error('advisor job %s crashed: %s', job_id, e, exc_info=True)
+                try:
+                    db.session.rollback()
+                    job = db.session.get(AdvisorJob, job_id) if hasattr(db.session, 'get') else AdvisorJob.query.get(job_id)
+                    if job:
+                        job.status = 'error'
+                        job.error = str(e)[:2000]
+                        job.phase = 'job_crash'
+                        job.set_result({
+                            'success': False,
+                            'error': str(e),
+                            'phase': 'job_crash',
+                            'api_ok': False,
+                            'detail': traceback.format_exc()[-1200:],
+                        })
+                        job.finished_at = datetime.utcnow()
+                        db.session.commit()
+                except Exception:
+                    logger.exception('failed to persist job error for %s', job_id)
+        finally:
+            # Critical for gthread: don't leak scoped sessions across threads
+            try:
+                db.session.remove()
             except Exception:
-                logger.exception('failed to persist job error for %s', job_id)
+                pass

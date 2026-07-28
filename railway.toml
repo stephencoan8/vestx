@@ -2,5 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-# gthread + 2 workers: page loads never wait on a long advisor/Grok call
-startCommand = "gunicorn main:app -k gthread --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT"
+# 1 worker + gthread: low RAM (Railway-safe). Async advisor jobs free the HTTP thread
+# immediately so page navigations never wait on Grok/engines.
+# PORT is set by Railway; shell expands $PORT.
+startCommand = "gunicorn main:app -k gthread -w 1 --threads 8 --timeout 120 --graceful-timeout 30 --bind 0.0.0.0:$PORT"
