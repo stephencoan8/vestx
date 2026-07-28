@@ -206,7 +206,8 @@ button.nav-link.advisor-nav-btn {
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    z-index: 150;
+    /* Above advisor panel so Menu stays usable while chat is open/loading */
+    z-index: 410;
 }
 
 .sidebar-toggle {
@@ -230,12 +231,18 @@ button.nav-link.advisor-nav-btn {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
-    z-index: 180;
+    /* Above advisor so mobile menu works while chat is open */
+    z-index: 390;
 }
 
-/* ——— Right-side Advisor chat ——— */
+/* ——— Right-side Advisor chat (async; never blocks left nav / main) ——— */
 :root {
     --advisor-width: 34rem; /* ~544px; wider for tables + markdown */
+}
+
+/* Sidebar stays above advisor so page switches always work while chat loads */
+.sidebar {
+    z-index: 400;
 }
 
 .advisor-fab {
@@ -253,10 +260,32 @@ button.nav-link.advisor-nav-btn {
     font-weight: 600;
     cursor: pointer;
     box-shadow: 0 8px 28px var(--shadow);
+    pointer-events: auto;
 }
 .advisor-fab:hover {
     background: var(--accent);
     border-color: var(--copper);
+}
+/* Pulse while a request is in flight (including after page navigation) */
+.advisor-fab.advisor-busy {
+    box-shadow: 0 0 0 0 rgba(184, 115, 51, 0.55), 0 8px 28px var(--shadow);
+    animation: advisor-fab-pulse 1.4s ease-out infinite;
+}
+.advisor-fab.advisor-busy::after {
+    content: "";
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-left: 0.4rem;
+    border-radius: 50%;
+    background: var(--copper);
+    vertical-align: middle;
+    animation: advisor-spin 0.7s linear infinite;
+}
+@keyframes advisor-fab-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(184, 115, 51, 0.5), 0 8px 28px var(--shadow); }
+    70% { box-shadow: 0 0 0 12px rgba(184, 115, 51, 0), 0 8px 28px var(--shadow); }
+    100% { box-shadow: 0 0 0 0 rgba(184, 115, 51, 0), 0 8px 28px var(--shadow); }
 }
 
 .advisor-panel {
@@ -265,12 +294,19 @@ button.nav-link.advisor-nav-btn {
     right: 0;
     bottom: 0;
     width: min(var(--advisor-width), 100vw);
+    /* Below sidebar (400) so left nav is always clickable while chat is open/loading */
     z-index: 330;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
+    /* Panel must not trap the rest of the app */
+    pointer-events: auto;
+}
+/* Main content stays interactive under/around the panel */
+body.advisor-open .app-main {
+    pointer-events: auto;
 }
 /* class {display:flex} overrides bare [hidden] in some browsers — force hide */
 .advisor-panel[hidden],
@@ -521,6 +557,8 @@ button.nav-link.advisor-nav-btn {
 
 body.advisor-open .app-main {
     margin-right: min(var(--advisor-width), 100vw);
+    /* Do not lock scroll or interaction while chat loads */
+    overflow: auto;
 }
 
 /* SpecID picks highlighted when chat/engine updates the screen */
