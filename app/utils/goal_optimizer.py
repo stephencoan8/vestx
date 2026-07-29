@@ -1009,18 +1009,23 @@ def _result_from_eval(
     tax = float(ev.get('tax') or 0)
     proceeds = float(ev.get('proceeds') or 0)
     outlay = float(ev.get('strike_outlay') or 0)
+    # Effective rate must use economic gain (proceeds − basis + equity ordinary),
+    # NOT gross proceeds — using max(proceeds, gain) understated rates badly.
     if analysis is not None:
         try:
-            gain = max(
-                proceeds - outlay,
+            gain = (
                 float(analysis.total_proceeds)
                 - float(analysis.total_cost_basis)
-                + float(analysis.equity_ordinary),
+                + float(analysis.equity_ordinary)
             )
+            if gain <= 0 and float(getattr(analysis, 'amt_due', 0) or 0) > 0:
+                gain = float(getattr(analysis, 'equity_ordinary', 0) or 0)
         except Exception:
-            gain = max(proceeds - outlay, 0.0)
+            gain = sum(max(0.0, p.estimated_gain) for p in picks)
     else:
-        gain = max(proceeds - outlay, sum(max(0.0, p.estimated_gain) for p in picks))
+        gain = sum(max(0.0, p.estimated_gain) for p in picks)
+    if gain <= 0:
+        gain = max(0.0, proceeds - outlay)
     eff = (tax / gain) if gain > 0 else 0.0
 
     summary = []
@@ -1031,9 +1036,27 @@ def _result_from_eval(
 
     notes = [
         'Lots ordered for tax efficiency: LTCG / high-basis first; ISO cashless (ordinary) last.',
-        'Tax is incremental vs your Tax Profile wages (federal + CA PIT/MHST/AMT + NIIT).',
+        'Tax is incremental vs Tax Profile wages only (upcoming unvested RSU income is not auto-included).',
+        'Eff. rate = incremental tax ÷ economic gain (proceeds − basis), not ÷ gross proceeds.',
         'This is SpecID planning — execute the same vest lots when selling.',
     ]
+    if analysis is not None:
+        try:
+            rates = getattr(analysis, 'rates_used', None) or {}
+            if isinstance(analysis, dict):
+                rates = analysis.get('rates_used') or {}
+                other_ord = float(analysis.get('other_ordinary') or 0)
+                ltcg_r = rates.get('ltcg')
+            else:
+                other_ord = float(getattr(analysis, 'other_ordinary', 0) or 0)
+                ltcg_r = rates.get('ltcg') if isinstance(rates, dict) else None
+            if ltcg_r is not None:
+                notes.append(
+                    f'Assumptions: profile ordinary ${other_ord:,.0f} · federal LTCG rate used {float(ltcg_r)*100:.0f}% '
+                    f'(20% band starts ~$545k taxable income single 2026).'
+                )
+        except Exception:
+            pass
     if target > 0:
         if net >= target * 0.995:
             notes.append(f'Target ${target:,.0f} net cash met (achieved ${net:,.0f}).')

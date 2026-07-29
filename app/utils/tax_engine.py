@@ -123,12 +123,50 @@ def marginal_rate(income: float, brackets: List[Tuple[float, float]]) -> float:
 
 
 def ltcg_rate_for_income(taxable_income: float, filing: str, year: int) -> float:
+    """Top preferential rate that applies at this taxable-income level (0/15/20)."""
     brackets = _year_table(LTCG_BRACKETS, year)[filing]
     rate = 0.0
     for floor, r in brackets:
         if taxable_income >= floor:
             rate = r
     return rate
+
+
+def preferential_ltcg_tax(
+    ltcg: float,
+    ordinary_taxable: float,
+    filing: str,
+    year: int,
+) -> Tuple[float, float]:
+    """
+    Preferential LTCG tax with correct bracket fill (not a single flat rate).
+
+    LTCG stacks on top of ordinary taxable income and fills the 0% → 15% → 20%
+    bands by total taxable income. Returns (tax, marginal_rate_on_last_dollar).
+    """
+    if ltcg <= 0:
+        return 0.0, 0.0
+    brackets = [(float(f), float(r)) for f, r in _year_table(LTCG_BRACKETS, year)[filing]]
+    ordinary = max(0.0, float(ordinary_taxable or 0.0))
+    end = ordinary + float(ltcg)
+    pos = ordinary
+    tax = 0.0
+    last_rate = 0.0
+    for i, (floor, rate) in enumerate(brackets):
+        next_floor = brackets[i + 1][0] if i + 1 < len(brackets) else float('inf')
+        seg_lo = max(pos, floor)
+        seg_hi = min(end, next_floor)
+        if seg_hi > seg_lo:
+            tax += (seg_hi - seg_lo) * rate
+            last_rate = rate
+            pos = seg_hi
+        if pos >= end - 1e-9:
+            break
+    if pos < end - 1e-9:
+        top = brackets[-1][1]
+        tax += (end - pos) * top
+        last_rate = top
+    return tax, last_rate
 
 
 @dataclass
@@ -456,11 +494,15 @@ def _federal_state_layer(
 
     taxable_for_ltcg = total_ordinary + ltcg_pos
     if profile.get('federal_ltcg_rate') is not None:
+        # Manual override: flat rate on all LTCG (power-user / stress test)
         ltcg_rate = float(profile['federal_ltcg_rate'])
+        federal_ltcg_tax = ltcg_pos * ltcg_rate
     else:
-        ltcg_rate = ltcg_rate_for_income(taxable_for_ltcg, filing, year)
-    federal_ltcg_tax = ltcg_pos * ltcg_rate
-    federal_stcg_tax = stcg_pos * ord_marginal  # illustrative
+        # Stack LTCG on ordinary and fill 0% / 15% / 20% bands (not one flat rate)
+        federal_ltcg_tax, ltcg_rate = preferential_ltcg_tax(
+            ltcg_pos, total_ordinary, filing, year
+        )
+    federal_stcg_tax = stcg_pos * ord_marginal  # STCG already in ordinary progressive
 
     regular_federal = federal_ordinary_tax + federal_ltcg_tax
 

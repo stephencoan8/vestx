@@ -1757,10 +1757,12 @@ body.advisor-open .app-main {
     font-size: 1.2rem !important;
 }
 .tax-stack {
+    margin: 0 0 1rem;
+}
+.tax-stack-row {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin: 0 0 1rem;
 }
 .tax-stack-item {
     background: var(--bg-primary);
@@ -1780,6 +1782,16 @@ body.advisor-open .app-main {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-primary);
+}
+.tax-stack-meta {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+.tax-stack-hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
 }
 .tax-result-toolbar {
     display: flex;

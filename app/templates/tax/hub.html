@@ -649,23 +649,38 @@
       el.innerHTML = '';
       return;
     }
+    // federal_tax_total already includes NIIT + AMT due − credits — don't double-count NIIT
+    var fedCore = Math.max(0, Number(a.federal_tax_total || 0) - Number(a.niit || 0));
+    var rates = a.rates_used || {};
     var parts = [
-      ['Federal', a.federal_tax_total],
-      ['State', a.state_tax],
-      ['NIIT', a.niit],
+      ['Federal (ex-NIIT)', fedCore],
+      ['NIIT 3.8%', a.niit],
+      ['State (CA)', a.state_tax],
       ['Fed AMT', a.amt_due],
       ['CA AMT', a.ca_amt_due],
       ['FICA', a.fica_tax]
-    ].filter(function (p) { return Number(p[1] || 0) !== 0; });
-    if (!parts.length) {
+    ].filter(function (p) { return Number(p[1] || 0) > 0.5; });
+    var meta = '';
+    if (rates.ltcg != null) {
+      meta += '<div class="tax-stack-meta">Federal LTCG rate on last $: <strong>' +
+        (100 * Number(rates.ltcg)).toFixed(0) + '%</strong>';
+      if (a.other_ordinary != null) {
+        meta += ' · profile ordinary <strong>' + money(a.other_ordinary) + '</strong>';
+      }
+      if (a.ltcg != null) meta += ' · LT gain <strong>' + money(a.ltcg) + '</strong>';
+      if (a.stcg != null && Number(a.stcg) > 0) meta += ' · ST gain <strong>' + money(a.stcg) + '</strong>';
+      meta += '</div>';
+      meta += '<div class="tax-stack-meta tax-stack-hint">Incremental vs profile only — add expected RSU vest wages in Tax Profile if you want them stacked this year. CA is progressive (not a flat 10%); rate on gain is usually below your top marginal.</div>';
+    }
+    if (!parts.length && !meta) {
       el.style.display = 'none';
       return;
     }
-    el.style.display = 'flex';
-    el.innerHTML = parts.map(function (p) {
+    el.style.display = 'block';
+    el.innerHTML = '<div class="tax-stack-row">' + parts.map(function (p) {
       return '<div class="tax-stack-item"><span class="tax-stack-label">' + p[0] +
         '</span><span class="tax-stack-val">' + money2(p[1]) + '</span></div>';
-    }).join('');
+    }).join('') + '</div>' + meta;
   }
 
   function residualAfterPicks(picks) {
