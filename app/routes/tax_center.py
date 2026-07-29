@@ -64,7 +64,7 @@ __all__ = ['tax_center_bp']
 @tax_center_bp.route('/')
 @login_required
 def hub():
-    """Sales & tax hub: lots, ledger, planner entry."""
+    """Sales & tax hub: strategy cockpit — goal-first, advanced, activity."""
     profile = TaxProfile.for_user(current_user)
     lots = build_lots_for_user(current_user.id)
     sales = (
@@ -77,8 +77,29 @@ def hub():
         .order_by(ISOExercise.exercise_date.desc())
         .all()
     )
-    live = get_latest_user_price(current_user.id) or 0.0
-    available = sum(l['shares_available'] for l in lots)
+    live = float(get_latest_user_price(current_user.id) or 0.0)
+    rsu_held = sum(float(l.get('shares_available') or 0) for l in lots if not l.get('is_iso'))
+    iso_held = sum(float(l.get('shares_available') or 0) for l in lots if l.get('is_iso'))
+    iso_unex = sum(float(l.get('shares_unexercised') or 0) for l in lots if l.get('is_iso'))
+    available = rsu_held + iso_held
+    inventory = {
+        'rsu_held': rsu_held,
+        'iso_held': iso_held,
+        'iso_unexercised': iso_unex,
+        'shares_available': available,
+        'sellable_value': available * live,
+        'unex_intrinsic': sum(
+            max(0.0, live - float(l.get('strike_price') or l.get('cost_basis_per_share') or 0))
+            * float(l.get('shares_unexercised') or 0)
+            for l in lots if l.get('is_iso')
+        ),
+        'lt_lots': sum(1 for l in lots if l.get('is_long_term') and float(l.get('shares_available') or 0) > 0),
+        'st_lots': sum(1 for l in lots if not l.get('is_long_term') and float(l.get('shares_available') or 0) > 0),
+    }
+    profile_ready = bool(
+        float(profile.other_ordinary_income or 0) > 0
+        or float(profile.ytd_wages or 0) > 0
+    )
     return render_template(
         'tax/hub.html',
         profile=profile,
@@ -87,7 +108,9 @@ def hub():
         exercises=exercises,
         live_price=live,
         shares_available=available,
-        profile_ready=profile.other_ordinary_income is not None,
+        inventory=inventory,
+        profile_ready=profile_ready,
+        today=date.today(),
         grok_enabled=xai_advisor.is_configured(current_user),
     )
 

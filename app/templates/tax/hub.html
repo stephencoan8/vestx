@@ -1,196 +1,233 @@
 {% extends "base.html" %}
 {% block title %}Sales & Tax - VestX{% endblock %}
 {% block content %}
-<div class="page">
-  <header class="page-header">
-    <h1>Sales &amp; tax</h1>
-    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+<div class="page tax-hub" id="taxHub">
+  <header class="page-header tax-hub-header">
+    <div>
+      <h1>Sales &amp; tax</h1>
+      <p class="tax-hub-tagline">Decide SpecIDs · see incremental tax · execute. Everything else is one click away.</p>
+    </div>
+    <div class="tax-hub-header-actions">
       <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Tax profile</a>
     </div>
   </header>
 
-  {% if not profile.other_ordinary_income and profile.other_ordinary_income != 0 %}
-  {% endif %}
-  {% if (profile.other_ordinary_income or 0) == 0 %}
-  <div class="alert alert-warning">
-    Set <strong>other ordinary income</strong> in Tax profile for accurate brackets, NIIT, and AMT.
-    <a href="{{ url_for('tax_center.tax_profile') }}">Open profile</a>
+  {% if not profile_ready %}
+  <div class="alert alert-warning tax-hub-alert">
+    <strong>Profile incomplete</strong> — set wages / other ordinary income so brackets, NIIT, and AMT stack correctly.
+    <a href="{{ url_for('tax_center.tax_profile') }}">Open tax profile</a>
   </div>
   {% endif %}
 
-  <div class="stats-grid">
-    <div class="stat-card accent">
-      <div class="stat-content">
-        <div class="stat-label">Live price</div>
-        <div class="stat-value">${{ "{:,.2f}".format(live_price) }}</div>
+  {# ——— Situation strip (decision KPIs only) ——— #}
+  <div class="tax-situation" id="hubStats">
+    <div class="tax-sit-card accent">
+      <div class="tax-sit-label">Live price</div>
+      <div class="tax-sit-value">${{ "{:,.2f}".format(live_price) }}</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Sellable value</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.sellable_value) }}</div>
+      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh · RSU {{ "{:,.0f}".format(inventory.rsu_held) }} · ISO held {{ "{:,.0f}".format(inventory.iso_held) }}</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Unexercised ISO</div>
+      <div class="tax-sit-value">{{ "{:,.0f}".format(inventory.iso_unexercised) }} <span class="tax-sit-unit">sh</span></div>
+      <div class="tax-sit-sub">~${{ "{:,.0f}".format(inventory.unex_intrinsic) }} intrinsic @ live</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Profile</div>
+      <div class="tax-sit-value tax-sit-value-sm">
+        {{ (profile.filing_status or '—')|upper }}
+        · {{ (profile.state_code or '—')|upper }}
+      </div>
+      <div class="tax-sit-sub">
+        {% if profile_ready %}Wages set · {{ inventory.lt_lots }} LT / {{ inventory.st_lots }} ST lots
+        {% else %}Set income for accurate tax{% endif %}
       </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-label">Shares available</div>
-        <div class="stat-value">{{ "{:,.0f}".format(shares_available) }}</div>
+  </div>
+
+  {# ——— Intent chips ——— #}
+  <div class="tax-intents" role="group" aria-label="Quick intents">
+    <button type="button" class="tax-intent active" data-intent="cash" id="intentCash">
+      Raise cash <span>min tax</span>
+    </button>
+    <button type="button" class="tax-intent" data-intent="iso" id="intentIso">
+      ISO decision <span>compare paths</span>
+    </button>
+    <button type="button" class="tax-intent" data-intent="advanced" id="intentAdvanced">
+      Advanced <span>manual lots</span>
+    </button>
+    <button type="button" class="tax-intent" data-intent="activity" id="intentActivity">
+      Activity <span>log &amp; history</span>
+    </button>
+  </div>
+
+  {# ——— Primary tabs ——— #}
+  <nav class="chart-toggle tax-hub-tabs" id="taxHubTabs" role="tablist" aria-label="Sales and tax sections">
+    <button type="button" class="toggle-btn active" data-tax-tab="optimize" role="tab" aria-selected="true">Plan</button>
+    <button type="button" class="toggle-btn" data-tax-tab="scenario" role="tab" aria-selected="false">Advanced</button>
+    <button type="button" class="toggle-btn" data-tax-tab="activity" role="tab" aria-selected="false">Activity</button>
+  </nav>
+
+  {# ===================== PLAN (Goal) ===================== #}
+  <section class="detail-card tax-hub-panel" id="panelOptimize" data-tax-panel="optimize">
+    <div class="tax-panel-head">
+      <div>
+        <h2>Goal planner</h2>
+        <p class="tax-panel-lead">Net cash target → SpecID picks ranked for tax efficiency (federal + {{ (profile.state_code or 'state')|upper }}).</p>
       </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-label">Recorded sales</div>
-        <div class="stat-value">{{ sales|length }}</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-content">
-        <div class="stat-label">State engine</div>
-        <div class="stat-value" style="font-size:1.1rem;">
-          {% if (profile.state_code or '')|upper == 'CA' and (profile.use_state_engine is none or profile.use_state_engine) %}
-          CA PIT + MHST
-          {% elif profile.state_code %}
-          {{ profile.state_code|upper }} (flat)
-          {% else %}
-          Not set
-          {% endif %}
+
+    <div class="tax-goal-primary">
+      <div class="tax-goal-target-wrap">
+        <label for="goalTarget">Target net cash</label>
+        <div class="tax-goal-target-row">
+          <span class="tax-goal-prefix">$</span>
+          <input type="number" step="1000" id="goalTarget" placeholder="50000" inputmode="numeric">
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- Goal optimizer -->
-  <div class="detail-card">
-    <h2>Goal optimizer</h2>
-    <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.9rem;max-width:48rem;">
-      Tell VestX <strong>what you want out</strong> (e.g. net $500,000 cash). The engine picks
-      <strong>specific lots (SpecID)</strong> to minimize tax, then optionally
-      {% if grok_enabled %}<strong>Grok</strong> explains the tradeoffs (using your encrypted API key).
-      {% else %}<strong>Grok</strong> explanations need your personal xAI key under
-      <a href="{{ url_for('settings.profile') }}">Settings</a> (encrypted; your console billing only).
-      {% endif %}
-    </p>
-
-    <div class="form-group" style="margin-bottom:1rem;">
-      <label for="goalPrompt">What do you want? (natural language)</label>
-      <textarea id="goalPrompt" rows="2" placeholder="I need to net $500k after tax with the lowest tax possible. Prefer long-term RSUs; only use ISO cashless if needed."
-        style="width:100%;max-width:48rem;"></textarea>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label for="goalTarget">Target net cash ($)</label>
-        <input type="number" step="1000" id="goalTarget" placeholder="500000">
-      </div>
-      <div class="form-group">
-        <label for="goalObjective">Optimize for</label>
-        <select id="goalObjective">
-          <option value="min_tax">Minimize tax</option>
-          <option value="min_shares">Minimize shares sold</option>
-          <option value="max_net">Maximize net cash (sell more)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="goalPrice">Price / share</label>
-        <input type="number" step="0.01" id="goalPrice" value="{{ '%.2f'|format(live_price) }}">
-      </div>
-      <div class="form-group">
-        <label for="goalSaleDate">Sale date</label>
-        <input type="date" id="goalSaleDate" value="{{ profile.tax_year or '' }}-07-01">
+      <div class="tax-goal-actions">
+        <button type="button" class="btn btn-primary" id="btnGoalRun">Optimize lots</button>
       </div>
     </div>
 
-    <div class="form-row" style="flex-wrap:wrap;gap:1rem;margin-bottom:0.75rem;">
-      <label class="form-check"><input type="checkbox" id="goalAllowRsu" checked> RSU sales</label>
-      <label class="form-check"><input type="checkbox" id="goalAllowIsoHeld" checked> Sell exercised ISOs</label>
-      <label class="form-check"><input type="checkbox" id="goalAllowCashless" checked> ISO cashless (if needed)</label>
-      <label class="form-check"><input type="checkbox" id="goalAllowHold"> Also model ISO hold split</label>
-      <label class="form-check"><input type="checkbox" id="goalExplain" {% if not grok_enabled %}disabled{% endif %}> Grok explanation (optional — uses API tokens)</label>
+    <div class="tax-quick-targets" aria-label="Quick targets">
+      <button type="button" class="tax-chip" data-goal-fill="50000">$50k</button>
+      <button type="button" class="tax-chip" data-goal-fill="100000">$100k</button>
+      <button type="button" class="tax-chip" data-goal-fill="300000">$300k</button>
+      <button type="button" class="tax-chip" data-goal-fill="500000">$500k</button>
     </div>
 
-    <div class="form-actions">
-      <button type="button" class="btn btn-primary" id="btnGoalRun">Compute optimal lots</button>
-      <button type="button" class="btn btn-secondary" id="btnGoalParse" {% if not grok_enabled %}title="Requires XAI_API_KEY"{% endif %}>Parse prompt only</button>
-    </div>
+    <details class="tax-hub-details" id="goalAdvancedDetails">
+      <summary>Options &amp; constraints</summary>
+      <div class="tax-details-body">
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label for="goalPrompt">Describe in plain language (optional)</label>
+          <textarea id="goalPrompt" rows="2" placeholder="e.g. Net $300k after tax, prefer long-term RSUs; cashless ISO only if needed."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="goalObjective">Optimize for</label>
+            <select id="goalObjective">
+              <option value="min_tax">Minimize tax</option>
+              <option value="min_shares">Minimize shares sold</option>
+              <option value="max_net">Maximize net cash</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="goalPrice">Price / share</label>
+            <input type="number" step="0.01" id="goalPrice" value="{{ '%.2f'|format(live_price) }}">
+          </div>
+          <div class="form-group">
+            <label for="goalSaleDate">Sale date</label>
+            <input type="date" id="goalSaleDate" value="{{ today.isoformat() }}">
+          </div>
+        </div>
+        <div class="tax-check-row">
+          <label class="form-check"><input type="checkbox" id="goalAllowRsu" checked> RSU sales</label>
+          <label class="form-check"><input type="checkbox" id="goalAllowIsoHeld" checked> Sell exercised ISOs</label>
+          <label class="form-check"><input type="checkbox" id="goalAllowCashless" checked> ISO cashless if needed</label>
+          <label class="form-check"><input type="checkbox" id="goalAllowHold"> Model ISO hold split</label>
+          <label class="form-check"><input type="checkbox" id="goalExplain" {% if not grok_enabled %}disabled{% endif %}> Grok explanation{% if not grok_enabled %} <span class="tax-muted">(add key in Settings)</span>{% endif %}</label>
+        </div>
+      </div>
+    </details>
 
-    <div id="goalPanel" style="display:none;margin-top:1.25rem;">
-      <div id="goalStatus" style="margin-bottom:0.75rem;color:var(--text-secondary);font-size:0.9rem;"></div>
-      <div class="stats-grid" id="goalStats"></div>
-      <div class="table-container" style="padding:0;border:none;margin-top:1rem;">
+    {# Hidden compat control for parse button removal — keep unused #}
+    <button type="button" id="btnGoalParse" hidden tabindex="-1" aria-hidden="true">Parse</button>
+
+    <div id="goalPanel" class="tax-result-shell" style="display:none;">
+      <div id="goalStatus" class="tax-result-status"></div>
+      <div class="stats-grid tax-hero-stats" id="goalStats"></div>
+      <div id="goalTaxStack" class="tax-stack" style="display:none;"></div>
+      <div class="tax-result-toolbar">
+        <h3 class="tax-subhead">SpecID picks</h3>
+        <div class="tax-result-toolbar-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCopyPicks" style="display:none;">Copy SpecIDs</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnOpenScenario" style="display:none;">Inspect in Advanced</button>
+        </div>
+      </div>
+      <div class="table-container tax-table-wrap">
         <table class="data-table" id="goalPicksTable"></table>
       </div>
-      <div id="goalNotes" style="margin-top:0.75rem;"></div>
-      <div id="goalExplanation" style="display:none;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border-subtle, rgba(255,255,255,0.08));">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Grok — what this means</h3>
-        <div id="goalExplanationBody" style="color:var(--text-secondary);font-size:0.9rem;white-space:pre-wrap;line-height:1.5;"></div>
-      </div>
+      <div id="goalNotes" class="tax-notes"></div>
+      <div id="goalToScenarioHint" class="alert advisor-ui-sync tax-bridge" style="display:none;"></div>
+      <details class="tax-hub-details" id="goalExplainDetails" style="display:none;">
+        <summary>Explanation</summary>
+        <div id="goalExplanation" style="display:none;">
+          <div id="goalExplanationBody" class="tax-explain-body"></div>
+        </div>
+      </details>
       {% if grok_enabled %}
-      <div style="margin-top:1.25rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Ask Grok about this plan</h3>
-        <div id="goalChatLog" style="max-height:220px;overflow:auto;margin-bottom:0.5rem;font-size:0.875rem;color:var(--text-secondary);"></div>
-        <div class="form-row">
+      <details class="tax-hub-details">
+        <summary>Ask Grok about this plan</summary>
+        <div id="goalChatLog" class="tax-chat-log"></div>
+        <div class="form-row tax-chat-row">
           <div class="form-group" style="flex:1;">
-            <input type="text" id="goalChatInput" placeholder="e.g. What if I wait until next year for more LTCG?" style="width:100%;">
+            <input type="text" id="goalChatInput" placeholder="e.g. What if I wait until next year?">
           </div>
           <button type="button" class="btn btn-secondary" id="btnGoalChat">Send</button>
         </div>
-      </div>
+      </details>
       {% endif %}
     </div>
-  </div>
+  </section>
 
-  <!-- Planner -->
-  <div class="detail-card">
-    <h2>Equity scenario planner</h2>
-    <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.9rem;max-width:48rem;">
-      <strong>Exercise and sale are separate taxable events for ISOs.</strong>
-      Pick a strategy, set dates/prices, choose lots. Federal brackets, NIIT, FICA, AMT, and
-      {% if (profile.state_code or '')|upper == 'CA' and (profile.use_state_engine is none or profile.use_state_engine) %}
-      <strong>California PIT + MHST</strong> (gains as ordinary)
-      {% else %}
-      state tax
-      {% endif %}
-      are stacked incrementally vs your Tax Profile wages.
-    </p>
+  {# ===================== ADVANCED (Scenario) ===================== #}
+  <section class="detail-card tax-hub-panel" id="panelScenario" data-tax-panel="scenario" hidden>
+    <div class="tax-panel-head">
+      <div>
+        <h2>Scenario planner</h2>
+        <p class="tax-panel-lead">Manual strategies for ISO paths, sell-to-cover, and multi-year AMT. Exercise and sale stay separate events.</p>
+      </div>
+    </div>
 
-    <div class="form-group" style="margin-bottom:1rem;">
+    <div class="form-group tax-strategy-group">
       <label for="planStrategy">Strategy</label>
-      <select id="planStrategy" style="max-width:32rem;">
-        <option value="auto">Auto — RSU sell + ISO cashless if unexercised</option>
+      <select id="planStrategy">
+        <option value="auto">Auto — RSU + ISO cashless if unexercised</option>
         <option value="rsu_sell">RSU: sell only</option>
-        <option value="iso_cashless_dd">ISO: cashless (exercise + sell same day) — DD</option>
-        <option value="iso_exercise_hold">ISO: exercise &amp; hold (AMT year only)</option>
-        <option value="iso_exercise_sell_qd">ISO: exercise → hold for QD → sell (credit handoff)</option>
-        <option value="iso_sell_held">ISO: sell already-exercised shares</option>
-        <option value="iso_sell_to_cover">ISO: sell-to-cover (min cashless to fund hold)</option>
-        <option value="rsu_fund_iso">RSU: sell enough to fund ISO exercise+AMT</option>
-        <option value="compare_iso">ISO: compare cashless vs hold vs QD path</option>
+        <option value="iso_cashless_dd">ISO: cashless (exercise + sell same day)</option>
+        <option value="iso_exercise_hold">ISO: exercise &amp; hold (AMT year)</option>
+        <option value="iso_exercise_sell_qd">ISO: exercise → hold for QD → sell</option>
+        <option value="iso_sell_held">ISO: sell already-exercised</option>
+        <option value="iso_sell_to_cover">ISO: sell-to-cover</option>
+        <option value="rsu_fund_iso">RSU: fund ISO exercise + AMT</option>
+        <option value="compare_iso">ISO: compare cashless vs hold vs QD</option>
       </select>
-      <span class="form-hint" id="strategyHint" style="display:block;margin-top:0.35rem;color:var(--text-muted);font-size:0.8rem;"></span>
+      <span class="form-hint" id="strategyHint"></span>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
+    <div class="form-row" id="planDateRow">
+      <div class="form-group plan-field-ex">
         <label for="planExerciseDate">Exercise date</label>
-        <input type="date" id="planExerciseDate" value="{{ profile.tax_year or '' }}-06-15">
+        <input type="date" id="planExerciseDate" value="{{ today.isoformat() }}">
       </div>
-      <div class="form-group">
-        <label for="planExerciseFmv">FMV at exercise / share</label>
+      <div class="form-group plan-field-ex">
+        <label for="planExerciseFmv">FMV at exercise</label>
         <input type="number" step="0.01" id="planExerciseFmv" value="{{ '%.2f'|format(live_price) }}">
       </div>
-      <div class="form-group">
+      <div class="form-group plan-field-sale">
         <label for="planSaleDate">Sale date</label>
-        <input type="date" id="planSaleDate" value="{{ profile.tax_year or '' }}-07-01">
+        <input type="date" id="planSaleDate" value="{{ today.isoformat() }}">
       </div>
-      <div class="form-group">
-        <label for="planSalePrice">Sale price / share</label>
+      <div class="form-group plan-field-sale">
+        <label for="planSalePrice">Sale price</label>
         <input type="number" step="0.01" id="planSalePrice" value="{{ '%.2f'|format(live_price) }}">
       </div>
     </div>
 
-    <div class="table-container" style="padding:0;border:none;">
+    <div class="table-container tax-table-wrap">
       <table class="data-table" id="lotsTable">
         <thead>
           <tr>
             <th></th>
             <th>Lot</th>
             <th>Type</th>
-            <th>Held / unexercised</th>
-            <th>Strike / basis</th>
+            <th>Held / unex</th>
+            <th>Basis / strike</th>
             <th>Ex date</th>
             <th>Hold</th>
             <th>Qty</th>
@@ -206,32 +243,35 @@
             data-exercised="{{ 'true' if lot.exercise_date else 'false' }}"
           >
             <td><input type="checkbox" class="lot-check" {% if lot.shares_available <= 0 and lot.shares_unexercised <= 0 %}disabled{% endif %}></td>
-            <td>{{ lot.label }}</td>
+            <td>
+              <span class="tax-lot-label">{{ lot.label }}</span>
+              <span class="tax-lot-id">#{{ lot.vest_event_id }}</span>
+            </td>
             <td>{{ lot.share_type }}</td>
             <td>
               {% if lot.is_iso %}
                 {{ "{:,.2f}".format(lot.shares_available) }} held
-                <div style="font-size:0.75rem;color:var(--text-muted);">{{ "{:,.2f}".format(lot.shares_unexercised) }} unexercised</div>
+                <div class="tax-muted-sm">{{ "{:,.2f}".format(lot.shares_unexercised) }} unex</div>
               {% else %}
-                {{ "{:,.2f}".format(lot.shares_available) }} available
+                {{ "{:,.2f}".format(lot.shares_available) }}
               {% endif %}
             </td>
             <td>
-              {% if lot.is_iso %}${{ "{:,.2f}".format(lot.strike_price or lot.cost_basis_per_share) }} strike
+              {% if lot.is_iso %}${{ "{:,.2f}".format(lot.strike_price or lot.cost_basis_per_share) }}
               {% else %}${{ "{:,.2f}".format(lot.cost_basis_per_share) }}
               {% endif %}
             </td>
-            <td style="font-size:0.85rem;">{{ lot.exercise_date or '—' }}</td>
-            <td>{% if lot.is_long_term %}LT{% else %}ST{% endif %} ({{ lot.holding_days }}d)</td>
+            <td class="tax-muted-sm">{{ lot.exercise_date or '—' }}</td>
+            <td>{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
             <td>
               {% set max_q = lot.shares_available if lot.shares_available > 0 else lot.shares_unexercised %}
               <input type="number" class="lot-qty form-control" step="0.01" min="0"
-                     max="{{ max_q }}" value="0" style="width:6rem;"
+                     max="{{ max_q }}" value="0"
                      {% if max_q <= 0 %}disabled{% endif %}>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="8">No lots yet.</td></tr>
+          <tr><td colspan="8" class="empty-state">No lots yet — add grants first.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -242,190 +282,303 @@
       <button type="button" class="btn btn-secondary" id="btnSellMax">Fill max on selected</button>
     </div>
 
-    <div id="analysisPanel" class="detail-card" style="margin-top:1.25rem;display:none;">
-      <h2 id="analysisTitle">Scenario result</h2>
-      <p id="analysisDesc" style="color:var(--text-secondary);font-size:0.9rem;margin:0 0 0.75rem;"></p>
-      <div id="analysisWarnings" style="color:var(--warning);margin-bottom:0.75rem;"></div>
+    <div id="analysisPanel" class="tax-result-shell" style="display:none;">
+      <h2 id="analysisTitle" class="tax-result-title">Scenario result</h2>
+      <p id="analysisDesc" class="tax-panel-lead"></p>
+      <div id="analysisWarnings" class="tax-warnings"></div>
 
-      <div id="comparePanel" style="display:none;margin-bottom:1.25rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.75rem;">Strategy comparison</h3>
-        <div class="table-container" style="padding:0;border:none;">
+      <div id="comparePanel" style="display:none;" class="tax-subpanel">
+        <h3 class="tax-subhead">Strategy comparison</h3>
+        <div class="table-container tax-table-wrap">
           <table class="data-table" id="compareTable"></table>
         </div>
-        <ul id="compareGuidance" style="margin:0.75rem 0 0;padding-left:1.25rem;color:var(--text-secondary);font-size:0.875rem;"></ul>
+        <ul id="compareGuidance" class="tax-notes-list"></ul>
       </div>
 
-      <div id="cashPanel" style="display:none;margin-bottom:1rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Cash flow</h3>
-        <div class="stats-grid" id="cashStats"></div>
+      <div id="cashPanel" style="display:none;" class="tax-subpanel">
+        <h3 class="tax-subhead">Cash summary</h3>
+        <div class="stats-grid tax-hero-stats" id="cashStats"></div>
       </div>
 
-      <div id="timelinePanel" style="display:none;margin-bottom:1rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Timeline</h3>
-        <ul id="timelineList" style="margin:0;padding-left:1.25rem;font-size:0.9rem;color:var(--text-secondary);"></ul>
+      <div id="coverPanel" style="display:none;" class="tax-subpanel">
+        <h3 class="tax-subhead">Sell-to-cover</h3>
+        <div class="stats-grid tax-hero-stats" id="coverStats"></div>
+        <ul id="coverNotes" class="tax-notes-list"></ul>
       </div>
 
-      <div id="recsPanel" style="display:none;margin-bottom:1rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Planning notes</h3>
-        <ul id="recsList" style="margin:0;padding-left:1.25rem;font-size:0.875rem;color:var(--text-secondary);"></ul>
-      </div>
+      <div class="stats-grid tax-hero-stats" id="analysisStats"></div>
 
-      <div id="coverPanel" style="display:none;margin-bottom:1rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">Sell-to-cover / liquidity</h3>
-        <div class="stats-grid" id="coverStats"></div>
-        <ul id="coverNotes" style="margin:0.75rem 0 0;padding-left:1.25rem;font-size:0.875rem;color:var(--text-secondary);"></ul>
-      </div>
-
-      <div id="amtCreditPanel" style="display:none;margin-bottom:1rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">AMT credit ledger (federal + CA)</h3>
-        <div class="table-container" style="padding:0;border:none;">
-          <table class="data-table" id="amtCreditTable"></table>
+      <details class="tax-hub-details" id="analysisDetails">
+        <summary>Tax breakdown, timeline &amp; lot detail</summary>
+        <div class="tax-details-body">
+          <div id="timelinePanel" style="display:none;" class="tax-subpanel">
+            <h3 class="tax-subhead">Timeline</h3>
+            <ul id="timelineList" class="tax-notes-list"></ul>
+          </div>
+          <div id="recsPanel" style="display:none;" class="tax-subpanel">
+            <h3 class="tax-subhead">Planning notes</h3>
+            <ul id="recsList" class="tax-notes-list"></ul>
+          </div>
+          <div id="amtCreditPanel" style="display:none;" class="tax-subpanel">
+            <h3 class="tax-subhead">AMT credit ledger</h3>
+            <div class="table-container tax-table-wrap">
+              <table class="data-table" id="amtCreditTable"></table>
+            </div>
+          </div>
+          <div id="multiYearPanel" style="display:none;" class="tax-subpanel">
+            <h3 class="tax-subhead">By tax year</h3>
+            <div id="multiYearStats"></div>
+          </div>
+          <div id="stateTaxDetail" style="display:none;" class="tax-subpanel">
+            <h3 class="tax-subhead">State tax detail</h3>
+            <div class="stats-grid" id="stateTaxStats"></div>
+            <ul id="stateTaxNotes" class="tax-notes-list"></ul>
+          </div>
+          <div class="table-container tax-table-wrap">
+            <table class="data-table" id="analysisLots"></table>
+          </div>
         </div>
-      </div>
+      </details>
+    </div>
+  </section>
 
-      <div class="stats-grid" id="analysisStats"></div>
-      <div id="multiYearPanel" style="display:none;margin-top:1rem;">
-        <h3 style="font-size:1rem;margin:0 0 0.5rem;">By tax year</h3>
-        <div id="multiYearStats"></div>
-      </div>
-      <div id="stateTaxDetail" style="display:none;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border-subtle, rgba(255,255,255,0.08));">
-        <h3 style="font-size:1rem;margin:0 0 0.75rem;">State tax detail</h3>
-        <div class="stats-grid" id="stateTaxStats"></div>
-        <ul id="stateTaxNotes" style="margin:0.75rem 0 0;padding-left:1.25rem;color:var(--text-secondary);font-size:0.875rem;"></ul>
-      </div>
-      <div class="table-container" style="padding:0;border:none;margin-top:1rem;">
-        <table class="data-table" id="analysisLots"></table>
+  {# ===================== ACTIVITY ===================== #}
+  <section class="detail-card tax-hub-panel" id="panelActivity" data-tax-panel="activity" hidden>
+    <div class="tax-panel-head">
+      <div>
+        <h2>Activity</h2>
+        <p class="tax-panel-lead">Log real sales and ISO exercises so inventory and basis stay accurate.</p>
       </div>
     </div>
-  </div>
 
-  <!-- Record sale -->
-  <div class="detail-card">
-    <h2>Record a sale</h2>
-    <form id="recordSaleForm" class="form-row">
-      <div class="form-group">
-        <label for="saleVest">Lot (vest)</label>
-        <select id="saleVest" required>
-          <option value="">Select…</option>
-          {% for lot in lots if lot.shares_available > 0 %}
-          <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_available }}">
-            {{ lot.label }} ({{ "{:,.2f}".format(lot.shares_available) }} avail)
-          </option>
-          {% endfor %}
-        </select>
+    <div class="tax-activity-grid">
+      <div class="tax-activity-block">
+        <h3 class="tax-subhead">Record a sale</h3>
+        <form id="recordSaleForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="saleVest">Lot</label>
+              <select id="saleVest" required>
+                <option value="">Select…</option>
+                {% for lot in lots if lot.shares_available > 0 %}
+                <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_available }}">
+                  {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.2f}".format(lot.shares_available) }})
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="saleDate">Date</label>
+              <input type="date" id="saleDate" value="{{ today.isoformat() }}" required>
+            </div>
+            <div class="form-group">
+              <label for="saleShares">Shares</label>
+              <input type="number" step="0.01" id="saleShares" required>
+            </div>
+            <div class="form-group">
+              <label for="salePrice">Price</label>
+              <input type="number" step="0.01" id="salePrice" value="{{ '%.2f'|format(live_price) }}" required>
+            </div>
+            <div class="form-group">
+              <label for="saleComm">Commission</label>
+              <input type="number" step="0.01" id="saleComm" value="0">
+            </div>
+            <div class="form-group">
+              <label for="saleNotes">Notes</label>
+              <input type="text" id="saleNotes" placeholder="Optional">
+            </div>
+          </div>
+        </form>
+        <button type="button" class="btn btn-primary" id="btnRecordSale">Save sale</button>
+        <div id="recordSaleResult" class="tax-inline-result"></div>
       </div>
-      <div class="form-group">
-        <label for="saleDate">Sale date</label>
-        <input type="date" id="saleDate" required>
-      </div>
-      <div class="form-group">
-        <label for="saleShares">Shares</label>
-        <input type="number" step="0.01" id="saleShares" required>
-      </div>
-      <div class="form-group">
-        <label for="salePrice">Price / share</label>
-        <input type="number" step="0.01" id="salePrice" value="{{ '%.2f'|format(live_price) }}" required>
-      </div>
-      <div class="form-group">
-        <label for="saleComm">Commission</label>
-        <input type="number" step="0.01" id="saleComm" value="0">
-      </div>
-      <div class="form-group">
-        <label for="saleNotes">Notes</label>
-        <input type="text" id="saleNotes">
-      </div>
-    </form>
-    <button type="button" class="btn btn-primary" id="btnRecordSale">Save sale &amp; show tax</button>
-    <div id="recordSaleResult" style="margin-top:1rem;"></div>
-  </div>
 
-  <!-- ISO exercise -->
-  <div class="detail-card">
-    <h2>Record ISO exercise</h2>
-    <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:1rem;">
-      Exercises create AMT bargain element and establish basis for later sales.
-    </p>
-    <div class="form-row">
-      <div class="form-group">
-        <label for="exVest">ISO lot</label>
-        <select id="exVest">
-          <option value="">Select…</option>
-          {% for lot in lots if lot.is_iso and lot.shares_unexercised > 0 %}
-          <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_unexercised }}">
-            {{ lot.label }} ({{ "{:,.2f}".format(lot.shares_unexercised) }} unexercised)
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="exDate">Exercise date</label>
-        <input type="date" id="exDate">
-      </div>
-      <div class="form-group">
-        <label for="exShares">Shares</label>
-        <input type="number" step="0.01" id="exShares">
-      </div>
-      <div class="form-group">
-        <label for="exFmv">FMV at exercise</label>
-        <input type="number" step="0.01" id="exFmv" value="{{ '%.2f'|format(live_price) }}">
+      <div class="tax-activity-block">
+        <h3 class="tax-subhead">Record ISO exercise</h3>
+        <p class="tax-muted-sm">Creates AMT bargain element and basis for later sales.</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="exVest">ISO lot</label>
+            <select id="exVest">
+              <option value="">Select…</option>
+              {% for lot in lots if lot.is_iso and lot.shares_unexercised > 0 %}
+              <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_unexercised }}">
+                {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.2f}".format(lot.shares_unexercised) }} unex)
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="exDate">Exercise date</label>
+            <input type="date" id="exDate" value="{{ today.isoformat() }}">
+          </div>
+          <div class="form-group">
+            <label for="exShares">Shares</label>
+            <input type="number" step="0.01" id="exShares">
+          </div>
+          <div class="form-group">
+            <label for="exFmv">FMV at exercise</label>
+            <input type="number" step="0.01" id="exFmv" value="{{ '%.2f'|format(live_price) }}">
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary" id="btnRecordEx">Save exercise</button>
+        <div id="exResult" class="tax-inline-result"></div>
       </div>
     </div>
-    <button type="button" class="btn btn-secondary" id="btnRecordEx">Save exercise</button>
-    <div id="exResult" style="margin-top:0.75rem;"></div>
-  </div>
 
-  <!-- Ledger -->
-  <div class="detail-card">
-    <h2>Sale ledger</h2>
-    {% if sales %}
-    <div class="table-container" style="padding:0;border:none;">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Vest</th>
-            <th>Shares</th>
-            <th>Price</th>
-            <th>Proceeds</th>
-            <th>Gain</th>
-            <th>Term</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in sales %}
-          <tr>
-            <td>{{ s.sale_date }}</td>
-            <td>{{ s.vest_event_id }}</td>
-            <td>{{ "{:,.2f}".format(s.shares_sold) }}</td>
-            <td>${{ "{:,.2f}".format(s.sale_price) }}</td>
-            <td>${{ "{:,.2f}".format(s.total_proceeds) }}</td>
-            <td>${{ "{:,.2f}".format(s.capital_gain) }}</td>
-            <td>{% if s.is_long_term %}LT{% else %}ST{% endif %}</td>
-            <td><button type="button" class="btn btn-danger btn-sm btn-del-sale" data-id="{{ s.id }}">Delete</button></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="tax-ledger-block">
+      <h3 class="tax-subhead">Sale ledger</h3>
+      {% if sales %}
+      <div class="table-container tax-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>SpecID</th>
+              <th>Shares</th>
+              <th>Price</th>
+              <th>Proceeds</th>
+              <th>Gain</th>
+              <th>Term</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sales %}
+            <tr>
+              <td>{{ s.sale_date }}</td>
+              <td>#{{ s.vest_event_id }}</td>
+              <td>{{ "{:,.2f}".format(s.shares_sold) }}</td>
+              <td>${{ "{:,.2f}".format(s.sale_price) }}</td>
+              <td>${{ "{:,.2f}".format(s.total_proceeds) }}</td>
+              <td>${{ "{:,.2f}".format(s.capital_gain) }}</td>
+              <td>{% if s.is_long_term %}LT{% else %}ST{% endif %}</td>
+              <td><button type="button" class="btn btn-danger btn-sm btn-del-sale" data-id="{{ s.id }}">Delete</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty-state">No sales recorded yet.</p>
+      {% endif %}
     </div>
-    {% else %}
-    <p class="empty-state">No sales recorded yet.</p>
+
+    {% if exercises %}
+    <div class="tax-ledger-block">
+      <h3 class="tax-subhead">Exercise ledger</h3>
+      <div class="table-container tax-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>SpecID</th>
+              <th>Shares</th>
+              <th>Strike</th>
+              <th>FMV</th>
+              <th>Bargain</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in exercises %}
+            <tr>
+              <td>{{ e.exercise_date }}</td>
+              <td>#{{ e.vest_event_id }}</td>
+              <td>{{ "{:,.2f}".format(e.shares_exercised) }}</td>
+              <td>${{ "{:,.2f}".format(e.strike_price or 0) }}</td>
+              <td>${{ "{:,.2f}".format(e.fmv_at_exercise or 0) }}</td>
+              <td>${{ "{:,.2f}".format(e.total_bargain_element or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
     {% endif %}
-  </div>
+  </section>
 </div>
 
 <script>
 (function () {
   const csrf = '{{ csrf_token() }}';
+  const livePrice = {{ live_price|tojson }};
+  const inv = {{ inventory|tojson }};
   let lastGoalPlan = null;
   const chatHistory = [];
 
   function money(n) {
+    return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  function money2(n) {
     return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   function pct(n) {
     return (100 * Number(n || 0)).toFixed(1) + '%';
   }
+  function heroCards(rows) {
+    return rows.map(function (c) {
+      var cls = c.accent ? ' stat-card accent' : 'stat-card';
+      return '<div class="' + cls + '"><div class="stat-content"><div class="stat-label">' + c[0] +
+        '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
+    }).join('');
+  }
+
+  // ——— Tabs ———
+  function showTaxTab(name) {
+    document.querySelectorAll('[data-tax-panel]').forEach(function (el) {
+      var on = el.getAttribute('data-tax-panel') === name;
+      el.hidden = !on;
+    });
+    document.querySelectorAll('#taxHubTabs [data-tax-tab]').forEach(function (btn) {
+      var on = btn.getAttribute('data-tax-tab') === name;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('.tax-intent').forEach(function (b) {
+      var map = { cash: 'optimize', iso: 'scenario', advanced: 'scenario', activity: 'activity' };
+      var intent = b.getAttribute('data-intent');
+      b.classList.toggle('active', map[intent] === name || (name === 'optimize' && intent === 'cash'));
+    });
+    try { sessionStorage.setItem('vestx_tax_hub_tab', name); } catch (e) {}
+  }
+
+  document.querySelectorAll('#taxHubTabs [data-tax-tab]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      showTaxTab(btn.getAttribute('data-tax-tab'));
+    });
+  });
+
+  // Intents
+  document.getElementById('intentCash').addEventListener('click', function () {
+    showTaxTab('optimize');
+    document.getElementById('goalTarget').focus();
+  });
+  document.getElementById('intentIso').addEventListener('click', function () {
+    showTaxTab('scenario');
+    document.getElementById('planStrategy').value = 'compare_iso';
+    updateStrategyHint();
+    updatePlanFieldVisibility();
+  });
+  document.getElementById('intentAdvanced').addEventListener('click', function () {
+    showTaxTab('scenario');
+  });
+  document.getElementById('intentActivity').addEventListener('click', function () {
+    showTaxTab('activity');
+  });
+
+  document.querySelectorAll('[data-goal-fill]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      document.getElementById('goalTarget').value = chip.getAttribute('data-goal-fill');
+      document.getElementById('goalTarget').focus();
+    });
+  });
+
+  try {
+    var savedTab = sessionStorage.getItem('vestx_tax_hub_tab');
+    if (savedTab && document.querySelector('[data-tax-panel="' + savedTab + '"]')) {
+      showTaxTab(savedTab);
+    }
+  } catch (e) {}
 
   function goalBody(extra) {
     const body = {
@@ -458,11 +611,7 @@
       if (qty && !qty.disabled) qty.value = 0;
     });
     picks.forEach(function (p) {
-      const sellActions = {
-        sell_rsu: true,
-        sell_iso_held: true,
-        iso_cashless_dd: true
-      };
+      const sellActions = { sell_rsu: true, sell_iso_held: true, iso_cashless_dd: true };
       if (!sellActions[p.action] && p.action !== 'iso_exercise_hold') return;
       const tr = table.querySelector('tbody tr[data-vest="' + p.vest_event_id + '"]');
       if (!tr) return;
@@ -470,78 +619,131 @@
       const check = tr.querySelector('.lot-check');
       const qty = tr.querySelector('.lot-qty');
       if (check && !check.disabled) check.checked = true;
-      if (qty && !qty.disabled && p.shares != null) {
-        // For unexercised ISO cashless, qty field may be on held=0 row — still set max avail
-        const maxQ = parseFloat(tr.dataset.available || tr.dataset.unexercised || qty.max || 0);
+      if (qty && p.shares != null) {
         const unex = parseFloat(tr.dataset.unexercised || 0);
-        let set = Number(p.shares);
-        if (p.action === 'iso_cashless_dd' && maxQ <= 0 && unex > 0) {
-          // enable mentally: use unexercised as capacity for display
+        if (p.action === 'iso_cashless_dd' && parseFloat(tr.dataset.available || 0) <= 0 && unex > 0) {
           qty.disabled = false;
           qty.max = unex;
         }
-        qty.value = set;
+        if (!qty.disabled) qty.value = Number(p.shares);
       }
     });
+    var hint = document.getElementById('goalToScenarioHint');
+    var openBtn = document.getElementById('btnOpenScenario');
+    if (hint) {
+      hint.style.display = 'block';
+      hint.innerHTML = '<strong>' + picks.length + ' SpecID pick(s)</strong> applied to Advanced. ' +
+        '<button type="button" class="btn btn-secondary btn-sm" id="btnBridgeScenario">Review scenario</button>';
+      var b = document.getElementById('btnBridgeScenario');
+      if (b) b.addEventListener('click', function () { showTaxTab('scenario'); });
+    }
+    if (openBtn) openBtn.style.display = 'inline-flex';
+  }
+
+  function renderGoalTaxStack(data) {
+    var el = document.getElementById('goalTaxStack');
+    if (!el) return;
+    var a = data.tax_analysis;
+    if (!a || typeof a !== 'object') {
+      el.style.display = 'none';
+      el.innerHTML = '';
+      return;
+    }
+    var parts = [
+      ['Federal', a.federal_tax_total],
+      ['State', a.state_tax],
+      ['NIIT', a.niit],
+      ['Fed AMT', a.amt_due],
+      ['CA AMT', a.ca_amt_due],
+      ['FICA', a.fica_tax]
+    ].filter(function (p) { return Number(p[1] || 0) !== 0; });
+    if (!parts.length) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'flex';
+    el.innerHTML = parts.map(function (p) {
+      return '<div class="tax-stack-item"><span class="tax-stack-label">' + p[0] +
+        '</span><span class="tax-stack-val">' + money2(p[1]) + '</span></div>';
+    }).join('');
+  }
+
+  function residualAfterPicks(picks) {
+    if (!picks || !picks.length || !inv) return null;
+    var sold = 0;
+    picks.forEach(function (p) {
+      if (p.action === 'sell_rsu' || p.action === 'sell_iso_held' || p.action === 'iso_cashless_dd') {
+        sold += Number(p.shares || 0);
+      }
+    });
+    var remainSh = Math.max(0, Number(inv.shares_available || 0) - sold);
+    var px = parseFloat(document.getElementById('goalPrice').value) || livePrice || 0;
+    return { shares: remainSh, value: remainSh * px, sold: sold };
   }
 
   function renderGoal(data, opts) {
     opts = opts || {};
     lastGoalPlan = data;
+    showTaxTab('optimize');
     const panel = document.getElementById('goalPanel');
     panel.style.display = 'block';
     const parse = data.parse || {};
     let status = data.success
-      ? 'Target met — execute the SpecID picks below.'
+      ? 'Target met — execute SpecID picks below.'
       : 'Could not fully meet target with current inventory / options.';
-    if (opts.fromChat) status = 'Updated from chat · ' + status;
+    if (opts.fromChat) status = 'From advisor · ' + status;
     if (parse.interpretation) status += ' · ' + parse.interpretation;
-    if (parse.source) status += ' (parsed via ' + parse.source + ')';
     document.getElementById('goalStatus').textContent = status;
+    document.getElementById('goalStatus').className = 'tax-result-status ' + (data.success ? 'ok' : 'warn');
 
-    document.getElementById('goalStats').innerHTML = [
-      ['Target net', money(data.goal && data.goal.target_net_cash)],
-      ['Achieved net', money(data.achieved_net_cash)],
-      ['Shortfall', money(data.shortfall)],
-      ['Gross proceeds', money(data.total_proceeds)],
-      ['Incremental tax', money(data.total_tax)],
-      ['Strike outlay', money(data.total_strike_outlay)],
-      ['Eff. tax rate', pct(data.effective_tax_rate)]
-    ].map(function (c) {
-      return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
-        '</div><div class="stat-value" style="font-size:1.1rem;">' + c[1] + '</div></div></div>';
+    var residual = residualAfterPicks(data.picks);
+    var heroes = [
+      ['Achieved net', money2(data.achieved_net_cash), true],
+      ['Incremental tax', money2(data.total_tax), false],
+      ['Shortfall', money2(data.shortfall), false],
+      ['Eff. rate', pct(data.effective_tax_rate), false]
+    ];
+    if (residual) {
+      heroes.push(['Still hold', money(residual.value) + ' · ' + residual.shares.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' sh', false]);
+    }
+    document.getElementById('goalStats').innerHTML = heroes.map(function (c) {
+      return '<div class="stat-card' + (c[2] ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
+        '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
     }).join('');
+
+    renderGoalTaxStack(data);
 
     const picks = data.picks || [];
     const tbl = document.getElementById('goalPicksTable');
+    const copyBtn = document.getElementById('btnCopyPicks');
     if (picks.length) {
-      tbl.innerHTML = '<thead><tr><th>#</th><th>Lot (SpecID)</th><th>Action</th><th>Shares</th><th>Price</th><th>Basis/strike</th><th>Gain est.</th><th>Term / ISO</th><th>Why</th></tr></thead><tbody>' +
+      tbl.innerHTML = '<thead><tr><th>#</th><th>SpecID</th><th>Action</th><th>Shares</th><th>Term</th><th>Why</th></tr></thead><tbody>' +
         picks.map(function (p, i) {
-          return '<tr class="lot-pick-highlight"><td>' + (i + 1) + '</td><td>' + (p.label || p.vest_event_id) +
-            ' <span style="color:var(--text-muted);font-size:0.75rem;">#' + p.vest_event_id + '</span></td><td>' +
-            p.action + '</td><td>' + Number(p.shares).toLocaleString('en-US', { maximumFractionDigits: 2 }) +
-            '</td><td>' + money(p.price) + '</td><td>' + money(p.basis_or_strike) +
-            '</td><td>' + money(p.estimated_gain) + '</td><td>' +
-            (p.is_long_term ? 'LT' : 'ST') + ' / ' + (p.iso_disposition || '') +
-            '</td><td style="font-size:0.8rem;color:var(--text-secondary);">' + (p.reason || '') + '</td></tr>';
+          return '<tr class="lot-pick-highlight"><td>' + (i + 1) + '</td><td><strong>#' + p.vest_event_id + '</strong> ' +
+            (p.label || '') + '</td><td><code class="tax-action">' + p.action + '</code></td><td>' +
+            Number(p.shares).toLocaleString('en-US', { maximumFractionDigits: 2 }) +
+            '</td><td>' + (p.is_long_term ? 'LT' : 'ST') +
+            (p.iso_disposition && p.iso_disposition !== 'n/a' ? ' · ' + p.iso_disposition : '') +
+            '</td><td class="tax-why">' + (p.reason || '') + '</td></tr>';
         }).join('') + '</tbody>';
+      if (copyBtn) copyBtn.style.display = 'inline-flex';
     } else {
       tbl.innerHTML = '<tbody><tr><td>' + (data.actions_summary || []).join('<br>') + '</td></tr></tbody>';
+      if (copyBtn) copyBtn.style.display = 'none';
     }
 
-    const notes = [].concat(data.efficiency_notes || [], data.actions_summary || []);
-    document.getElementById('goalNotes').innerHTML =
-      '<ul style="margin:0;padding-left:1.25rem;color:var(--text-secondary);font-size:0.875rem;">' +
-      notes.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>';
+    const notes = (data.efficiency_notes || []).slice(0, 5);
+    document.getElementById('goalNotes').innerHTML = notes.length
+      ? '<ul class="tax-notes-list">' + notes.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>'
+      : '';
 
-    if (data.explanation) {
+    var explWrap = document.getElementById('goalExplainDetails');
+    if (data.explanation || data.explanation_note) {
+      if (explWrap) explWrap.style.display = 'block';
       document.getElementById('goalExplanation').style.display = 'block';
-      document.getElementById('goalExplanationBody').textContent = data.explanation;
-    } else {
-      document.getElementById('goalExplanation').style.display = data.explanation_note ? 'block' : 'none';
-      if (data.explanation_note) {
-        document.getElementById('goalExplanationBody').textContent = data.explanation_note;
-      }
+      document.getElementById('goalExplanationBody').textContent = data.explanation || data.explanation_note;
+    } else if (explWrap) {
+      explWrap.style.display = 'none';
     }
 
     if (data.goal && data.goal.target_net_cash != null) {
@@ -560,17 +762,14 @@
     }
   }
 
-  // Live UI sync from Ask Grok / engine router
   window.vestxOnEnginePlan = function (plan, meta) {
     if (!plan) return;
-    const data = Object.assign({}, plan, {
+    renderGoal(Object.assign({}, plan, {
       parse: Object.assign({}, plan.parse || {}, { source: 'chat' }),
       success: plan.success !== false
-    });
-    renderGoal(data, { fromChat: true, scroll: true });
+    }), { fromChat: true, scroll: true });
   };
 
-  // Restore plan from prior chat session on this browser tab
   try {
     const saved = sessionStorage.getItem('vestx_last_plan');
     if (saved) {
@@ -582,7 +781,7 @@
         });
       }
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
 
   document.getElementById('btnGoalRun').addEventListener('click', function () {
     const btn = document.getElementById('btnGoalRun');
@@ -601,28 +800,54 @@
         }).then(function (r) {
           return r.text().then(function (t) {
             try { return JSON.parse(t); }
-            catch (e) { throw new Error('Server returned non-JSON (HTTP ' + r.status + '). Refresh and try again.'); }
+            catch (e) { throw new Error('Server returned non-JSON (HTTP ' + r.status + ')'); }
           });
         });
     run
       .then(function (data) {
         btn.disabled = false;
-        btn.textContent = 'Compute optimal lots';
-        if (data.error) { alert(data.error); return; }
+        btn.textContent = 'Optimize lots';
+        if (data.error) {
+          document.getElementById('goalPanel').style.display = 'block';
+          document.getElementById('goalStatus').textContent = data.error;
+          document.getElementById('goalStatus').className = 'tax-result-status warn';
+          return;
+        }
         renderGoal(data);
         window.VESTX_LAST_PLAN = data;
       })
       .catch(function (e) {
         btn.disabled = false;
-        btn.textContent = 'Compute optimal lots';
-        alert(e.message || e);
+        btn.textContent = 'Optimize lots';
+        document.getElementById('goalPanel').style.display = 'block';
+        document.getElementById('goalStatus').textContent = e.message || String(e);
+        document.getElementById('goalStatus').className = 'tax-result-status warn';
       });
   });
 
   document.getElementById('btnGoalParse').addEventListener('click', function () {
-    // Run optimizer with prompt (same endpoint); if no target, shows rank order
     document.getElementById('btnGoalRun').click();
   });
+
+  var copyBtn = document.getElementById('btnCopyPicks');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      if (!lastGoalPlan || !lastGoalPlan.picks) return;
+      var lines = lastGoalPlan.picks.map(function (p, i) {
+        return (i + 1) + '. #' + p.vest_event_id + ' ' + p.action + ' ' +
+          Number(p.shares).toFixed(2) + ' sh' + (p.label ? ' (' + p.label + ')' : '');
+      });
+      var text = lines.join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          copyBtn.textContent = 'Copied';
+          setTimeout(function () { copyBtn.textContent = 'Copy SpecIDs'; }, 1500);
+        });
+      }
+    });
+  }
+  var openSc = document.getElementById('btnOpenScenario');
+  if (openSc) openSc.addEventListener('click', function () { showTaxTab('scenario'); });
 
   const chatBtn = document.getElementById('btnGoalChat');
   if (chatBtn) {
@@ -633,7 +858,7 @@
       chatHistory.push({ role: 'user', content: text });
       input.value = '';
       const log = document.getElementById('goalChatLog');
-      log.innerHTML += '<div style="margin:0.35rem 0;"><strong>You:</strong> ' + text + '</div>';
+      log.innerHTML += '<div class="tax-chat-msg"><strong>You</strong> ' + text.replace(/</g, '&lt;') + '</div>';
       fetch('{{ url_for("tax_center.api_advisor") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
@@ -642,11 +867,11 @@
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (data.error) {
-            log.innerHTML += '<div style="color:var(--warning);">' + data.error + '</div>';
+            log.innerHTML += '<div class="tax-chat-msg warn">' + data.error + '</div>';
             return;
           }
           chatHistory.push({ role: 'assistant', content: data.reply });
-          log.innerHTML += '<div style="margin:0.35rem 0;"><strong>Grok:</strong> ' +
+          log.innerHTML += '<div class="tax-chat-msg"><strong>Grok</strong> ' +
             (data.reply || '').replace(/</g, '&lt;') + '</div>';
           log.scrollTop = log.scrollHeight;
         });
@@ -654,22 +879,37 @@
   }
 
   const strategyHints = {
-    auto: 'RSUs sold as capital gains; already-exercised ISOs sold (QD/DD); unexercised ISOs treated as cashless DD.',
-    rsu_sell: 'Sale only vs vest FMV basis. Vest ordinary income is separate (already taxed or tax-withheld).',
-    iso_cashless_dd: 'Exercise + same-day sale. Spread is ordinary income + FICA; no ISO AMT preference.',
-    iso_exercise_hold: 'Exercise only: pay strike cash + possible AMT this year. No sale proceeds. Shows earliest QD date.',
-    iso_exercise_sell_qd: 'Two years when needed: AMT at exercise (generates credit), then sale on earliest QD date with credit handoff + CA AMT.',
-    iso_sell_held: 'Sell shares you already exercised. Uses recorded exercise date/FMV to classify QD vs DD.',
-    iso_sell_to_cover: 'Binary-search the minimum cashless DD tranche so net proceeds fund strike + tax/AMT on the shares you keep.',
-    rsu_fund_iso: 'Sell the fewest RSUs so after-tax proceeds fund ISO exercise-and-hold (strike + federal/CA AMT).',
-    compare_iso: 'Runs cashless vs exercise-hold vs hold-to-QD side-by-side on the same ISO lots and prices.'
+    auto: 'RSUs as capital gains; exercised ISOs by QD/DD; unexercised ISOs as cashless DD.',
+    rsu_sell: 'Sale vs vest basis. Vest ordinary income is separate.',
+    iso_cashless_dd: 'Exercise + same-day sale. Spread is ordinary + FICA; no ISO AMT preference.',
+    iso_exercise_hold: 'Exercise only: strike cash + possible AMT. No sale proceeds.',
+    iso_exercise_sell_qd: 'AMT at exercise, then sale on earliest QD with credit handoff.',
+    iso_sell_held: 'Sell shares already exercised. Uses exercise date for QD vs DD.',
+    iso_sell_to_cover: 'Minimum cashless tranche so net funds strike + tax/AMT on shares you keep.',
+    rsu_fund_iso: 'Fewest RSUs so after-tax proceeds fund ISO exercise-and-hold.',
+    compare_iso: 'Cashless vs hold vs hold-to-QD on the same ISO lots.'
   };
   function updateStrategyHint() {
     const s = document.getElementById('planStrategy').value;
     document.getElementById('strategyHint').textContent = strategyHints[s] || '';
   }
-  document.getElementById('planStrategy').addEventListener('change', updateStrategyHint);
+  function updatePlanFieldVisibility() {
+    const s = document.getElementById('planStrategy').value;
+    const saleOnly = (s === 'rsu_sell' || s === 'iso_sell_held');
+    const exOnly = (s === 'iso_exercise_hold');
+    document.querySelectorAll('.plan-field-ex').forEach(function (el) {
+      el.style.display = saleOnly ? 'none' : '';
+    });
+    document.querySelectorAll('.plan-field-sale').forEach(function (el) {
+      el.style.display = exOnly ? 'none' : '';
+    });
+  }
+  document.getElementById('planStrategy').addEventListener('change', function () {
+    updateStrategyHint();
+    updatePlanFieldVisibility();
+  });
   updateStrategyHint();
+  updatePlanFieldVisibility();
 
   document.getElementById('btnSellMax').addEventListener('click', function () {
     const strategy = document.getElementById('planStrategy').value;
@@ -680,15 +920,11 @@
       const held = parseFloat(tr.dataset.available || 0);
       const unex = parseFloat(tr.dataset.unexercised || 0);
       const isIso = tr.dataset.iso === 'true';
-      if (!isIso) {
-        qty.value = held;
-      } else if (strategy === 'iso_sell_held') {
-        qty.value = held;
-      } else if (strategy === 'iso_exercise_hold' || strategy === 'iso_exercise_sell_qd' || strategy === 'iso_cashless_dd' || strategy === 'compare_iso') {
+      if (!isIso) qty.value = held;
+      else if (strategy === 'iso_sell_held') qty.value = held;
+      else if (strategy === 'iso_exercise_hold' || strategy === 'iso_exercise_sell_qd' || strategy === 'iso_cashless_dd' || strategy === 'compare_iso') {
         qty.value = unex > 0 ? unex : held;
-      } else {
-        qty.value = Math.max(held, unex);
-      }
+      } else qty.value = Math.max(held, unex);
     });
   });
 
@@ -699,19 +935,22 @@
       const qty = tr.querySelector('.lot-qty');
       if (!check || !check.checked || !qty) return;
       const shares = parseFloat(qty.value || 0);
-      if (shares > 0) {
-        lots.push({ vest_event_id: parseInt(tr.dataset.vest, 10), shares: shares });
-      }
+      if (shares > 0) lots.push({ vest_event_id: parseInt(tr.dataset.vest, 10), shares: shares });
     });
     return lots;
   }
 
   document.getElementById('btnAnalyze').addEventListener('click', function () {
     const lots = collectLots();
+    const btn = document.getElementById('btnAnalyze');
     if (!lots.length) {
-      alert('Select lots and enter share quantities.');
+      document.getElementById('analysisPanel').style.display = 'block';
+      document.getElementById('analysisTitle').textContent = 'Select lots';
+      document.getElementById('analysisDesc').textContent = 'Check lots and enter quantities, then run again.';
       return;
     }
+    btn.disabled = true;
+    btn.textContent = 'Running…';
     const body = {
       strategy: document.getElementById('planStrategy').value,
       sale_date: document.getElementById('planSaleDate').value,
@@ -727,19 +966,24 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        btn.disabled = false;
+        btn.textContent = 'Run scenario';
         if (data.error) {
-          alert(data.error);
+          document.getElementById('analysisPanel').style.display = 'block';
+          document.getElementById('analysisTitle').textContent = 'Error';
+          document.getElementById('analysisDesc').textContent = data.error;
           return;
         }
-        if (data.compare) {
-          renderCompare(data);
-        } else if (data.liquidity) {
-          renderCover(data);
-        } else {
-          renderPlan(data.plan || data.scenario, data.analysis);
-        }
+        if (data.compare) renderCompare(data);
+        else if (data.liquidity) renderCover(data);
+        else renderPlan(data.plan || data.scenario, data.analysis);
+        var det = document.getElementById('analysisDetails');
+        if (det) det.open = false;
       })
-      .catch(function (e) { alert(e); });
+      .catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = 'Run scenario';
+      });
   });
 
   function renderCover(data) {
@@ -751,41 +995,28 @@
     document.getElementById('stateTaxDetail').style.display = 'none';
     document.getElementById('amtCreditPanel').style.display = 'none';
     document.getElementById('cashPanel').style.display = 'none';
-
     const c = data.cover || {};
-    document.getElementById('analysisTitle').textContent = c.success
-      ? 'Sell-to-cover solution'
-      : 'Sell-to-cover — shortfall';
+    document.getElementById('analysisTitle').textContent = c.success ? 'Sell-to-cover' : 'Sell-to-cover — shortfall';
     document.getElementById('analysisDesc').textContent = c.mode || '';
     document.getElementById('analysisWarnings').innerHTML = '';
-
     document.getElementById('coverPanel').style.display = 'block';
     document.getElementById('coverStats').innerHTML = [
-      ['Shares to sell', Number(c.shares_to_sell || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })],
-      ['Shares to hold', Number(c.shares_to_hold || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })],
-      ['Sale proceeds', money(c.sale_proceeds)],
-      ['Tax on sale tranche', money(c.incremental_tax_on_sale)],
-      ['Tax/AMT on hold', money(c.tax_on_hold_path)],
-      ['Strike on held', money(c.strike_outlay_held)],
-      ['Cash needed', money(c.total_cash_needed)],
-      ['Net surplus', money(c.net_cash_after)],
-      ['Shortfall', money(c.shortfall)]
+      ['Shares to sell', Number(c.shares_to_sell || 0).toLocaleString()],
+      ['Shares to hold', Number(c.shares_to_hold || 0).toLocaleString()],
+      ['Net surplus', money2(c.net_cash_after)],
+      ['Shortfall', money2(c.shortfall)]
     ].map(function (row) {
       return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + row[0] +
-        '</div><div class="stat-value" style="font-size:1.1rem;">' + row[1] + '</div></div></div>';
+        '</div><div class="stat-value tax-stat-val">' + row[1] + '</div></div></div>';
     }).join('');
     document.getElementById('coverNotes').innerHTML =
       (c.notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
-
     document.getElementById('recsPanel').style.display = 'block';
     document.getElementById('recsList').innerHTML =
       (c.notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
-
-    if (data.analysis) {
-      renderAnalysis(data.analysis);
-    } else if (data.plan && data.plan.analysis) {
-      renderAnalysis(data.plan.analysis);
-    } else {
+    if (data.analysis) renderAnalysis(data.analysis);
+    else if (data.plan && data.plan.analysis) renderAnalysis(data.plan.analysis);
+    else {
       document.getElementById('analysisStats').innerHTML = '';
       document.getElementById('analysisLots').innerHTML = '';
     }
@@ -796,26 +1027,23 @@
     panel.style.display = 'block';
     document.getElementById('analysisTitle').textContent = 'ISO strategy comparison';
     document.getElementById('analysisDesc').textContent =
-      'Winner by net cash (proceeds − strike outlay − tax): ' + (data.winner_by_net_cash || '—') +
-      '. Rank ignores concentration risk and future wages.';
+      'Best net cash: ' + (data.winner_by_net_cash || '—') + ' · ignores concentration & future wages.';
     document.getElementById('analysisWarnings').innerHTML = '';
     document.getElementById('comparePanel').style.display = 'block';
     document.getElementById('cashPanel').style.display = 'none';
-    document.getElementById('timelinePanel').style.display = 'none';
+    document.getElementById('coverPanel').style.display = 'none';
     document.getElementById('recsPanel').style.display = 'block';
     document.getElementById('analysisStats').innerHTML = '';
     document.getElementById('multiYearPanel').style.display = 'none';
     document.getElementById('stateTaxDetail').style.display = 'none';
     document.getElementById('analysisLots').innerHTML = '';
-
     const rows = data.summary_rows || [];
-    const tbl = document.getElementById('compareTable');
-    tbl.innerHTML = '<thead><tr><th>Strategy</th><th>Net cash</th><th>Tax</th><th>AMT due</th><th>Strike outlay</th><th>Proceeds</th><th>Eff. rate</th></tr></thead><tbody>' +
+    document.getElementById('compareTable').innerHTML =
+      '<thead><tr><th>Strategy</th><th>Net cash</th><th>Tax</th><th>AMT</th><th>Eff.</th></tr></thead><tbody>' +
       rows.map(function (r) {
-        const win = r.strategy === data.winner_by_net_cash ? ' style="font-weight:600;"' : '';
-        return '<tr' + win + '><td>' + (r.name || r.strategy) + '</td><td>' + money(r.net_cash) +
-          '</td><td>' + money(r.total_tax) + '</td><td>' + money(r.amt_due) +
-          '</td><td>' + money(r.exercise_outlay) + '</td><td>' + money(r.sale_proceeds) +
+        const win = r.strategy === data.winner_by_net_cash ? ' class="tax-winner"' : '';
+        return '<tr' + win + '><td>' + (r.name || r.strategy) + '</td><td>' + money2(r.net_cash) +
+          '</td><td>' + money2(r.total_tax) + '</td><td>' + money2(r.amt_due) +
           '</td><td>' + pct(r.effective_rate) + '</td></tr>';
       }).join('') + '</tbody>';
     document.getElementById('compareGuidance').innerHTML =
@@ -829,83 +1057,63 @@
     panel.style.display = 'block';
     document.getElementById('comparePanel').style.display = 'none';
     document.getElementById('coverPanel').style.display = 'none';
-
     const planObj = plan || {};
     const a = analysisFallback || planObj.analysis || {};
     document.getElementById('analysisTitle').textContent = planObj.name || 'Scenario result';
     document.getElementById('analysisDesc').textContent = planObj.description || '';
-
     const warns = [].concat(planObj.warnings || [], a.warnings || []);
     document.getElementById('analysisWarnings').innerHTML =
       warns.map(function (w) { return '<div>' + w + '</div>'; }).join('');
 
-    // Cash
     const cash = planObj.cash || {};
     document.getElementById('cashPanel').style.display = 'block';
     document.getElementById('cashStats').innerHTML = [
-      ['Strike outlay', money(cash.exercise_cash_outlay)],
-      ['Sale proceeds', money(cash.sale_gross_proceeds)],
-      ['Incremental tax', money(cash.incremental_tax != null ? cash.incremental_tax : planObj.total_incremental_tax)],
-      ['Net cash', money(cash.net_cash != null ? cash.net_cash : planObj.total_net_cash)],
-      ['AMT due (fed+CA)', money(cash.amt_due_total)],
-      ['Eff. rate on economic gain', pct(planObj.effective_rate_on_economic_gain)]
+      ['Net cash', money2(cash.net_cash != null ? cash.net_cash : planObj.total_net_cash)],
+      ['Incremental tax', money2(cash.incremental_tax != null ? cash.incremental_tax : planObj.total_incremental_tax)],
+      ['Strike outlay', money2(cash.exercise_cash_outlay)],
+      ['AMT due', money2(cash.amt_due_total)],
+      ['Eff. rate', pct(planObj.effective_rate_on_economic_gain)]
     ].map(function (c) {
-      return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
-        '</div><div class="stat-value" style="font-size:1.15rem;">' + c[1] + '</div></div></div>';
+      return '<div class="stat-card' + (c[0] === 'Net cash' ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
+        '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
     }).join('');
 
-    // Timeline
     const tl = planObj.timeline || [];
     if (tl.length) {
       document.getElementById('timelinePanel').style.display = 'block';
       document.getElementById('timelineList').innerHTML = tl.map(function (t) {
-        return '<li><strong>' + t.event_date + '</strong> · ' + t.title +
-          ' — ' + t.detail + (t.amount ? ' (' + money(t.amount) + ')' : '') + '</li>';
+        return '<li><strong>' + t.event_date + '</strong> · ' + t.title + ' — ' + t.detail +
+          (t.amount ? ' (' + money2(t.amount) + ')' : '') + '</li>';
       }).join('');
-    } else {
-      document.getElementById('timelinePanel').style.display = 'none';
-    }
+    } else document.getElementById('timelinePanel').style.display = 'none';
 
-    // Recs
     const recs = planObj.recommendations || [];
     if (recs.length) {
       document.getElementById('recsPanel').style.display = 'block';
       document.getElementById('recsList').innerHTML = recs.map(function (r) { return '<li>' + r + '</li>'; }).join('');
-    } else {
-      document.getElementById('recsPanel').style.display = 'none';
-    }
+    } else document.getElementById('recsPanel').style.display = 'none';
 
-    // AMT credit ledger
     const ledger = planObj.amt_credit_ledger || [];
     if (ledger.length) {
       document.getElementById('amtCreditPanel').style.display = 'block';
       document.getElementById('amtCreditTable').innerHTML =
-        '<thead><tr><th>Year</th><th>Role</th><th>Fed AMT</th><th>Fed credit gen</th><th>Fed credit used</th><th>Fed ending</th>' +
-        '<th>CA AMT</th><th>CA credit gen</th><th>CA credit used</th><th>CA ending</th></tr></thead><tbody>' +
+        '<thead><tr><th>Year</th><th>Role</th><th>Fed AMT</th><th>Fed end cr.</th><th>CA AMT</th><th>CA end cr.</th></tr></thead><tbody>' +
         ledger.map(function (r) {
-          return '<tr><td>' + r.tax_year + '</td><td>' + (r.role || '') + '</td><td>' + money(r.federal_amt_due) +
-            '</td><td>' + money(r.federal_credit_generated) + '</td><td>' + money(r.federal_credit_used) +
-            '</td><td>' + money(r.federal_credit_ending) + '</td><td>' + money(r.ca_amt_due) +
-            '</td><td>' + money(r.ca_credit_generated) + '</td><td>' + money(r.ca_credit_used) +
-            '</td><td>' + money(r.ca_credit_ending) + '</td></tr>';
+          return '<tr><td>' + r.tax_year + '</td><td>' + (r.role || '') + '</td><td>' + money2(r.federal_amt_due) +
+            '</td><td>' + money2(r.federal_credit_ending) + '</td><td>' + money2(r.ca_amt_due) +
+            '</td><td>' + money2(r.ca_credit_ending) + '</td></tr>';
         }).join('') + '</tbody>';
-    } else {
-      document.getElementById('amtCreditPanel').style.display = 'none';
-    }
+    } else document.getElementById('amtCreditPanel').style.display = 'none';
 
-    // Multi-year
     const years = planObj.years || [];
     if (years.length > 1) {
       document.getElementById('multiYearPanel').style.display = 'block';
       document.getElementById('multiYearStats').innerHTML = years.map(function (y) {
         const ya = y.analysis || {};
-        return '<div style="margin-bottom:0.75rem;"><strong>' + y.tax_year + '</strong> (' + y.role + ') — tax ' +
-          money(ya.total_tax) + ', fed AMT ' + money(ya.amt_due) + ', CA AMT ' + money(ya.ca_amt_due) +
-          ', federal ' + money(ya.federal_tax_total) + ', state ' + money(ya.state_tax) + '</div>';
+        return '<div class="tax-year-row"><strong>' + y.tax_year + '</strong> (' + y.role + ') — tax ' +
+          money2(ya.total_tax) + ' · fed AMT ' + money2(ya.amt_due) + ' · CA AMT ' + money2(ya.ca_amt_due) + '</div>';
       }).join('');
-    } else {
-      document.getElementById('multiYearPanel').style.display = 'none';
-    }
+    } else document.getElementById('multiYearPanel').style.display = 'none';
 
     renderAnalysis(a);
   }
@@ -915,57 +1123,40 @@
       document.getElementById('analysisStats').innerHTML = '';
       return;
     }
-    const stateLabel = a.state_engine === 'CA'
-      ? 'State (CA)'
-      : (a.state_engine === 'flat' ? 'State (flat)' : 'State');
-    const stats = document.getElementById('analysisStats');
+    // Primary heroes only — detail lives under accordion
     const cards = [
-      ['Proceeds (this year)', money(a.total_proceeds)],
-      ['After-tax (this year)', money(a.after_tax_proceeds)],
-      ['Tax (incremental)', money(a.total_tax)],
-      ['Federal', money(a.federal_tax_total)],
-      [stateLabel, money(a.state_tax)],
-      ['NIIT', money(a.niit)],
-      ['Fed AMT due', money(a.amt_due)],
-      ['CA AMT due', money(a.ca_amt_due)],
-      ['Fed AMT credit used', money(a.federal_amt_credit_used)],
-      ['Fed AMT credit end', money(a.federal_amt_credit_ending)],
-      ['FICA', money(a.fica_tax)],
-      ['Ordinary (equity)', money(a.equity_ordinary)],
-      ['STCG', money(a.stcg)],
-      ['LTCG', money(a.ltcg)],
-      ['Eff. rate (year)', pct(a.effective_rate_on_gain)]
+      ['After-tax', money2(a.after_tax_proceeds)],
+      ['Tax (incremental)', money2(a.total_tax)],
+      ['Federal', money2(a.federal_tax_total)],
+      ['State', money2(a.state_tax)],
+      ['Eff. rate', pct(a.effective_rate_on_gain)]
     ];
-    stats.innerHTML = cards.map(function (c) {
-      return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
-        '</div><div class="stat-value" style="font-size:1.25rem;">' + c[1] + '</div></div></div>';
+    if (Number(a.amt_due || 0) > 0 || Number(a.ca_amt_due || 0) > 0) {
+      cards.push(['AMT due', money2((a.amt_due || 0) + (a.ca_amt_due || 0))]);
+    }
+    if (Number(a.niit || 0) > 0) cards.push(['NIIT', money2(a.niit)]);
+    document.getElementById('analysisStats').innerHTML = cards.map(function (c, i) {
+      return '<div class="stat-card' + (i === 0 ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
+        '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
     }).join('');
 
     const stateDetail = document.getElementById('stateTaxDetail');
-    const stateStats = document.getElementById('stateTaxStats');
-    const stateNotes = document.getElementById('stateTaxNotes');
     if (a.state_tax != null && (a.state_engine === 'CA' || a.state_engine === 'flat' || a.state_tax > 0)) {
       stateDetail.style.display = 'block';
       const rates = a.rates_used || {};
-      const bd = a.state_breakdown || {};
       const stateCards = [
         ['Engine', a.state_engine === 'CA' ? 'California' : (a.state_engine || '—')],
-        ['State taxable income', money(a.state_taxable_income)],
-        ['PIT / regular', money(a.state_regular_tax)],
-        ['Surtax (MHST)', money(a.state_surtax)],
-        ['Total state tax', money(a.state_tax)],
-        ['Marginal (state)', pct(rates.state_marginal)],
-        ['Effective (state)', pct(rates.state_effective)]
+        ['PIT / regular', money2(a.state_regular_tax)],
+        ['MHST / surtax', money2(a.state_surtax)],
+        ['Total state', money2(a.state_tax)],
+        ['Marginal', pct(rates.state_marginal)]
       ];
-      if (a.state_engine === 'CA' && bd.capital_gains_as_ordinary != null) {
-        stateCards.push(['CG taxed as ordinary', money(bd.capital_gains_as_ordinary)]);
-      }
-      stateStats.innerHTML = stateCards.map(function (c) {
+      document.getElementById('stateTaxStats').innerHTML = stateCards.map(function (c) {
         return '<div class="stat-card"><div class="stat-content"><div class="stat-label">' + c[0] +
-          '</div><div class="stat-value" style="font-size:1.05rem;">' + c[1] + '</div></div></div>';
+          '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
       }).join('');
-      const notes = a.state_notes && a.state_notes.length ? a.state_notes : [];
-      stateNotes.innerHTML = notes.map(function (n) { return '<li>' + n + '</li>'; }).join('');
+      document.getElementById('stateTaxNotes').innerHTML =
+        (a.state_notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
     } else {
       stateDetail.style.display = 'none';
     }
@@ -975,18 +1166,20 @@
       t.innerHTML = '<thead><tr><th>Lot</th><th>Shares</th><th>Proceeds</th><th>Ordinary</th><th>CG</th><th>Term</th><th>ISO</th></tr></thead><tbody>' +
         a.lots.map(function (l) {
           return '<tr><td>' + (l.label || l.vest_event_id) + '</td><td>' + l.shares +
-            '</td><td>' + money(l.proceeds) + '</td><td>' + money(l.ordinary_income) +
-            '</td><td>' + money(l.capital_gain) + '</td><td>' + (l.is_long_term ? 'LT' : 'ST') +
+            '</td><td>' + money2(l.proceeds) + '</td><td>' + money2(l.ordinary_income) +
+            '</td><td>' + money2(l.capital_gain) + '</td><td>' + (l.is_long_term ? 'LT' : 'ST') +
             '</td><td>' + (l.iso_disposition || '') + '</td></tr>';
         }).join('') + '</tbody>';
-    } else {
-      t.innerHTML = '';
-    }
+    } else t.innerHTML = '';
   }
 
   document.getElementById('btnRecordSale').addEventListener('click', function () {
     const vest = document.getElementById('saleVest').value;
-    if (!vest) { alert('Select a lot'); return; }
+    const el = document.getElementById('recordSaleResult');
+    if (!vest) {
+      el.innerHTML = '<div class="alert alert-warning">Select a lot.</div>';
+      return;
+    }
     const body = {
       vest_event_id: parseInt(vest, 10),
       sale_date: document.getElementById('saleDate').value,
@@ -1002,19 +1195,19 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        const el = document.getElementById('recordSaleResult');
         if (data.error) {
           el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
           return;
         }
-        el.innerHTML = '<div class="alert alert-success">Sale #' + data.sale_id + ' saved. After-tax proceeds: ' +
-          money(data.analysis.after_tax_proceeds) + ' (tax ' + money(data.analysis.total_tax) + ')</div>';
-        if (data.analysis) renderAnalysis(data.analysis);
-        setTimeout(function () { location.reload(); }, 1200);
+        el.innerHTML = '<div class="alert alert-success">Sale #' + data.sale_id + ' saved · after-tax ' +
+          money2(data.analysis.after_tax_proceeds) + ' · tax ' + money2(data.analysis.total_tax) + '</div>';
+        try { sessionStorage.setItem('vestx_tax_hub_tab', 'activity'); } catch (e) {}
+        setTimeout(function () { location.reload(); }, 900);
       });
   });
 
   document.getElementById('btnRecordEx').addEventListener('click', function () {
+    const el = document.getElementById('exResult');
     const body = {
       vest_event_id: parseInt(document.getElementById('exVest').value, 10),
       exercise_date: document.getElementById('exDate').value,
@@ -1028,14 +1221,14 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        const el = document.getElementById('exResult');
         if (data.error) {
           el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
           return;
         }
-        el.innerHTML = '<div class="alert alert-success">Exercise saved. Bargain element: ' +
-          money(data.bargain_element) + ' · Est. AMT due: ' + money(data.amt_due_estimate) + '</div>';
-        setTimeout(function () { location.reload(); }, 1200);
+        el.innerHTML = '<div class="alert alert-success">Exercise saved · bargain ' +
+          money2(data.bargain_element) + ' · est. AMT ' + money2(data.amt_due_estimate) + '</div>';
+        try { sessionStorage.setItem('vestx_tax_hub_tab', 'activity'); } catch (e) {}
+        setTimeout(function () { location.reload(); }, 900);
       });
   });
 
@@ -1045,18 +1238,12 @@
       fetch('/tax/api/sales/' + btn.dataset.id, {
         method: 'DELETE',
         headers: { 'X-CSRFToken': csrf }
-      }).then(function () { location.reload(); });
+      }).then(function () {
+        try { sessionStorage.setItem('vestx_tax_hub_tab', 'activity'); } catch (e) {}
+        location.reload();
+      });
     });
   });
-
-  // default dates
-  const today = new Date().toISOString().slice(0, 10);
-  const sd = document.getElementById('saleDate');
-  const pd = document.getElementById('planSaleDate');
-  const ed = document.getElementById('exDate');
-  if (sd && !sd.value) sd.value = today;
-  if (pd && !pd.value) pd.value = today;
-  if (ed && !ed.value) ed.value = today;
 })();
 </script>
 {% endblock %}

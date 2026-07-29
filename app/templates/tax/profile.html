@@ -8,14 +8,14 @@
   </header>
 
   <div class="detail-card">
-    <p style="color: var(--text-secondary); margin-bottom: 1.25rem; max-width: 40rem;">
-      The engine does not invent your wages, state rates, or filing status.
-      Fill these in so sale and AMT estimates use <em>your</em> numbers.
+    <p class="tax-panel-lead" style="margin-bottom: 1.25rem;">
+      Stacking base for every plan — wages, filing, state, AMT credits. The engine does not invent these.
     </p>
 
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+      <h3 class="tax-subhead">Essentials</h3>
       <div class="form-row">
         <div class="form-group">
           <label for="tax_year">Tax year</label>
@@ -35,105 +35,104 @@
         </div>
       </div>
 
-      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">Income outside equity (this tax year)</h3>
       <div class="form-row">
         <div class="form-group">
           <label for="other_ordinary_income">Other ordinary income ($)</label>
           <input type="number" step="0.01" id="other_ordinary_income" name="other_ordinary_income"
                  value="{{ profile.other_ordinary_income or 0 }}" required>
-          <span class="form-hint">Wages, cash bonus, etc. Do not double-count equity already in VestX.</span>
+          <span class="form-hint">Wages, cash bonus — not equity already in VestX.</span>
         </div>
         <div class="form-group">
           <label for="ytd_wages">YTD wages for FICA ($)</label>
           <input type="number" step="0.01" id="ytd_wages" name="ytd_wages" value="{{ profile.ytd_wages or 0 }}">
         </div>
       </div>
+
       <div class="form-row">
         <div class="form-group">
-          <label for="other_long_term_gains">Other LTCG ($)</label>
-          <input type="number" step="0.01" id="other_long_term_gains" name="other_long_term_gains" value="{{ profile.other_long_term_gains or 0 }}">
+          <label for="amt_credit_carryforward">Federal AMT credit ($)</label>
+          <input type="number" step="0.01" id="amt_credit_carryforward" name="amt_credit_carryforward"
+                 value="{{ profile.amt_credit_carryforward or 0 }}">
+          <span class="form-hint">Form 8801 carryforward</span>
         </div>
         <div class="form-group">
-          <label for="other_short_term_gains">Other STCG ($)</label>
-          <input type="number" step="0.01" id="other_short_term_gains" name="other_short_term_gains" value="{{ profile.other_short_term_gains or 0 }}">
+          <label for="ca_amt_credit_carryforward">CA AMT credit ($)</label>
+          <input type="number" step="0.01" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
+                 value="{{ profile.ca_amt_credit_carryforward or 0 }}">
+          <span class="form-hint">Schedule P carryforward</span>
         </div>
       </div>
 
-      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">Federal rates</h3>
-      <div class="form-group form-check">
+      <div class="form-group form-check" style="margin-top:0.75rem;">
         <input type="checkbox" id="use_bracket_engine" name="use_bracket_engine" {% if profile.use_bracket_engine %}checked{% endif %}>
-        <label for="use_bracket_engine">Use federal bracket engine (recommended)</label>
+        <label for="use_bracket_engine">Federal bracket engine</label>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="federal_ordinary_rate">Override ordinary rate (%)</label>
-          <input type="number" step="0.01" id="federal_ordinary_rate" name="federal_ordinary_rate"
-                 value="{% if profile.federal_ordinary_rate is not none %}{{ (profile.federal_ordinary_rate * 100)|round(2) }}{% endif %}"
-                 placeholder="leave blank for brackets">
-        </div>
-        <div class="form-group">
-          <label for="federal_ltcg_rate">Override LTCG rate (%)</label>
-          <input type="number" step="0.01" id="federal_ltcg_rate" name="federal_ltcg_rate"
-                 value="{% if profile.federal_ltcg_rate is not none %}{{ (profile.federal_ltcg_rate * 100)|round(2) }}{% endif %}"
-                 placeholder="leave blank for 0/15/20">
-        </div>
-      </div>
-
-      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">State tax</h3>
       <div class="form-group form-check">
         <input type="checkbox" id="use_state_engine" name="use_state_engine"
                {% if profile.use_state_engine is none or profile.use_state_engine %}checked{% endif %}>
-        <label for="use_state_engine">Use built-in state engine when available (recommended for CA)</label>
-      </div>
-      <p class="form-hint" style="margin: 0 0 1rem; max-width: 40rem; color: var(--text-secondary); font-size: 0.875rem;">
-        <strong>California (CA)</strong> is fully modeled: progressive PIT brackets (1%–12.3%), capital gains taxed as ordinary
-        income (no federal-style LTCG preference), and Mental Health Services Tax of 1% on taxable income over $1,000,000.
-        Flat rates below are used for other states, or for CA if you turn the engine off.
-      </p>
-      <div class="form-row" id="flatStateRates">
-        <div class="form-group">
-          <label for="state_ordinary_rate">Flat state ordinary (%)</label>
-          <input type="number" step="0.01" id="state_ordinary_rate" name="state_ordinary_rate"
-                 value="{{ ((profile.state_ordinary_rate or 0) * 100)|round(2) }}">
-          <span class="form-hint">Fallback / non-CA. Ignored for CA when state engine is on.</span>
-        </div>
-        <div class="form-group">
-          <label for="state_cg_rate">Flat state capital gains (%)</label>
-          <input type="number" step="0.01" id="state_cg_rate" name="state_cg_rate"
-                 value="{{ ((profile.state_cg_rate if profile.state_cg_rate is not none else profile.state_ordinary_rate or 0) * 100)|round(2) }}">
-          <span class="form-hint">Many states tax CG as ordinary; enter the same rate if so.</span>
-        </div>
-      </div>
-
-      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">FICA / NIIT / AMT</h3>
-      <div class="form-group form-check">
-        <input type="checkbox" id="include_fica" name="include_fica" {% if profile.include_fica %}checked{% endif %}>
-        <label for="include_fica">Include FICA on equity ordinary (RSU / ISO DD)</label>
-      </div>
-      <div class="form-group form-check">
-        <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if profile.ss_wage_base_maxed %}checked{% endif %}>
-        <label for="ss_wage_base_maxed">SS wage base already maxed (Medicare only)</label>
+        <label for="use_state_engine">State engine (CA PIT + MHST when state is CA)</label>
       </div>
       <div class="form-group form-check">
         <input type="checkbox" id="include_niit" name="include_niit" {% if profile.include_niit %}checked{% endif %}>
-        <label for="include_niit">Include NIIT (3.8%) when MAGI thresholds apply</label>
+        <label for="include_niit">Include NIIT (3.8%)</label>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="amt_credit_carryforward">Federal AMT credit carryforward ($)</label>
-          <input type="number" step="0.01" id="amt_credit_carryforward" name="amt_credit_carryforward"
-                 value="{{ profile.amt_credit_carryforward or 0 }}">
-          <span class="form-hint">Prior-year Form 8801 minimum tax credit. Used when regular tax exceeds federal TMT.</span>
-        </div>
-        <div class="form-group">
-          <label for="ca_amt_credit_carryforward">CA AMT credit carryforward ($)</label>
-          <input type="number" step="0.01" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
-                 value="{{ profile.ca_amt_credit_carryforward or 0 }}">
-          <span class="form-hint">Prior-year CA Schedule P credit. Used when CA regular tax exceeds CA TMT (7%).</span>
-        </div>
+      <div class="form-group form-check">
+        <input type="checkbox" id="include_fica" name="include_fica" {% if profile.include_fica %}checked{% endif %}>
+        <label for="include_fica">Include FICA on equity ordinary</label>
+      </div>
+      <div class="form-group form-check">
+        <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if profile.ss_wage_base_maxed %}checked{% endif %}>
+        <label for="ss_wage_base_maxed">SS wage base already maxed</label>
       </div>
 
-      <div class="form-actions">
+      <p class="form-hint" style="margin: 1rem 0 0; max-width: 40rem;">
+        CA: capital gains taxed as ordinary; +1% MHST above $1M taxable income.
+      </p>
+
+      <details class="tax-hub-details" style="margin-top:1.25rem;">
+        <summary>Advanced — other gains &amp; rate overrides</summary>
+        <div class="tax-details-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="other_long_term_gains">Other LTCG ($)</label>
+              <input type="number" step="0.01" id="other_long_term_gains" name="other_long_term_gains" value="{{ profile.other_long_term_gains or 0 }}">
+            </div>
+            <div class="form-group">
+              <label for="other_short_term_gains">Other STCG ($)</label>
+              <input type="number" step="0.01" id="other_short_term_gains" name="other_short_term_gains" value="{{ profile.other_short_term_gains or 0 }}">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="federal_ordinary_rate">Override federal ordinary (%)</label>
+              <input type="number" step="0.01" id="federal_ordinary_rate" name="federal_ordinary_rate"
+                     value="{% if profile.federal_ordinary_rate is not none %}{{ (profile.federal_ordinary_rate * 100)|round(2) }}{% endif %}"
+                     placeholder="blank = brackets">
+            </div>
+            <div class="form-group">
+              <label for="federal_ltcg_rate">Override LTCG (%)</label>
+              <input type="number" step="0.01" id="federal_ltcg_rate" name="federal_ltcg_rate"
+                     value="{% if profile.federal_ltcg_rate is not none %}{{ (profile.federal_ltcg_rate * 100)|round(2) }}{% endif %}"
+                     placeholder="blank = 0/15/20">
+            </div>
+          </div>
+          <div class="form-row" id="flatStateRates">
+            <div class="form-group">
+              <label for="state_ordinary_rate">Flat state ordinary (%)</label>
+              <input type="number" step="0.01" id="state_ordinary_rate" name="state_ordinary_rate"
+                     value="{{ ((profile.state_ordinary_rate or 0) * 100)|round(2) }}">
+              <span class="form-hint">Non-CA, or CA if state engine off</span>
+            </div>
+            <div class="form-group">
+              <label for="state_cg_rate">Flat state CG (%)</label>
+              <input type="number" step="0.01" id="state_cg_rate" name="state_cg_rate"
+                     value="{{ ((profile.state_cg_rate if profile.state_cg_rate is not none else profile.state_ordinary_rate or 0) * 100)|round(2) }}">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div class="form-actions" style="margin-top:1.25rem;">
         <button type="submit" class="btn btn-primary">Save tax profile</button>
       </div>
     </form>
