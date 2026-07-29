@@ -421,20 +421,39 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
     )
 
 
+def stacking_ordinary_income(profile: dict) -> float:
+    """
+    Ordinary income used for federal/CA brackets, LTCG bands, NIIT MAGI, and AMT base.
+
+    Tax Profile has two wage-ish fields that users confuse:
+      - other_ordinary_income: intended full-year ordinary (wages, bonus, …)
+      - ytd_wages: also often filled with annual wages (and used for FICA)
+
+    Using only other_ordinary_income silently ignored $500k YTD wages and kept
+    LTCG in the 15% band. We stack the **higher** of the two so wages count
+    once for planning (they are the same economic wages, not additive).
+    """
+    other = float(profile.get('other_ordinary_income') or 0.0)
+    ytd = float(profile.get('ytd_wages') or 0.0)
+    return max(other, ytd)
+
+
 def compute_fica(ordinary_equity: float, profile: dict) -> float:
     if not profile.get('include_fica', True):
         return 0.0
     year = profile.get('tax_year', 2026)
     wage_base = SS_WAGE_BASE.get(year, 184500)
     ytd = profile.get('ytd_wages', 0.0) or 0.0
+    # FICA remaining wage base should also respect stacking ordinary if ytd empty
+    ytd_for_fica = max(ytd, float(profile.get('other_ordinary_income') or 0.0))
     ss = 0.0
     if not profile.get('ss_wage_base_maxed'):
-        remaining = max(0.0, wage_base - ytd)
+        remaining = max(0.0, wage_base - ytd_for_fica)
         ss = min(ordinary_equity, remaining) * SS_RATE
     medicare = ordinary_equity * MEDICARE_RATE
     filing = profile.get('filing_status', 'single')
     thr = ADD_MEDICARE_THRESHOLD.get(filing, 200000)
-    add_base = max(0.0, (ytd + ordinary_equity) - thr)
+    add_base = max(0.0, (ytd_for_fica + ordinary_equity) - thr)
     # Additional Medicare only on wages over threshold — approximate on equity portion
     add_med = min(ordinary_equity, add_base) * ADDITIONAL_MEDICARE_RATE if add_base > 0 else 0.0
     return ss + medicare + add_med
@@ -641,9 +660,22 @@ def analyze_sales(
     eq_st = sum(r.capital_gain for r in lot_results if not r.is_long_term)
     eq_lt = sum(r.capital_gain for r in lot_results if r.is_long_term)
 
-    other_ord = float(profile.get('other_ordinary_income') or 0.0)
+    other_ord = stacking_ordinary_income(profile)
+    other_ord_field = float(profile.get('other_ordinary_income') or 0.0)
+    ytd_field = float(profile.get('ytd_wages') or 0.0)
     other_lt = float(profile.get('other_long_term_gains') or 0.0)
     other_st = float(profile.get('other_short_term_gains') or 0.0)
+
+    if ytd_field > other_ord_field + 1.0 and other_ord_field > 0:
+        warnings.append(
+            f'Using ${other_ord:,.0f} ordinary for brackets (max of other ordinary '
+            f'${other_ord_field:,.0f} and YTD wages ${ytd_field:,.0f}).'
+        )
+    elif ytd_field > other_ord_field + 1.0 and other_ord_field <= 0:
+        warnings.append(
+            f'YTD wages ${ytd_field:,.0f} used as ordinary stacking base '
+            f'(other ordinary income was $0). Put full-year wages in either field.'
+        )
 
     base_st, base_lt = _net_st_lt(other_st, other_lt)
     full_st, full_lt = _net_st_lt(eq_st + other_st, eq_lt + other_lt)
@@ -732,13 +764,39 @@ def analyze_sales(
         warnings.append('One or more ISO lots lack exercise_date; disposition classification may be incomplete.')
     if other_ord == 0 and (full_lt + full_st + equity_ordinary) > 0:
         warnings.append(
-            'other_ordinary_income is $0 — brackets, NIIT, and AMT are highly sensitive to total income. '
-            'Enter wages/other income in Tax Profile.'
+            'No ordinary wages in Tax Profile (other ordinary and YTD wages are $0) — '
+            'brackets, NIIT, LTCG band, and AMT will be wrong. Enter full-year wages.'
         )
     warnings.append(
         'Tax amounts are incremental: extra tax from this equity activity vs your profile income alone '
-        '(wages/other CG). Effective rate = incremental tax ÷ equity gain.'
+        f'(stacked ordinary ${other_ord:,.0f} + other CG). Effective rate = incremental tax ÷ equity gain.'
     )
+    # Surface which LTCG band the sale lands in (helps catch 15% vs 20% confusion)
+    if ltcg_pos > 0:
+        try:
+            floor_20 = float(_year_table(LTCG_BRACKETS, year)[filing][2][0])
+        except Exception:
+            floor_20 = 545500.0
+        # Ordinary + STCG sit under LTCG for preferential stacking
+        ordinary_for_ltcg = other_ord + equity_ordinary + full_st
+        room_in_15 = max(0.0, floor_20 - ordinary_for_ltcg)
+        in_15 = min(ltcg_pos, room_in_15) if ordinary_for_ltcg < floor_20 else 0.0
+        in_20 = max(0.0, ltcg_pos - in_15)
+        ti_top = ordinary_for_ltcg + ltcg_pos
+        if in_20 > 1 and in_15 > 1:
+            warnings.append(
+                f'Federal LTCG split: ${in_15:,.0f} @ 15% + ${in_20:,.0f} @ 20% '
+                f'(wages/ordinary base ${ordinary_for_ltcg:,.0f}; 20% starts at ${floor_20:,.0f} TI).'
+            )
+        elif in_20 > 1:
+            warnings.append(
+                f'Federal LTCG all @ 20% (TI through gains ≈ ${ti_top:,.0f}; ordinary base ${ordinary_for_ltcg:,.0f}).'
+            )
+        else:
+            warnings.append(
+                f'Federal LTCG @ 15% (ordinary base ${ordinary_for_ltcg:,.0f}; '
+                f'only ${room_in_15:,.0f} of room left before 20% band at ${floor_20:,.0f}).'
+            )
 
     # State detail: show incremental PIT/MHST but keep full-stack taxable income for context
     state_breakdown = dict(state_result.breakdown or {})

@@ -14,6 +14,8 @@ from app.utils.tax_engine import (
     classify_iso_disposition,
     compute_amt,
     ltcg_rate_for_income,
+    stacking_ordinary_income,
+    preferential_ltcg_tax,
 )
 
 
@@ -179,6 +181,63 @@ def test_ltcg_rate_brackets():
     assert r == 0.15
 
 
+def test_ytd_wages_stack_into_ordinary_for_ltcg_band():
+    """YTD wages alone must push LTCG into 20% when high enough (not ignored)."""
+    assert stacking_ordinary_income({
+        'other_ordinary_income': 0,
+        'ytd_wages': 500_000,
+    }) == 500_000
+    assert stacking_ordinary_income({
+        'other_ordinary_income': 136_000,
+        'ytd_wages': 500_000,
+    }) == 500_000
+
+    # $500k ordinary + $100k LTCG → $45.5k @15% + $54.5k @20% (2026 single 20% @ 545500)
+    tax, marg = preferential_ltcg_tax(100_000, 500_000, 'single', 2026)
+    assert marg == 0.20
+    assert abs(tax - (45_500 * 0.15 + 54_500 * 0.20)) < 1.0
+
+    profile = {
+        'filing_status': 'single',
+        'tax_year': 2026,
+        'state_code': 'CA',
+        'use_bracket_engine': True,
+        'use_state_engine': True,
+        'federal_ordinary_rate': None,
+        'federal_ltcg_rate': None,
+        'other_ordinary_income': 0,  # empty — only YTD set (user mistake we must handle)
+        'ytd_wages': 500_000,
+        'other_long_term_gains': 0,
+        'other_short_term_gains': 0,
+        'include_fica': False,
+        'include_niit': True,
+        'ss_wage_base_maxed': True,
+        'amt_credit_carryforward': 0,
+        'ca_amt_credit_carryforward': 0,
+    }
+    lot = LotSaleInput(
+        vest_event_id=1,
+        grant_id=1,
+        share_type='rsu',
+        grant_type='new_hire',
+        shares=1000,
+        sale_price=150,
+        sale_date=date(2026, 7, 1),
+        vest_date=date(2023, 1, 1),
+        grant_date=date(2022, 1, 1),
+        cost_basis_per_share=50,  # $100k LTCG
+        is_iso=False,
+    )
+    a = analyze_sales(profile, [lot])
+    assert abs(a.ltcg - 100_000) < 1
+    assert a.other_ordinary == 500_000
+    # Must use 20% on the top slice — flat 15% would be $15k; split is ~$17.7k
+    assert a.federal_ltcg_tax > 16_000
+    assert a.rates_used.get('ltcg') == 0.20
+    # CA incremental on $100k gain with $500k wages should be well above a low-wage case
+    assert a.state_tax > 9_000
+
+
 if __name__ == '__main__':
     test_progressive_tax_basic()
     test_iso_qualifying_vs_disqualifying()
@@ -188,4 +247,5 @@ if __name__ == '__main__':
     test_incremental_not_full_wage_tax()
     test_amt_positive_with_large_bargain()
     test_ltcg_rate_brackets()
+    test_ytd_wages_stack_into_ordinary_for_ltcg_band()
     print('ALL TAX ENGINE TESTS PASSED')

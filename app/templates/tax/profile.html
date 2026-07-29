@@ -37,14 +37,15 @@
 
       <div class="form-row">
         <div class="form-group">
-          <label for="other_ordinary_income">Other ordinary income ($)</label>
+          <label for="other_ordinary_income">Annual ordinary income ($)</label>
           <input type="number" step="0.01" id="other_ordinary_income" name="other_ordinary_income"
                  value="{{ profile.other_ordinary_income or 0 }}" required>
-          <span class="form-hint">Wages, cash bonus — not equity already in VestX.</span>
+          <span class="form-hint">Full-year wages + cash bonus you expect this tax year (not VestX equity). Used for brackets, LTCG 15/20% band, CA tax, NIIT.</span>
         </div>
         <div class="form-group">
-          <label for="ytd_wages">YTD wages for FICA ($)</label>
+          <label for="ytd_wages">YTD / annual wages ($)</label>
           <input type="number" step="0.01" id="ytd_wages" name="ytd_wages" value="{{ profile.ytd_wages or 0 }}">
+          <span class="form-hint">Also used for FICA. Engine stacks <strong>max(annual ordinary, this field)</strong> — put $500k wages in either field and it will count.</span>
         </div>
       </div>
 
