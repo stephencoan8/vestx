@@ -57,14 +57,17 @@
         <div class="dashboard-section">
             <h2>Upcoming vests</h2>
             {% if upcoming_vests %}
-            <div class="vest-list">
+            <div class="vest-list vest-list-scroll" role="list" aria-label="Upcoming vesting events">
                 {% for vest in upcoming_vests %}
-                <div class="vest-item">
+                <div class="vest-item" role="listitem">
                     <div class="vest-date">{{ vest.vest_date.strftime('%b %d, %Y') }}</div>
                     <div class="vest-value">${{ "{:,.2f}".format(vest.shares_vested * current_price) }}</div>
                 </div>
                 {% endfor %}
             </div>
+            {% if upcoming_vests|length >= 48 %}
+            <p class="vest-list-cap-note">Showing next 48 events — see full schedule for the rest.</p>
+            {% endif %}
             {% else %}
             <p class="empty-state">No upcoming vests</p>
             {% endif %}

@@ -1139,6 +1139,33 @@ body.advisor-open .app-main {
     gap: 0.65rem;
 }
 
+/* Scroll so the dashboard can show years of vests without growing the page forever */
+.vest-list-scroll {
+    max-height: min(28rem, 55vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 0.35rem;
+    margin-right: -0.15rem;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+.vest-list-scroll::-webkit-scrollbar {
+    width: 0.45rem;
+}
+.vest-list-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+}
+.vest-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--copper-border);
+}
+.vest-list-cap-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 .vest-item {
     display: flex;
     justify-content: space-between;
@@ -1149,6 +1176,7 @@ body.advisor-open .app-main {
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 .vest-date {

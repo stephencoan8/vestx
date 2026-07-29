@@ -50,7 +50,7 @@ def dashboard():
         .join(Grant)
         .filter(Grant.user_id == current_user.id, VestEvent.vest_date >= date.today())
         .order_by(VestEvent.vest_date)
-        .limit(5)
+        .limit(48)  # ~4 years monthly; list is scrollable on the dashboard
         .all()
     )
 
