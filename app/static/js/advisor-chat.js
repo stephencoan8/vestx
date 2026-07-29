@@ -21,7 +21,6 @@
     var panel = document.getElementById('advisorPanel');
     var closeBtn = document.getElementById('advisorClose');
     var newChatBtn = document.getElementById('advisorNewChat');
-    var navAdvisor = document.getElementById('navAdvisorOpen');
     var sendBtn = document.getElementById('advisorSend');
     var input = document.getElementById('advisorInput');
     var log = document.getElementById('advisorMessages');
@@ -538,15 +537,6 @@
             e.preventDefault();
             e.stopPropagation();
             toggleOrOpenAdvisor(false);
-        });
-    }
-    if (navAdvisor) {
-        navAdvisor.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            document.body.classList.remove('sidebar-open');
-            openAdvisor();
-            pingApi();
         });
     }
     if (closeBtn) {
