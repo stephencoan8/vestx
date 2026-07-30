@@ -1,7 +1,9 @@
 /* VestX — Quiet Luxury
    Blacks, British racing green, copper/bronze. Mature, calm, professional. */
 
-:root {
+/* Dark (default) — Quiet Luxury */
+:root,
+html[data-theme="dark"] {
     --bg-primary: #0c0d0b;
     --bg-secondary: #141612;
     --bg-card: #1a1c18;
@@ -31,6 +33,39 @@
     --radius-sm: 0.5rem;
     --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
     --sidebar-width: 15.5rem;
+    --body-glow-1: rgba(26, 77, 58, 0.12);
+    --body-glow-2: rgba(184, 115, 51, 0.06);
+}
+
+/* Light — same green/copper language, paper surfaces */
+html[data-theme="light"] {
+    --bg-primary: #f4f1ea;
+    --bg-secondary: #ebe6dc;
+    --bg-card: #fffcf7;
+    --bg-elevated: #ffffff;
+    --bg-hover: #e5dfd3;
+
+    --text-primary: #1a1c18;
+    --text-secondary: #4a463c;
+    --text-muted: #7a7468;
+
+    --accent: #1a4d3a;
+    --accent-bright: #246b4e;
+    --accent-soft: rgba(26, 77, 58, 0.10);
+    --copper: #9a5f28;
+    --copper-soft: rgba(154, 95, 40, 0.12);
+    --copper-border: rgba(154, 95, 40, 0.35);
+
+    --success: #1f6b45;
+    --warning: #9a7a2a;
+    --error: #9a3f32;
+    --info: #3d5a48;
+
+    --border: rgba(154, 95, 40, 0.28);
+    --border-subtle: rgba(26, 28, 24, 0.08);
+    --shadow: rgba(40, 35, 25, 0.12);
+    --body-glow-1: rgba(26, 77, 58, 0.06);
+    --body-glow-2: rgba(184, 115, 51, 0.05);
 }
 
 * {
@@ -43,12 +78,13 @@ body {
     font-family: var(--font);
     background: var(--bg-primary);
     background-image:
-        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(26, 77, 58, 0.12), transparent),
-        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(184, 115, 51, 0.06), transparent);
+        radial-gradient(ellipse 80% 50% at 50% -20%, var(--body-glow-1), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 100%, var(--body-glow-2), transparent);
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s ease, color 0.15s ease;
 }
 
 /* ——— App shell (sidebar layout) ——— */
@@ -1401,6 +1437,77 @@ body.advisor-open .app-main {
     font-weight: 600;
 }
 
+/* ——— Settings ——— */
+.settings-page {
+    max-width: 40rem;
+}
+.settings-account-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+.settings-account-value {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: 0.25rem;
+}
+.theme-toggle-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+}
+.theme-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.65rem 1.1rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.theme-option:hover {
+    border-color: var(--copper-border);
+    color: var(--text-primary);
+}
+.theme-option.active {
+    border-color: var(--copper-border);
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    box-shadow: inset 0 0 0 1px var(--copper-soft);
+}
+.theme-option-swatch {
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.theme-swatch-dark {
+    background: linear-gradient(135deg, #0c0d0b 50%, #1a4d3a 50%);
+}
+.theme-swatch-light {
+    background: linear-gradient(135deg, #f4f1ea 50%, #2d6b52 50%);
+}
+.settings-api-form .form-control {
+    width: 100%;
+    max-width: 28rem;
+}
+.settings-tax-pointer {
+    border-style: dashed;
+}
+@media (max-width: 560px) {
+    .settings-account-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Prices page — collapsible market history (closed by default) */
 .prices-collapse {
     margin: 0;
@@ -2016,6 +2123,9 @@ body.advisor-open .app-main {
 .toggle-btn.active {
     background: var(--accent);
     color: #f0ebe3;
+}
+html[data-theme="light"] .toggle-btn.active {
+    color: #f4f1ea;
 }
 
 .chart-legend {

@@ -14,7 +14,7 @@
  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
  <h2 style="margin: 0;"> Tax Rate Configuration</h2>
  <div style="display: flex; gap: 1rem; align-items: center;">
- <a href="{{ url_for('settings.profile') }}" class="btn btn-secondary" style="text-decoration: none;">
+ <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary" style="text-decoration: none;">
  Configure Tax Settings
  </a>
  <div class="toggle-container">
@@ -30,7 +30,7 @@
  </div>
  <p class="text-muted">
  <strong> Tax Estimates:</strong> Based on your profile settings.
- <a href="{{ url_for('settings.profile') }}">Update your tax preferences</a> to change rates.
+ <a href="{{ url_for('tax_center.tax_profile') }}">Update your tax profile</a> to change rates.
  </p>
  <div class="tax-summary" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
  <h4>Your Current Tax Rates:</h4>
@@ -45,7 +45,7 @@
  <p class="text-muted" style="margin-top: 1rem;">
  <strong> Tax Estimates:</strong> 
  Tax rates based on your profile settings.
- <a href="{{ url_for('settings.profile') }}">Update tax preferences</a> to change rates.
+ <a href="{{ url_for('tax_center.tax_profile') }}">Update tax profile</a> to change rates.
  </p>
  
  {# Optional: Sliders for temporary scenario exploration (not saved) #}
