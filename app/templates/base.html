@@ -19,7 +19,6 @@
                 <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Dashboard</a>
                 <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint in ['grants.list_grants', 'grants.add_grant', 'grants.view_grant', 'grants.edit_grant'] %} active{% endif %}">Grants</a>
                 <a href="{{ url_for('prices.list_prices') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('prices.') %} active{% endif %}">Prices</a>
-                <a href="{{ url_for('scenarios.price_scenarios') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('scenarios.') %} active{% endif %}">Scenarios</a>
             </div>
 
             <div class="sidebar-section">

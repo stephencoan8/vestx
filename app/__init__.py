@@ -67,7 +67,6 @@ def create_app():
     from app.routes.admin import admin_bp
     from app.routes.settings import settings_bp
     from app.routes.prices import prices_bp
-    from app.routes.scenarios import scenarios_bp
     from app.routes.transactions import transactions_bp
     from app.routes.tax_center import tax_center_bp
 
@@ -77,7 +76,6 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(prices_bp)
-    app.register_blueprint(scenarios_bp, url_prefix='/scenarios')
     app.register_blueprint(transactions_bp, url_prefix='/transactions')
     app.register_blueprint(tax_center_bp)
 
