@@ -31,29 +31,42 @@
     </div>
 
     <div class="detail-card">
-        <h2>Market history</h2>
-        {% if public_prices %}
-        <div class="table-container" style="border: none; padding: 0; margin: 0;">
-            <table class="data-table sortable-table">
-                <thead>
-                    <tr>
-                        <th data-sort="date">Date</th>
-                        <th data-sort="number">Price (USD)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for price in public_prices %}
-                    <tr>
-                        <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
-                        <td class="highlight">${{ "{:,.2f}".format(price.decrypted_price) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <p class="empty-state">No market prices loaded yet. Click Refresh market.</p>
-        {% endif %}
+        <details class="prices-collapse">
+            <summary class="prices-collapse-summary">
+                <span class="prices-collapse-title">Market history</span>
+                <span class="prices-collapse-meta">
+                    {% if public_prices %}
+                    {{ public_prices|length }} day{{ 's' if public_prices|length != 1 else '' }} · click to expand
+                    {% else %}
+                    empty · click to expand
+                    {% endif %}
+                </span>
+            </summary>
+            <div class="prices-collapse-body">
+                {% if public_prices %}
+                <div class="table-container" style="border: none; padding: 0; margin: 0;">
+                    <table class="data-table sortable-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="date">Date</th>
+                                <th data-sort="number">Price (USD)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for price in public_prices %}
+                            <tr>
+                                <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
+                                <td class="highlight">${{ "{:,.2f}".format(price.decrypted_price) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">No market prices loaded yet. Click Refresh market.</p>
+                {% endif %}
+            </div>
+        </details>
     </div>
 
     <div class="detail-card">

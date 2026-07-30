@@ -1401,6 +1401,49 @@ body.advisor-open .app-main {
     font-weight: 600;
 }
 
+/* Prices page — collapsible market history (closed by default) */
+.prices-collapse {
+    margin: 0;
+}
+.prices-collapse-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.prices-collapse-summary::-webkit-details-marker {
+    display: none;
+}
+.prices-collapse-summary::before {
+    content: "▸ ";
+    color: var(--copper);
+    font-size: 0.9rem;
+}
+.prices-collapse[open] > .prices-collapse-summary::before {
+    content: "▾ ";
+}
+.prices-collapse-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.prices-collapse-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.prices-collapse-summary:hover .prices-collapse-title {
+    color: var(--copper);
+}
+.prices-collapse-body {
+    margin-top: 1.15rem;
+    padding-top: 0.25rem;
+}
+
 .detail-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
