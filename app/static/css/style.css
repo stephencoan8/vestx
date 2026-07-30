@@ -32,7 +32,7 @@ html[data-theme="dark"] {
     --radius: 0.75rem;
     --radius-sm: 0.5rem;
     --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-    --sidebar-width: 15.5rem;
+    --sidebar-width: 20.15rem; /* ~30% wider than 15.5rem */
     --body-glow-1: rgba(26, 77, 58, 0.12);
     --body-glow-2: rgba(184, 115, 51, 0.06);
 
