@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .accordion-item {
- background: var(--surface);
+ background: var(--bg-card);
  border: 2px solid var(--border);
  border-radius: 12px;
  overflow: hidden;
@@ -267,7 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .accordion-item.active {
  border-color: var(--accent);
- box-shadow: 0 4px 20px rgba(79, 70, 229, 0.1);
+ box-shadow: 0 4px 20px var(--shadow);
 }
 
 .accordion-header {
@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
  padding: 1.25rem 1.5rem;
  cursor: pointer;
  user-select: none;
- background: var(--surface);
+ background: var(--bg-card);
  transition: background 0.2s ease;
 }
 

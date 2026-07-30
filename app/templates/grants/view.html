@@ -108,7 +108,7 @@
  value="{{ '{:.2f}'.format(vest.cash_paid) if vest.cash_paid else '' }}" 
  step="0.01" min="0" placeholder="$0.00" onclick="event.stopPropagation();">
  {% else %}
- <span style="color: #999;">—</span>
+ <span style="color: var(--text-muted);">—</span>
  {% endif %}
  </td>
  <td>
@@ -118,7 +118,7 @@
  <option value="no" {% if not vest.cash_covered_all %}selected{% endif %}>No</option>
  </select>
  {% else %}
- <span style="color: #999;">—</span>
+ <span style="color: var(--text-muted);">—</span>
  {% endif %}
  </td>
  <td>
@@ -128,7 +128,7 @@
  step="1" min="0" max="{{ vest.shares_vested }}" placeholder="0"
  {% if vest.cash_covered_all %}disabled{% endif %} onclick="event.stopPropagation();">
  {% else %}
- <span style="color: #999;">—</span>
+ <span style="color: var(--text-muted);">—</span>
  {% endif %}
  </td>
  {% endif %}
@@ -318,7 +318,7 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 .vest-schedule-table input[type="number"],
 .vest-schedule-table select {
  padding: 0.4rem;
- border: 1px solid var(--border-color);
+ border: 1px solid var(--border);
  border-radius: 4px;
  background: var(--bg-primary);
  color: var(--text-primary);
@@ -330,7 +330,7 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
  cursor: not-allowed;
 }
 
-.save-vest-btn.btn-success { background: #22c55e !important; }
+.save-vest-btn.btn-success { background: var(--success) !important; color: #fff !important; }
 
 .detail-card { margin-bottom: 2rem; }
 .detail-item { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -358,14 +358,15 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 }
 
 .badge-warning {
- background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
- color: white;
+ background: var(--copper-soft);
+ color: var(--warning);
+ border: 1px solid var(--copper-border);
 }
 
 .badge-pending {
  background: var(--bg-secondary);
  color: var(--text-secondary);
- border: 1px solid var(--border-color);
+ border: 1px solid var(--border);
 }
 
 .clickable-vest-row {
@@ -374,7 +375,7 @@ document.querySelectorAll('.save-vest-btn').forEach(btn => {
 }
 
 .clickable-vest-row:hover {
- background-color: rgba(59, 130, 246, 0.05) !important;
+ background-color: var(--accent-soft) !important;
 }
 </style>
 {% endblock %}

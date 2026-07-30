@@ -13,7 +13,7 @@
  left: 0;
  right: 0;
  bottom: 0;
- background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+ background: var(--bg-primary);
  cursor: grab;
  overflow: hidden;
  }
@@ -32,13 +32,14 @@
  /* Floating UI controls */
  .floating-panel {
  position: fixed;
- background: rgba(30, 41, 59, 0.95);
+ background: var(--bg-card);
  backdrop-filter: blur(12px);
- border: 1px solid rgba(148, 163, 184, 0.2);
- border-radius: 16px;
+ border: 1px solid var(--border);
+ border-radius: var(--radius);
  padding: 20px;
- box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+ box-shadow: 0 10px 40px var(--shadow);
  z-index: 100;
+ color: var(--text-primary);
  }
  
  #controlPanel {
@@ -81,7 +82,7 @@
  }
  
  .year-tile.drag-over {
- border-color: #3b82f6;
+ border-color: var(--copper);
  background: rgba(59, 130, 246, 0.15);
  transform: scale(1.03);
  }
@@ -90,7 +91,7 @@
  font-size: 2.5rem;
  font-weight: 800;
  margin-bottom: 20px;
- background: linear-gradient(135deg, #60a5fa, #3b82f6);
+ background: linear-gradient(135deg, var(--copper), var(--copper));
  -webkit-background-clip: text;
  -webkit-text-fill-color: transparent;
  }
@@ -123,11 +124,11 @@
  }
  
  .stat-value.net {
- color: #34d399;
+ color: var(--success);
  }
  
  .stat-value.tax {
- color: #f87171;
+ color: var(--error);
  }
  
  /* Vest tiles */
@@ -155,7 +156,7 @@
  .vest-type {
  font-weight: 700;
  font-size: 0.875rem;
- color: #60a5fa;
+ color: var(--copper);
  margin-bottom: 4px;
  }
  
@@ -190,19 +191,19 @@
  }
  
  .btn-primary {
- background: linear-gradient(135deg, #3b82f6, #2563eb);
- color: white;
+ background: linear-gradient(135deg, var(--copper), var(--accent-bright));
+ color: var(--text-primary);
  }
  
  .btn-primary:hover {
- background: linear-gradient(135deg, #2563eb, #1d4ed8);
+ background: linear-gradient(135deg, var(--accent-bright), var(--accent));
  transform: translateY(-2px);
  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
  }
  
  .btn-secondary {
  background: rgba(71, 85, 105, 0.8);
- color: white;
+ color: var(--text-primary);
  }
  
  .btn-secondary:hover {
@@ -232,7 +233,7 @@
 </style>
 
 <div id="titlePanel" class="floating-panel">
- <h1 style="font-size: 1.5rem; font-weight: 800; color: white; margin: 0;"> Sale Planning</h1>
+ <h1 style="font-size: 1.5rem; font-weight: 800; color: var(--text-primary); margin: 0;"> Sale Planning</h1>
  <p style="font-size: 0.75rem; color: rgba(148, 163, 184, 0.8); margin: 8px 0 0 0;">Optimize your tax strategy</p>
 </div>
 
@@ -245,7 +246,7 @@
  </div>
  <div class="control-group" style="border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 16px;">
  <div class="control-label">Zoom</div>
- <div style="text-align: center; font-size: 1.25rem; font-weight: 700; color: white;" id="zoomDisplay">100%</div>
+ <div style="text-align: center; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);" id="zoomDisplay">100%</div>
  <div class="hint-text">Mouse wheel to zoom</div>
  </div>
  <div class="control-group">

@@ -3,7 +3,7 @@
 {% block title %}Vest Event Details - VestX{% endblock %}
 
 {% block content %}
-<div class="vest-detail-page">
+<div class="page vest-detail-page">
  <header class="page-header">
  <div class="header-content">
  <div>
@@ -179,7 +179,7 @@
  step="0.01" 
  min="0" 
  placeholder="$0.00"
- style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+ class="themed-input">
  </div>
  
  <div class="info-item">
@@ -187,7 +187,7 @@
  <select id="cashCoveredAll" 
  name="cash_covered_all"
  onchange="toggleSharesSold()"
- style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+ class="themed-input">
  <option value="true" {% if vest_event.cash_covered_all %}selected{% endif %}>Yes</option>
  <option value="false" {% if not vest_event.cash_covered_all %}selected{% endif %}>No</option>
  </select>
@@ -204,7 +204,7 @@
  max="{{ vest_data.shares_vested }}"
  placeholder="0"
  {% if vest_event.cash_covered_all %}disabled{% endif %}
- style="padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white; width: 100%;">
+ class="themed-input">
  <small style="color: var(--text-secondary);">Max: {{ "%.0f"|format(vest_data.shares_vested) }}</small>
  </div>
  </div>
@@ -255,7 +255,7 @@
  <!-- Estimated Tax at Sale (for remaining shares) - using CENTRALIZED backend calculation -->
  {% if vest_data.shares_remaining > 0 and vest_data.sale_tax_projection and vest_data.sale_tax_projection.unrealized_gain > 0 %}
  {% set proj = vest_data.sale_tax_projection %}
- <div style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 8px;">
+ <div class="info-box" style="margin-bottom: 2rem;">
  <h3 style="margin-top: 0;"> Estimated Tax if Sold Today</h3>
  <p style="color: var(--text-secondary); margin-bottom: 1rem;">
  Estimated capital gains tax if you sold your {{ "%.4f"|format(proj.shares_held) }} remaining shares at current price.
@@ -352,22 +352,22 @@
  <form id="saleForm" onsubmit="submitSale(event)">
  <div class="form-group">
  <label for="sale_date">Sale Date *</label>
- <input type="date" id="sale_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="date" id="sale_date" required class="themed-input">
  </div>
  
  <div class="form-row">
  <div class="form-group">
  <label for="shares_sold">Shares Sold *</label>
- <input type="number" id="shares_sold" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="shares_sold" step="0.0001" required max="{{ vest_data.shares_remaining }}" class="themed-input">
  <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
  </div>
  <div class="form-group">
  <label for="sale_price">Sale Price (per share) *</label>
- <input type="number" id="sale_price" step="0.01" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="sale_price" step="0.01" required class="themed-input">
  </div>
  </div>
  
- <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
+ <div class="info-box" class="info-box">
  <strong>Cost Basis:</strong> ${{ "%.2f"|format(vest_data.cost_basis_per_share) }} per share
  <br><small>From vest date: {{ vest_event.vest_date.strftime('%Y-%m-%d') }}</small>
  </div>
@@ -381,16 +381,16 @@
  <div class="form-row">
  <div class="form-group">
  <label for="actual_federal_tax">Federal Tax Paid</label>
- <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="actual_federal_tax" step="0.01" min="0" placeholder="$0.00" class="themed-input">
  </div>
  <div class="form-group">
  <label for="actual_state_tax">State Tax Paid</label>
- <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="actual_state_tax" step="0.01" min="0" placeholder="$0.00" class="themed-input">
  </div>
  </div>
  <div class="form-group">
  <label for="actual_total_tax">Total Tax Paid</label>
- <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="actual_total_tax" step="0.01" min="0" placeholder="$0.00" class="themed-input">
  <small>Or leave blank to auto-calculate from federal + state</small>
  </div>
  </div>
@@ -398,7 +398,7 @@
  
  <div class="form-group">
  <label for="sale_notes">Notes</label>
- <textarea id="sale_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
+ <textarea id="sale_notes" rows="2" class="themed-input"></textarea>
  </div>
  
  <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
@@ -415,22 +415,22 @@
  <form id="exerciseForm" onsubmit="submitExercise(event)">
  <div class="form-group">
  <label for="exercise_date">Exercise Date *</label>
- <input type="date" id="exercise_date" required style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="date" id="exercise_date" required class="themed-input">
  </div>
  
  <div class="form-row">
  <div class="form-group">
  <label for="shares_exercised">Shares Exercised *</label>
- <input type="number" id="shares_exercised" step="0.0001" required max="{{ vest_data.shares_remaining }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="shares_exercised" step="0.0001" required max="{{ vest_data.shares_remaining }}" class="themed-input">
  <small>Max available: {{ "%.4f"|format(vest_data.shares_remaining) }}</small>
  </div>
  <div class="form-group">
  <label for="fmv_at_exercise">FMV at Exercise *</label>
- <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ vest_data.current_price }}" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="fmv_at_exercise" step="0.01" required value="{{ vest_data.current_price }}" class="themed-input">
  </div>
  </div>
  
- <div class="info-box" style="margin: 1rem 0; padding: 1rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--info); border-radius: 4px;">
+ <div class="info-box" class="info-box">
  <strong>Strike Price:</strong> ${{ "%.2f"|format(vest_data.strike_price) }} per share
  <br><small>Grant date: {{ grant.grant_date.strftime('%Y-%m-%d') }}</small>
  </div>
@@ -445,17 +445,17 @@
  <div class="form-row" id="amtFields" style="display: none;">
  <div class="form-group">
  <label for="amt_paid">AMT Paid</label>
- <input type="number" id="amt_paid" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="amt_paid" step="0.01" class="themed-input">
  </div>
  <div class="form-group">
  <label for="amt_credit_generated">AMT Credit Generated</label>
- <input type="number" id="amt_credit_generated" step="0.01" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;">
+ <input type="number" id="amt_credit_generated" step="0.01" class="themed-input">
  </div>
  </div>
  
  <div class="form-group">
  <label for="exercise_notes">Notes</label>
- <textarea id="exercise_notes" rows="2" style="width: 100%; padding: 0.5rem; border: 2px solid #4a5568; border-radius: 4px; background: #1a202c; color: white;"></textarea>
+ <textarea id="exercise_notes" rows="2" class="themed-input"></textarea>
  </div>
  
  <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
@@ -548,7 +548,7 @@
  </table>
  </div>
  
- <div style="margin-top: 1rem; padding: 1rem; background: rgba(74, 85, 104, 0.2); border-radius: 8px;">
+ <div class="muted-panel">
  <p style="color: var(--text-secondary); margin: 0;">
  <strong> Estimated Tax:</strong> System-calculated estimate using simplified rates (15% long-term, 22% short-term).
  <br>
@@ -617,332 +617,6 @@
  </section>
  </div>
 </div>
-
-<style>
-.vest-detail-page {
- max-width: 1000px;
- margin: 0 auto;
- padding: 2rem;
-}
-
-.page-header {
- margin-bottom: 2rem;
-}
-
-.header-content {
- display: flex;
- justify-content: space-between;
- align-items: center;
- flex-wrap: wrap;
- gap: 1rem;
-}
-
-.page-header h1 {
- margin: 0;
- font-size: 2rem;
- color: var(--text-primary);
-}
-
-.subtitle {
- margin: 0.5rem 0 0 0;
- color: var(--text-secondary);
- font-size: 1.1rem;
-}
-
-.detail-container {
- display: flex;
- flex-direction: column;
- gap: 1.5rem;
-}
-
-.detail-section {
- background: #2d3748;
- border-radius: 12px;
- padding: 2rem;
- box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.detail-section h2 {
- margin: 0 0 1.5rem 0;
- font-size: 1.5rem;
- color: var(--primary);
- border-bottom: 2px solid var(--primary-light);
- padding-bottom: 0.5rem;
-}
-
-.info-grid {
- display: grid;
- grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
- gap: 1.5rem;
-}
-
-.info-item {
- display: flex;
- flex-direction: column;
- gap: 0.5rem;
-}
-
-.info-item label {
- font-size: 0.875rem;
- color: var(--text-secondary);
- font-weight: 500;
- text-transform: uppercase;
- letter-spacing: 0.5px;
-}
-
-.info-item span {
- font-size: 1.1rem;
- color: var(--text-primary);
-}
-
-.highlight {
- color: var(--accent);
- font-weight: 600;
- font-size: 1.25rem !important;
-}
-
-.grant-type-badge {
- display: inline-block;
- padding: 0.5rem 1rem;
- background: var(--primary-light);
- color: var(--primary);
- border-radius: 20px;
- font-weight: 600;
- font-size: 0.9rem !important;
-}
-
-.badge {
- display: inline-block;
- padding: 0.25rem 0.75rem;
- border-radius: 12px;
- font-size: 0.75rem;
- font-weight: 600;
- margin-left: 0.5rem;
-}
-
-.badge-success {
- background: #d4edda;
- color: #155724;
-}
-
-.badge-warning {
- background: #fff3cd;
- color: #856404;
-}
-
-.tax-summary {
- background: #1a202c;
- border-radius: 8px;
- padding: 1.5rem;
-}
-
-.tax-summary-row {
- display: flex;
- justify-content: space-between;
- padding: 0.75rem 0;
- border-bottom: 1px solid #4a5568;
-}
-
-.tax-summary-row:last-child {
- border-bottom: none;
-}
-
-.tax-item {
- color: var(--text-secondary);
- font-size: 0.95rem;
-}
-
-.total-row {
- margin-top: 0.5rem;
- padding-top: 1rem;
- border-top: 2px solid #4a5568 !important;
-}
-
-.net-row {
- background: #4a5568;
- margin: 0.5rem -1.5rem -1.5rem -1.5rem;
- padding: 1rem 1.5rem !important;
- border-radius: 0 0 8px 8px;
- border-bottom: none !important;
-}
-
-.amount {
- font-family: 'Courier New', monospace;
- font-weight: 600;
-}
-
-.effective-rate {
- margin-top: 1.5rem;
- padding: 1rem;
- background: #4a5568;
- border-left: 4px solid var(--accent);
- border-radius: 4px;
- font-size: 1.1rem;
-}
-
-.notes-section {
- background: #2d3748;
-}
-
-.notes-form {
- display: flex;
- flex-direction: column;
- gap: 1rem;
-}
-
-.notes-textarea {
- width: 100%;
- padding: 1rem;
- border: 2px solid #4a5568;
- border-radius: 8px;
- font-size: 1rem;
- font-family: inherit;
- resize: vertical;
- min-height: 150px;
- background: #1a202c;
- color: white;
-}
-
-.notes-textarea:focus {
- outline: none;
- border-color: var(--accent);
-}
-
-.notes-textarea::placeholder {
- color: #a0aec0;
-}
-
-@media (max-width: 768px) {
- .vest-detail-page {
- padding: 1rem;
- }
-
- .detail-section {
- padding: 1.5rem;
- }
-
- .info-grid {
- grid-template-columns: 1fr;
- }
-
- .header-content {
- flex-direction: column;
- align-items: flex-start;
- }
-}
-</style>
-
-<style>
-.tax-subsection {
- margin: 1.5rem 0;
- padding: 1.5rem;
- background: rgba(74, 85, 104, 0.15);
- border-radius: 8px;
- border-left: 4px solid var(--accent);
-}
-
-.tax-subsection h3 {
- margin-top: 0;
- margin-bottom: 1rem;
- font-size: 1.1rem;
-}
-
-.collapsible-header {
- cursor: pointer;
- user-select: none;
- display: flex;
- justify-content: space-between;
- align-items: center;
- padding: 0.5rem 0;
- transition: color 0.2s ease;
-}
-
-.collapsible-header:hover {
- color: var(--accent);
-}
-
-.expand-icon {
- font-size: 0.8rem;
- transition: transform 0.2s ease;
-}
-
-.collapsible-content {
- overflow: hidden;
- transition: max-height 0.3s ease;
-}
-
-.estimate-note {
- background: rgba(59, 130, 246, 0.1);
- border-left: 4px solid #3b82f6;
- padding: 0.75rem;
- margin-bottom: 1rem;
- border-radius: 4px;
- font-size: 0.9rem;
-}
-
-.collapsible-section {
- margin: 1rem 0;
- padding: 1rem;
- background: rgba(74, 85, 104, 0.3);
- border-radius: 8px;
-}
-
-.section-toggle {
- cursor: pointer;
- user-select: none;
- display: flex;
- justify-content: space-between;
- align-items: center;
- margin: 0;
- font-size: 1rem;
- color: var(--accent);
- transition: opacity 0.2s ease;
-}
-
-.section-toggle:hover {
- opacity: 0.8;
-}
-
-.info-box {
- background: #4a5568;
- padding: 1rem;
- border-radius: 4px;
- margin: 1rem 0;
- border-left: 4px solid var(--accent);
-}
-
-.form-row {
- display: grid;
- grid-template-columns: 1fr 1fr;
- gap: 1rem;
-}
-
-.table-container {
- overflow-x: auto;
-}
-
-.data-table {
- width: 100%;
- border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td {
- padding: 0.75rem;
- text-align: left;
- border-bottom: 1px solid #4a5568;
-}
-
-.data-table th {
- background: #1a202c;
- font-weight: 600;
- color: var(--accent);
-}
-
-.data-table tr:hover {
- background: #3a4556;
-}
-</style>
 
 <script>
 const CSRF_TOKEN = '{{ csrf_token() }}';
