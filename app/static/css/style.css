@@ -2178,6 +2178,12 @@ body.advisor-open .app-main {
 .tax-result-head {
     margin-bottom: 0.5rem;
 }
+.stat-sublabel {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+    letter-spacing: 0.02em;
+}
 .form-actions .past-year-loading {
     margin: 0 0 0 0.75rem;
     display: inline-block;

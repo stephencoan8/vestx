@@ -154,55 +154,61 @@ def api_year_tax():
             years = list(range(date.today().year, date.today().year - 8, -1))
 
         def _seed_form(year: int) -> tuple:
+            """
+            Money fields come ONLY from TaxYearProfile for that year.
+            Never pull another year's wages/YTD from main TaxProfile — that was
+            inflating past-year estimates with current-year income.
+            """
             year_row = TaxYearProfile.get_for(current_user.id, year)
             if year_row:
                 return year_row.to_form_dict(), 'saved'
+            # Flags/filing only from main profile; money always 0 until user enters
             form = {
                 'tax_year': year,
                 'filing_status': profile.filing_status or 'single',
                 'state_code': profile.state_code or 'CA',
-                'federal_ordinary_rate': profile.federal_ordinary_rate,
-                'federal_ltcg_rate': profile.federal_ltcg_rate,
-                'state_ordinary_rate': profile.state_ordinary_rate or 0.0,
-                'state_cg_rate': (
-                    profile.state_cg_rate
-                    if profile.state_cg_rate is not None
-                    else (profile.state_ordinary_rate or 0)
-                ),
+                'federal_ordinary_rate': None,
+                'federal_ltcg_rate': None,
+                'state_ordinary_rate': 0.0,
+                'state_cg_rate': 0.0,
                 'use_bracket_engine': bool(
                     profile.use_bracket_engine if profile.use_bracket_engine is not None else True
                 ),
                 'use_state_engine': bool(
                     profile.use_state_engine if profile.use_state_engine is not None else True
                 ),
-                'other_ordinary_income': (
-                    float(profile.other_ordinary_income or 0)
-                    if profile.tax_year == year
-                    else 0.0
-                ),
-                'ytd_wages': (
-                    float(profile.ytd_wages or 0) if profile.tax_year == year else 0.0
-                ),
-                'other_long_term_gains': (
-                    float(profile.other_long_term_gains or 0)
-                    if profile.tax_year == year
-                    else 0.0
-                ),
-                'other_short_term_gains': (
-                    float(profile.other_short_term_gains or 0)
-                    if profile.tax_year == year
-                    else 0.0
-                ),
+                'other_ordinary_income': 0.0,
+                'ytd_wages': 0.0,
+                'other_long_term_gains': 0.0,
+                'other_short_term_gains': 0.0,
                 'include_fica': bool(
                     profile.include_fica if profile.include_fica is not None else True
                 ),
-                'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+                'ss_wage_base_maxed': False,  # per-year; don't inherit mid-year flag
                 'include_niit': bool(
                     profile.include_niit if profile.include_niit is not None else True
                 ),
-                'amt_credit_carryforward': float(profile.amt_credit_carryforward or 0),
-                'ca_amt_credit_carryforward': float(profile.ca_amt_credit_carryforward or 0),
+                'amt_credit_carryforward': 0.0,
+                'ca_amt_credit_carryforward': 0.0,
             }
+            # Only for the active planning year with no year-row yet: offer main
+            # profile money as a starting point (same calendar year only).
+            if profile.tax_year == year:
+                form['other_ordinary_income'] = float(profile.other_ordinary_income or 0)
+                form['ytd_wages'] = float(profile.ytd_wages or 0)
+                form['other_long_term_gains'] = float(profile.other_long_term_gains or 0)
+                form['other_short_term_gains'] = float(profile.other_short_term_gains or 0)
+                form['federal_ordinary_rate'] = profile.federal_ordinary_rate
+                form['federal_ltcg_rate'] = profile.federal_ltcg_rate
+                form['state_ordinary_rate'] = profile.state_ordinary_rate or 0.0
+                form['state_cg_rate'] = (
+                    profile.state_cg_rate
+                    if profile.state_cg_rate is not None
+                    else (profile.state_ordinary_rate or 0)
+                )
+                form['ss_wage_base_maxed'] = bool(profile.ss_wage_base_maxed)
+                form['amt_credit_carryforward'] = float(profile.amt_credit_carryforward or 0)
+                form['ca_amt_credit_carryforward'] = float(profile.ca_amt_credit_carryforward or 0)
             return form, 'new'
 
         def _merge_inputs(base: dict, data: dict) -> dict:
@@ -245,18 +251,26 @@ def api_year_tax():
                     out[rk] = (v / 100.0) if v > 1 else v
             return out
 
-        def _wages_for_calc(form: dict) -> float:
-            return max(
-                float(form.get('other_ordinary_income') or 0),
-                float(form.get('ytd_wages') or 0),
-            )
+        def _wage_bases(form: dict) -> tuple:
+            """
+            Box-1 ordinary drives federal/CA and FICA for full-year estimates.
+            YTD is only a fallback when box 1 is empty — never max() with a
+            leftover current-year YTD (that was inflating past-year tax).
+            """
+            ordinary = float(form.get('other_ordinary_income') or 0)
+            ytd = float(form.get('ytd_wages') or 0)
+            if ordinary <= 0 and ytd > 0:
+                ordinary = ytd
+            # Full-year: FICA tracks box 1. (YTD still saved for mid-year sale stacking.)
+            fica = ordinary
+            return ordinary, fica
 
         def _package(year: int, form: dict, source: str, history: dict, *, run: bool = True):
             if year not in years:
                 years_out = sorted(set(years) | {year}, reverse=True)
             else:
                 years_out = years
-            wages = _wages_for_calc(form)
+            wages, fica_wages = _wage_bases(form)
             result = None
             if run and wages > 0:
                 result = compute_w2_year_tax(
@@ -271,6 +285,7 @@ def api_year_tax():
                     ss_wage_base_maxed=bool(form.get('ss_wage_base_maxed')),
                     use_state_engine=bool(form.get('use_state_engine', True)),
                     vest_prefills=history,
+                    fica_wages=fica_wages,
                 ).to_dict()
             # Client-friendly form: rates as percent for override fields
             form_out = dict(form)
@@ -297,6 +312,7 @@ def api_year_tax():
                 # legacy keys for any older clients
                 'inputs': {
                     'wages': wages,
+                    'fica_wages': fica_wages,
                     'other_ordinary': 0,
                     'stcg': float(form.get('other_short_term_gains') or 0),
                     'ltcg': float(form.get('other_long_term_gains') or 0),
@@ -417,39 +433,58 @@ def tax_profile():
         form = year_row.to_form_dict()
         source = 'saved'
     else:
-        # Seed from main profile if same year, else blank wages + vest hint
+        # Money only from this year (or main profile if same active year). Never
+        # copy another year's wages into a blank past year.
         form = {
             'tax_year': selected_year,
             'filing_status': profile.filing_status or 'single',
             'state_code': profile.state_code or 'CA',
-            'federal_ordinary_rate': profile.federal_ordinary_rate,
-            'federal_ltcg_rate': profile.federal_ltcg_rate,
-            'state_ordinary_rate': profile.state_ordinary_rate or 0.0,
-            'state_cg_rate': profile.state_cg_rate if profile.state_cg_rate is not None else (profile.state_ordinary_rate or 0),
+            'federal_ordinary_rate': None,
+            'federal_ltcg_rate': None,
+            'state_ordinary_rate': 0.0,
+            'state_cg_rate': 0.0,
             'use_bracket_engine': bool(profile.use_bracket_engine if profile.use_bracket_engine is not None else True),
             'use_state_engine': bool(profile.use_state_engine if profile.use_state_engine is not None else True),
-            'other_ordinary_income': float(profile.other_ordinary_income or 0) if profile.tax_year == selected_year else 0.0,
-            'ytd_wages': float(profile.ytd_wages or 0) if profile.tax_year == selected_year else 0.0,
-            'other_long_term_gains': float(profile.other_long_term_gains or 0) if profile.tax_year == selected_year else 0.0,
-            'other_short_term_gains': float(profile.other_short_term_gains or 0) if profile.tax_year == selected_year else 0.0,
+            'other_ordinary_income': 0.0,
+            'ytd_wages': 0.0,
+            'other_long_term_gains': 0.0,
+            'other_short_term_gains': 0.0,
             'include_fica': bool(profile.include_fica if profile.include_fica is not None else True),
-            'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+            'ss_wage_base_maxed': False,
             'include_niit': bool(profile.include_niit if profile.include_niit is not None else True),
-            'amt_credit_carryforward': float(profile.amt_credit_carryforward or 0),
-            'ca_amt_credit_carryforward': float(profile.ca_amt_credit_carryforward or 0),
+            'amt_credit_carryforward': 0.0,
+            'ca_amt_credit_carryforward': 0.0,
         }
+        if profile.tax_year == selected_year:
+            form['other_ordinary_income'] = float(profile.other_ordinary_income or 0)
+            form['ytd_wages'] = float(profile.ytd_wages or 0)
+            form['other_long_term_gains'] = float(profile.other_long_term_gains or 0)
+            form['other_short_term_gains'] = float(profile.other_short_term_gains or 0)
+            form['federal_ordinary_rate'] = profile.federal_ordinary_rate
+            form['federal_ltcg_rate'] = profile.federal_ltcg_rate
+            form['state_ordinary_rate'] = profile.state_ordinary_rate or 0.0
+            form['state_cg_rate'] = (
+                profile.state_cg_rate if profile.state_cg_rate is not None else (profile.state_ordinary_rate or 0)
+            )
+            form['ss_wage_base_maxed'] = bool(profile.ss_wage_base_maxed)
+            form['amt_credit_carryforward'] = float(profile.amt_credit_carryforward or 0)
+            form['ca_amt_credit_carryforward'] = float(profile.ca_amt_credit_carryforward or 0)
         source = 'new'
 
     history = build_year_vest_prefill(current_user.id, selected_year)
-    wages = max(float(form.get('other_ordinary_income') or 0), float(form.get('ytd_wages') or 0))
+    ordinary = float(form.get('other_ordinary_income') or 0)
+    ytd = float(form.get('ytd_wages') or 0)
+    if ordinary <= 0 and ytd > 0:
+        ordinary = ytd
+    fica_wages = ordinary  # full-year: don't let a stale high YTD inflate FICA
     year_tax = None
-    if wages > 0:
+    if ordinary > 0:
         try:
             year_tax = compute_w2_year_tax(
                 tax_year=selected_year,
                 filing_status=form['filing_status'],
                 state_code=form.get('state_code') or 'CA',
-                wages=wages,
+                wages=ordinary,
                 other_ordinary=0,
                 stcg=float(form.get('other_short_term_gains') or 0),
                 ltcg=float(form.get('other_long_term_gains') or 0),
@@ -457,6 +492,7 @@ def tax_profile():
                 ss_wage_base_maxed=form['ss_wage_base_maxed'],
                 use_state_engine=form['use_state_engine'],
                 vest_prefills=history,
+                fica_wages=fica_wages,
             ).to_dict()
         except Exception as e:
             logger.warning('year tax display failed: %s', e)

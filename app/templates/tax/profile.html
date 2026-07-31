@@ -95,10 +95,10 @@
             <span class="form-hint"><span class="year-label">{{ selected_year }}</span> box 1 wages (salary + RSU vest). Used for brackets, CA, NIIT, sale stacking.</span>
           </div>
           <div class="form-group">
-            <label for="ytd_wages">YTD wages for FICA ($)</label>
+            <label for="ytd_wages">YTD wages for sale stacking ($)</label>
             <input type="text" inputmode="decimal" class="money-input" id="ytd_wages" name="ytd_wages"
                    value="{{ '{:,.2f}'.format(form.ytd_wages or 0) }}" data-money>
-            <span class="form-hint">Usually same as wages for a completed year. Engine uses max(ordinary, this).</span>
+            <span class="form-hint">For this year’s full W-2 estimate, tax uses box 1 above. Set YTD ≈ wages on a completed year (saved for sale stacking). Not mixed with other years.</span>
           </div>
         </div>
 
@@ -193,22 +193,28 @@
       <div class="tax-result-head">
         <h2 id="yearTaxHeading"><span class="year-label">{{ selected_year }}</span> W-2 estimate</h2>
         <p class="tax-panel-lead" id="yearTaxLead">
-          Progressive federal + CA + FICA on wages above (full year, not sale-incremental).
-          Includes vest history context for <span class="year-label">{{ selected_year }}</span>.
+          Full-year federal + CA + FICA for <strong class="year-label">{{ selected_year }}</strong> only
+          (that year’s brackets &amp; SS base — not the current year). Standard deductions applied.
         </p>
       </div>
       <div id="yearTaxEmpty" class="tax-panel-lead" style="margin:0;{% if year_tax %}display:none;{% endif %}">
-        Enter wages for <span class="year-label">{{ selected_year }}</span> — estimate updates as you type.
+        Enter <span class="year-label">{{ selected_year }}</span> W-2 wages — estimate updates as you type.
       </div>
       <div id="yearTaxBody" {% if not year_tax %}hidden{% endif %}>
         <div class="stats-grid tax-hero-stats">
           <div class="stat-card accent"><div class="stat-content">
-            <div class="stat-label">Total tax</div>
+            <div class="stat-label">Total tax (all-in)</div>
             <div class="stat-value tax-stat-val" data-k="total_tax">${{ "{:,.0f}".format(year_tax.total_tax) if year_tax else "0" }}</div>
           </div></div>
           <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">Effective rate</div>
+            <div class="stat-label">All-in effective</div>
             <div class="stat-value tax-stat-val" data-k="effective_rate">{{ "%.1f"|format(year_tax.effective_rate * 100) if year_tax else "0.0" }}%</div>
+            <div class="stat-sublabel">fed + CA + FICA</div>
+          </div></div>
+          <div class="stat-card"><div class="stat-content">
+            <div class="stat-label">Income-tax effective</div>
+            <div class="stat-value tax-stat-val" data-k="income_tax_effective_rate">{% if year_tax %}{{ "%.1f"|format((year_tax.income_tax_effective_rate or 0) * 100) }}{% else %}0.0{% endif %}%</div>
+            <div class="stat-sublabel">fed + CA only</div>
           </div></div>
           <div class="stat-card"><div class="stat-content">
             <div class="stat-label">Federal income</div>
@@ -223,7 +229,7 @@
             <div class="stat-value tax-stat-val" data-k="total_fica">${{ "{:,.0f}".format(year_tax.total_fica) if year_tax else "0" }}</div>
           </div></div>
           <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">Wages used</div>
+            <div class="stat-label">Wages used (box 1)</div>
             <div class="stat-value tax-stat-val" data-k="wages">${{ "{:,.0f}".format(year_tax.wages) if year_tax else "0" }}</div>
           </div></div>
         </div>
@@ -238,15 +244,16 @@
           </div>
           <div class="tax-stack-meta" id="yearTaxMeta">
             {% if year_tax %}
-            Marginal ordinary {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}%
-            · CA marginal {{ "%.1f"|format(year_tax.state_marginal * 100) }}%
+            Tax year {{ year_tax.tax_year }} · next-dollar marginal ordinary {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}%
+            · CA {{ "%.1f"|format(year_tax.state_marginal * 100) }}%
             · SS base ${{ "{:,.0f}".format(year_tax.ss_wage_base) }}
+            {% if year_tax.federal_std_deduction is defined %} · fed std ded ${{ "{:,.0f}".format(year_tax.federal_std_deduction) }}{% endif %}
             {% endif %}
           </div>
         </div>
         <ul class="tax-notes-list" id="yearTaxNotes">
           {% if year_tax and year_tax.notes %}
-          {% for n in year_tax.notes[:4] %}<li>{{ n }}</li>{% endfor %}
+          {% for n in year_tax.notes[:5] %}<li>{{ n }}</li>{% endfor %}
           {% endif %}
         </ul>
       </div>
@@ -413,6 +420,14 @@
     setMoney(document.querySelector('[data-k="total_tax"]'), r.total_tax);
     var eff = document.querySelector('[data-k="effective_rate"]');
     if (eff) eff.textContent = (Number(r.effective_rate || 0) * 100).toFixed(1) + '%';
+    var ieff = document.querySelector('[data-k="income_tax_effective_rate"]');
+    if (ieff) {
+      var ir = r.income_tax_effective_rate;
+      if (ir == null && r.income_tax_total != null && r.wages) {
+        ir = Number(r.income_tax_total) / Math.max(1, Number(r.wages) + Number(r.stcg || 0) + Number(r.ltcg || 0));
+      }
+      ieff.textContent = (Number(ir || 0) * 100).toFixed(1) + '%';
+    }
     setMoney(document.querySelector('[data-k="federal_income_tax"]'), r.federal_income_tax);
     setMoney(document.querySelector('[data-k="state_tax"]'), r.state_tax);
     setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
@@ -435,15 +450,18 @@
 
     var meta = document.getElementById('yearTaxMeta');
     if (meta) {
+      var ty = r.tax_year || y;
       meta.textContent =
-        'Marginal ordinary ' + Math.round(Number(r.ordinary_marginal || 0) * 100) + '%' +
-        ' · CA marginal ' + (Number(r.state_marginal || 0) * 100).toFixed(1) + '%' +
-        ' · SS base ' + money(r.ss_wage_base);
+        'Tax year ' + ty +
+        ' · next-dollar marginal ordinary ' + Math.round(Number(r.ordinary_marginal || 0) * 100) + '%' +
+        ' · CA ' + (Number(r.state_marginal || 0) * 100).toFixed(1) + '%' +
+        ' · SS base ' + money(r.ss_wage_base) +
+        (r.federal_std_deduction != null ? ' · fed std ded ' + money(r.federal_std_deduction) : '');
     }
     var notes = document.getElementById('yearTaxNotes');
     if (notes) {
       notes.innerHTML = '';
-      (r.notes || []).slice(0, 4).forEach(function (n) {
+      (r.notes || []).slice(0, 5).forEach(function (n) {
         var li = document.createElement('li');
         li.textContent = n;
         notes.appendChild(li);
