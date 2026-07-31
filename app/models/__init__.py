@@ -10,6 +10,7 @@ from app.models.sale_plan import SalePlan
 from app.models.stock_sale import StockSale, ISOExercise, StockPriceScenario, ScenarioPricePoint
 from app.models.market_price import MarketPrice
 from app.models.tax_profile import TaxProfile
+from app.models.tax_year_profile import TaxYearProfile
 from app.models.advisor_job import AdvisorJob
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     'ScenarioPricePoint',
     'MarketPrice',
     'TaxProfile',
+    'TaxYearProfile',
     'AdvisorJob',
 ]

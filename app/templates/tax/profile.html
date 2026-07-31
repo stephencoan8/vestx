@@ -1,51 +1,94 @@
 {% extends "base.html" %}
-{% block title %}Tax profile - VestX{% endblock %}
+{% block title %}Tax profile {{ selected_year }} - VestX{% endblock %}
 {% block content %}
-<div class="page">
-  <header class="page-header">
-    <h1>Tax profile</h1>
-    <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Back</a>
+<div class="page tax-profile-page">
+  <header class="page-header past-year-head">
+    <div>
+      <h1>Tax profile</h1>
+      <p class="tax-panel-lead">Pick a year — the form, vest history, and W-2 estimate all load for that year.</p>
+    </div>
+    <div class="past-year-picker">
+      <label for="tax_year_nav">Tax year</label>
+      <select id="tax_year_nav" class="past-year-select" aria-label="Tax year">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </header>
 
+  {% if history and history.event_count %}
+  <div class="detail-card past-year-history" style="margin-bottom:1rem;">
+    <div class="past-history-title">
+      <strong>{{ selected_year }} vest history</strong>
+      <span class="past-history-stats">
+        {{ history.event_count }} event(s)
+        · RSU ~${{ "{:,.0f}".format(history.rsu_vest_gross or 0) }}
+        {% if history.cash_bonus_gross %} · cash ~${{ "{:,.0f}".format(history.cash_bonus_gross) }}{% endif %}
+        {% if history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO skipped{% endif %}
+      </span>
+    </div>
+    {% if history.events %}
+    <div class="past-history-events">
+      {% for ev in history.events[:15] %}
+      <div class="past-history-row">
+        <span>{{ ev.vest_date }}</span>
+        <span class="tax-muted-sm">{{ ev.label }}</span>
+        <span>${{ "{:,.0f}".format(ev.gross_value or 0) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p class="form-hint" style="margin:0.65rem 0 0;">
+      Equity vest ordinary is usually already in W-2 box 1. Enter <strong>total</strong> wages for {{ selected_year }} (salary + RSU), not equity alone on top of itself.
+      {% if history.suggested_equity_in_w2 %}
+      VestX equity ordinary this year ≈ <strong>${{ "{:,.0f}".format(history.suggested_equity_in_w2) }}</strong>.
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+
   <div class="detail-card">
-    <p class="tax-panel-lead" style="margin-bottom: 1.25rem;">
-      Stacking base for every plan — wages, filing, state, AMT credits. The engine does not invent these.
+    <p class="tax-panel-lead" style="margin-bottom: 1rem;">
+      {% if source == 'saved' %}
+      Showing <strong>saved {{ selected_year }}</strong> inputs.
+      {% else %}
+      No saved row for <strong>{{ selected_year }}</strong> yet — fill wages and save.
+      {% endif %}
+      Active planning year after save: <strong>{{ selected_year }}</strong>.
     </p>
 
-    <form method="post">
+    <form method="post" id="taxProfileForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="tax_year" id="tax_year" value="{{ selected_year }}">
 
-      <h3 class="tax-subhead">Essentials</h3>
+      <h3 class="tax-subhead">{{ selected_year }} essentials</h3>
       <div class="form-row">
-        <div class="form-group">
-          <label for="tax_year">Tax year</label>
-          <input type="number" id="tax_year" name="tax_year" value="{{ profile.tax_year or year }}" required>
-        </div>
         <div class="form-group">
           <label for="filing_status">Filing status</label>
           <select id="filing_status" name="filing_status">
             {% for code, label in [('single','Single'),('mfj','Married filing jointly'),('mfs','Married filing separately'),('hoh','Head of household')] %}
-            <option value="{{ code }}" {% if profile.filing_status == code %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ code }}" {% if form.filing_status == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="form-group">
           <label for="state_code">State</label>
-          <input type="text" id="state_code" name="state_code" maxlength="2" value="{{ profile.state_code or '' }}" placeholder="CA">
+          <input type="text" id="state_code" name="state_code" maxlength="2" value="{{ form.state_code or '' }}" placeholder="CA">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label for="other_ordinary_income">Annual ordinary income ($)</label>
-          <input type="number" step="0.01" id="other_ordinary_income" name="other_ordinary_income"
-                 value="{{ profile.other_ordinary_income or 0 }}" required>
-          <span class="form-hint">Full-year wages + cash bonus you expect this tax year (not VestX equity). Used for brackets, LTCG 15/20% band, CA tax, NIIT.</span>
+          <label for="other_ordinary_income">W-2 / annual ordinary income ($)</label>
+          <input type="number" step="1000" id="other_ordinary_income" name="other_ordinary_income"
+                 value="{{ form.other_ordinary_income or 0 }}" required>
+          <span class="form-hint">{{ selected_year }} box 1 wages (salary + RSU vest). Used for brackets, CA, NIIT, sale stacking.</span>
         </div>
         <div class="form-group">
-          <label for="ytd_wages">YTD / annual wages ($)</label>
-          <input type="number" step="0.01" id="ytd_wages" name="ytd_wages" value="{{ profile.ytd_wages or 0 }}">
-          <span class="form-hint">Also used for FICA. Engine stacks <strong>max(annual ordinary, this field)</strong> — put $500k wages in either field and it will count.</span>
+          <label for="ytd_wages">YTD wages for FICA ($)</label>
+          <input type="number" step="1000" id="ytd_wages" name="ytd_wages" value="{{ form.ytd_wages or 0 }}">
+          <span class="form-hint">Usually same as wages for a completed year. Engine uses max(ordinary, this).</span>
         </div>
       </div>
 
@@ -53,42 +96,35 @@
         <div class="form-group">
           <label for="amt_credit_carryforward">Federal AMT credit ($)</label>
           <input type="number" step="0.01" id="amt_credit_carryforward" name="amt_credit_carryforward"
-                 value="{{ profile.amt_credit_carryforward or 0 }}">
-          <span class="form-hint">Form 8801 carryforward</span>
+                 value="{{ form.amt_credit_carryforward or 0 }}">
         </div>
         <div class="form-group">
           <label for="ca_amt_credit_carryforward">CA AMT credit ($)</label>
           <input type="number" step="0.01" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
-                 value="{{ profile.ca_amt_credit_carryforward or 0 }}">
-          <span class="form-hint">Schedule P carryforward</span>
+                 value="{{ form.ca_amt_credit_carryforward or 0 }}">
         </div>
       </div>
 
       <div class="form-group form-check" style="margin-top:0.75rem;">
-        <input type="checkbox" id="use_bracket_engine" name="use_bracket_engine" {% if profile.use_bracket_engine %}checked{% endif %}>
+        <input type="checkbox" id="use_bracket_engine" name="use_bracket_engine" {% if form.use_bracket_engine %}checked{% endif %}>
         <label for="use_bracket_engine">Federal bracket engine</label>
       </div>
       <div class="form-group form-check">
-        <input type="checkbox" id="use_state_engine" name="use_state_engine"
-               {% if profile.use_state_engine is none or profile.use_state_engine %}checked{% endif %}>
-        <label for="use_state_engine">State engine (CA PIT + MHST when state is CA)</label>
+        <input type="checkbox" id="use_state_engine" name="use_state_engine" {% if form.use_state_engine %}checked{% endif %}>
+        <label for="use_state_engine">State engine (CA PIT + MHST)</label>
       </div>
       <div class="form-group form-check">
-        <input type="checkbox" id="include_niit" name="include_niit" {% if profile.include_niit %}checked{% endif %}>
+        <input type="checkbox" id="include_niit" name="include_niit" {% if form.include_niit %}checked{% endif %}>
         <label for="include_niit">Include NIIT (3.8%)</label>
       </div>
       <div class="form-group form-check">
-        <input type="checkbox" id="include_fica" name="include_fica" {% if profile.include_fica %}checked{% endif %}>
-        <label for="include_fica">Include FICA on equity ordinary</label>
+        <input type="checkbox" id="include_fica" name="include_fica" {% if form.include_fica %}checked{% endif %}>
+        <label for="include_fica">Include FICA</label>
       </div>
       <div class="form-group form-check">
-        <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if profile.ss_wage_base_maxed %}checked{% endif %}>
+        <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if form.ss_wage_base_maxed %}checked{% endif %}>
         <label for="ss_wage_base_maxed">SS wage base already maxed</label>
       </div>
-
-      <p class="form-hint" style="margin: 1rem 0 0; max-width: 40rem;">
-        CA: capital gains taxed as ordinary; +1% MHST above $1M taxable income.
-      </p>
 
       <details class="tax-hub-details" style="margin-top:1.25rem;">
         <summary>Advanced — other gains &amp; rate overrides</summary>
@@ -96,47 +132,117 @@
           <div class="form-row">
             <div class="form-group">
               <label for="other_long_term_gains">Other LTCG ($)</label>
-              <input type="number" step="0.01" id="other_long_term_gains" name="other_long_term_gains" value="{{ profile.other_long_term_gains or 0 }}">
+              <input type="number" step="0.01" id="other_long_term_gains" name="other_long_term_gains" value="{{ form.other_long_term_gains or 0 }}">
             </div>
             <div class="form-group">
               <label for="other_short_term_gains">Other STCG ($)</label>
-              <input type="number" step="0.01" id="other_short_term_gains" name="other_short_term_gains" value="{{ profile.other_short_term_gains or 0 }}">
+              <input type="number" step="0.01" id="other_short_term_gains" name="other_short_term_gains" value="{{ form.other_short_term_gains or 0 }}">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label for="federal_ordinary_rate">Override federal ordinary (%)</label>
               <input type="number" step="0.01" id="federal_ordinary_rate" name="federal_ordinary_rate"
-                     value="{% if profile.federal_ordinary_rate is not none %}{{ (profile.federal_ordinary_rate * 100)|round(2) }}{% endif %}"
+                     value="{% if form.federal_ordinary_rate is not none %}{{ (form.federal_ordinary_rate * 100)|round(2) }}{% endif %}"
                      placeholder="blank = brackets">
             </div>
             <div class="form-group">
               <label for="federal_ltcg_rate">Override LTCG (%)</label>
               <input type="number" step="0.01" id="federal_ltcg_rate" name="federal_ltcg_rate"
-                     value="{% if profile.federal_ltcg_rate is not none %}{{ (profile.federal_ltcg_rate * 100)|round(2) }}{% endif %}"
+                     value="{% if form.federal_ltcg_rate is not none %}{{ (form.federal_ltcg_rate * 100)|round(2) }}{% endif %}"
                      placeholder="blank = 0/15/20">
             </div>
           </div>
-          <div class="form-row" id="flatStateRates">
+          <div class="form-row">
             <div class="form-group">
               <label for="state_ordinary_rate">Flat state ordinary (%)</label>
               <input type="number" step="0.01" id="state_ordinary_rate" name="state_ordinary_rate"
-                     value="{{ ((profile.state_ordinary_rate or 0) * 100)|round(2) }}">
-              <span class="form-hint">Non-CA, or CA if state engine off</span>
+                     value="{{ ((form.state_ordinary_rate or 0) * 100)|round(2) }}">
             </div>
             <div class="form-group">
               <label for="state_cg_rate">Flat state CG (%)</label>
               <input type="number" step="0.01" id="state_cg_rate" name="state_cg_rate"
-                     value="{{ ((profile.state_cg_rate if profile.state_cg_rate is not none else profile.state_ordinary_rate or 0) * 100)|round(2) }}">
+                     value="{{ ((form.state_cg_rate or 0) * 100)|round(2) }}">
             </div>
           </div>
         </div>
       </details>
 
       <div class="form-actions" style="margin-top:1.25rem;">
-        <button type="submit" class="btn btn-primary">Save tax profile</button>
+        <button type="submit" class="btn btn-primary">Save {{ selected_year }} profile</button>
+        <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Back to Sales &amp; Tax</a>
       </div>
     </form>
   </div>
+
+  {% if year_tax %}
+  <div class="detail-card">
+    <h2>{{ selected_year }} W-2 estimate</h2>
+    <p class="tax-panel-lead">Progressive federal + CA + FICA on wages above (full year, not sale-incremental).</p>
+    <div class="stats-grid tax-hero-stats">
+      <div class="stat-card accent"><div class="stat-content">
+        <div class="stat-label">Total tax</div>
+        <div class="stat-value tax-stat-val">${{ "{:,.0f}".format(year_tax.total_tax) }}</div>
+      </div></div>
+      <div class="stat-card"><div class="stat-content">
+        <div class="stat-label">Effective rate</div>
+        <div class="stat-value tax-stat-val">{{ "%.1f"|format(year_tax.effective_rate * 100) }}%</div>
+      </div></div>
+      <div class="stat-card"><div class="stat-content">
+        <div class="stat-label">Federal income</div>
+        <div class="stat-value tax-stat-val">${{ "{:,.0f}".format(year_tax.federal_income_tax) }}</div>
+      </div></div>
+      <div class="stat-card"><div class="stat-content">
+        <div class="stat-label">State</div>
+        <div class="stat-value tax-stat-val">${{ "{:,.0f}".format(year_tax.state_tax) }}</div>
+      </div></div>
+      <div class="stat-card"><div class="stat-content">
+        <div class="stat-label">FICA</div>
+        <div class="stat-value tax-stat-val">${{ "{:,.0f}".format(year_tax.total_fica) }}</div>
+      </div></div>
+      <div class="stat-card"><div class="stat-content">
+        <div class="stat-label">Wages used</div>
+        <div class="stat-value tax-stat-val">${{ "{:,.0f}".format(year_tax.wages) }}</div>
+      </div></div>
+    </div>
+    <div class="tax-stack" style="margin-top:1rem;">
+      <div class="tax-stack-row">
+        <div class="tax-stack-item"><span class="tax-stack-label">Fed ordinary</span><span class="tax-stack-val">${{ "{:,.0f}".format(year_tax.federal_ordinary_tax) }}</span></div>
+        {% if year_tax.niit %}<div class="tax-stack-item"><span class="tax-stack-label">NIIT</span><span class="tax-stack-val">${{ "{:,.0f}".format(year_tax.niit) }}</span></div>{% endif %}
+        <div class="tax-stack-item"><span class="tax-stack-label">CA PIT</span><span class="tax-stack-val">${{ "{:,.0f}".format(year_tax.state_regular_tax) }}</span></div>
+        {% if year_tax.state_surtax %}<div class="tax-stack-item"><span class="tax-stack-label">CA MHST</span><span class="tax-stack-val">${{ "{:,.0f}".format(year_tax.state_surtax) }}</span></div>{% endif %}
+        <div class="tax-stack-item"><span class="tax-stack-label">SS</span><span class="tax-stack-val">${{ "{:,.0f}".format(year_tax.social_security) }}</span></div>
+        <div class="tax-stack-item"><span class="tax-stack-label">Medicare</span><span class="tax-stack-val">${{ "{:,.0f}".format(year_tax.medicare) }}</span></div>
+      </div>
+      <div class="tax-stack-meta">
+        Marginal ordinary {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}%
+        · CA marginal {{ "%.1f"|format(year_tax.state_marginal * 100) }}%
+        · SS base ${{ "{:,.0f}".format(year_tax.ss_wage_base) }}
+      </div>
+    </div>
+    {% if year_tax.notes %}
+    <ul class="tax-notes-list">
+      {% for n in year_tax.notes[:4] %}<li>{{ n }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="detail-card">
+    <p class="tax-panel-lead" style="margin:0;">Enter wages for {{ selected_year }} and save to see the full-year W-2 tax estimate.</p>
+  </div>
+  {% endif %}
 </div>
+
+<script>
+(function () {
+  var sel = document.getElementById('tax_year_nav');
+  if (!sel) return;
+  sel.addEventListener('change', function () {
+    var y = sel.value;
+    if (!y) return;
+    // Full page navigation — year owns every field on the page
+    window.location = '{{ url_for("tax_center.tax_profile") }}?year=' + encodeURIComponent(y);
+  });
+})();
+</script>
 {% endblock %}

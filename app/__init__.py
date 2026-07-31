@@ -93,6 +93,7 @@ def create_app():
             from app.models import market_price as _market_price  # noqa: F401
             from app.models import tax_profile as _tax_profile  # noqa: F401
             from app.models import advisor_job as _advisor_job  # noqa: F401
+            from app.models import tax_year_profile as _tax_year_profile  # noqa: F401
             db.create_all()
         except Exception as e:
             _log.exception('db.create_all failed (continuing): %s', e)
@@ -117,6 +118,9 @@ def create_app():
 
         from app.utils.migrate_advisor_jobs import migrate_advisor_jobs
         _safe_migrate('advisor_jobs', migrate_advisor_jobs)
+
+        from app.utils.migrate_tax_year_profiles import migrate_tax_year_profiles
+        _safe_migrate('tax_year_profiles', migrate_tax_year_profiles)
 
         try:
             from app.utils.init_db import init_admin_user

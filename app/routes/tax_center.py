@@ -100,8 +100,6 @@ def hub():
         float(profile.other_ordinary_income or 0) > 0
         or float(profile.ytd_wages or 0) > 0
     )
-    from app.utils.wage_year_tax import list_years_with_vests
-    past_years = list_years_with_vests(current_user.id)
     return render_template(
         'tax/hub.html',
         profile=profile,
@@ -113,7 +111,6 @@ def hub():
         inventory=inventory,
         profile_ready=profile_ready,
         today=date.today(),
-        past_years=past_years,
         grok_enabled=xai_advisor.is_configured(current_user),
     )
 
@@ -216,55 +213,138 @@ def api_year_tax():
 @tax_center_bp.route('/profile', methods=['GET', 'POST'])
 @login_required
 def tax_profile():
+    """
+    Year-centric tax profile. Dropdown selects calendar year; form + W-2 estimate
+    are for that year only. Save stores TaxYearProfile and activates it for planning.
+    """
+    from app.models.tax_year_profile import TaxYearProfile
+    from app.utils.wage_year_tax import (
+        build_year_vest_prefill,
+        compute_w2_year_tax,
+        list_years_with_vests,
+    )
+
     profile = TaxProfile.for_user(current_user)
+    years = list_years_with_vests(current_user.id)
+    if not years:
+        years = list(range(date.today().year, date.today().year - 8, -1))
+
+    def _f(name, default=None):
+        raw = request.form.get(name, '') if request.method == 'POST' else ''
+        if raw is None or str(raw).strip() == '':
+            return default
+        return float(raw)
+
     if request.method == 'POST':
         try:
-            profile.filing_status = request.form.get('filing_status') or 'single'
-            profile.state_code = (request.form.get('state_code') or '').upper()[:2] or None
-            profile.use_bracket_engine = request.form.get('use_bracket_engine') == 'on'
-            profile.use_state_engine = request.form.get('use_state_engine') == 'on'
-
-            def _f(name, default=None):
-                raw = request.form.get(name, '')
-                if raw is None or str(raw).strip() == '':
-                    return default
-                return float(raw)
-
+            ty = int(request.form.get('tax_year') or date.today().year)
             fo = request.form.get('federal_ordinary_rate')
-            profile.federal_ordinary_rate = float(fo) / 100.0 if fo not in (None, '') else None
             fl = request.form.get('federal_ltcg_rate')
-            profile.federal_ltcg_rate = float(fl) / 100.0 if fl not in (None, '') else None
+            data = {
+                'filing_status': request.form.get('filing_status') or 'single',
+                'state_code': (request.form.get('state_code') or '').upper()[:2] or None,
+                'use_bracket_engine': request.form.get('use_bracket_engine') == 'on',
+                'use_state_engine': request.form.get('use_state_engine') == 'on',
+                'federal_ordinary_rate': float(fo) / 100.0 if fo not in (None, '') else None,
+                'federal_ltcg_rate': float(fl) / 100.0 if fl not in (None, '') else None,
+                'state_ordinary_rate': (_f('state_ordinary_rate', 0) or 0) / 100.0,
+                'state_cg_rate': (_f('state_cg_rate', 0) or 0) / 100.0,
+                'other_ordinary_income': _f('other_ordinary_income', 0) or 0,
+                'ytd_wages': _f('ytd_wages', 0) or 0,
+                'other_long_term_gains': _f('other_long_term_gains', 0) or 0,
+                'other_short_term_gains': _f('other_short_term_gains', 0) or 0,
+                'amt_credit_carryforward': _f('amt_credit_carryforward', 0) or 0,
+                'ca_amt_credit_carryforward': _f('ca_amt_credit_carryforward', 0) or 0,
+                'include_fica': request.form.get('include_fica') == 'on',
+                'ss_wage_base_maxed': request.form.get('ss_wage_base_maxed') == 'on',
+                'include_niit': request.form.get('include_niit') == 'on',
+            }
+            year_row = TaxYearProfile.upsert_from_form(current_user.id, ty, data)
+            year_row.apply_to_main_profile(profile)
 
-            profile.state_ordinary_rate = (_f('state_ordinary_rate', 0) or 0) / 100.0
-            profile.state_cg_rate = (_f('state_cg_rate', profile.state_ordinary_rate * 100) or 0) / 100.0
-
-            profile.other_ordinary_income = _f('other_ordinary_income', 0) or 0
-            profile.other_long_term_gains = _f('other_long_term_gains', 0) or 0
-            profile.other_short_term_gains = _f('other_short_term_gains', 0) or 0
-            profile.ytd_wages = _f('ytd_wages', 0) or 0
-            profile.amt_credit_carryforward = _f('amt_credit_carryforward', 0) or 0
-            profile.ca_amt_credit_carryforward = _f('ca_amt_credit_carryforward', 0) or 0
-            profile.include_fica = request.form.get('include_fica') == 'on'
-            profile.ss_wage_base_maxed = request.form.get('ss_wage_base_maxed') == 'on'
-            profile.include_niit = request.form.get('include_niit') == 'on'
-            ty = request.form.get('tax_year')
-            profile.tax_year = int(ty) if ty else date.today().year
-
-            # Keep legacy user fields in sync for rest of app
             if profile.federal_ordinary_rate is not None:
                 current_user.federal_tax_rate = profile.federal_ordinary_rate
-            current_user.state_tax_rate = profile.state_ordinary_rate
+            current_user.state_tax_rate = profile.state_ordinary_rate or 0
             current_user.include_fica = profile.include_fica
             current_user.ss_wage_base_maxed = profile.ss_wage_base_maxed
 
             db.session.commit()
-            flash('Tax profile saved.', 'success')
-            return redirect(url_for('tax_center.hub'))
+            flash(f'{ty} tax profile saved and set as active for planning.', 'success')
+            return redirect(url_for('tax_center.tax_profile', year=ty))
         except Exception as e:
             db.session.rollback()
             flash(f'Error saving profile: {e}', 'danger')
+            ty = int(request.form.get('tax_year') or date.today().year)
+            return redirect(url_for('tax_center.tax_profile', year=ty))
 
-    return render_template('tax/profile.html', profile=profile, year=date.today().year)
+    # GET — year dropdown drives entire page
+    try:
+        selected_year = int(request.args.get('year') or profile.tax_year or date.today().year)
+    except (TypeError, ValueError):
+        selected_year = date.today().year
+    if selected_year not in years:
+        years = sorted(set(years) | {selected_year}, reverse=True)
+
+    year_row = TaxYearProfile.get_for(current_user.id, selected_year)
+    if year_row:
+        form = year_row.to_form_dict()
+        source = 'saved'
+    else:
+        # Seed from main profile if same year, else blank wages + vest hint
+        form = {
+            'tax_year': selected_year,
+            'filing_status': profile.filing_status or 'single',
+            'state_code': profile.state_code or 'CA',
+            'federal_ordinary_rate': profile.federal_ordinary_rate,
+            'federal_ltcg_rate': profile.federal_ltcg_rate,
+            'state_ordinary_rate': profile.state_ordinary_rate or 0.0,
+            'state_cg_rate': profile.state_cg_rate if profile.state_cg_rate is not None else (profile.state_ordinary_rate or 0),
+            'use_bracket_engine': bool(profile.use_bracket_engine if profile.use_bracket_engine is not None else True),
+            'use_state_engine': bool(profile.use_state_engine if profile.use_state_engine is not None else True),
+            'other_ordinary_income': float(profile.other_ordinary_income or 0) if profile.tax_year == selected_year else 0.0,
+            'ytd_wages': float(profile.ytd_wages or 0) if profile.tax_year == selected_year else 0.0,
+            'other_long_term_gains': float(profile.other_long_term_gains or 0) if profile.tax_year == selected_year else 0.0,
+            'other_short_term_gains': float(profile.other_short_term_gains or 0) if profile.tax_year == selected_year else 0.0,
+            'include_fica': bool(profile.include_fica if profile.include_fica is not None else True),
+            'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+            'include_niit': bool(profile.include_niit if profile.include_niit is not None else True),
+            'amt_credit_carryforward': float(profile.amt_credit_carryforward or 0),
+            'ca_amt_credit_carryforward': float(profile.ca_amt_credit_carryforward or 0),
+        }
+        source = 'new'
+
+    history = build_year_vest_prefill(current_user.id, selected_year)
+    wages = max(float(form.get('other_ordinary_income') or 0), float(form.get('ytd_wages') or 0))
+    year_tax = None
+    if wages > 0:
+        try:
+            year_tax = compute_w2_year_tax(
+                tax_year=selected_year,
+                filing_status=form['filing_status'],
+                state_code=form.get('state_code') or 'CA',
+                wages=wages,
+                other_ordinary=0,
+                stcg=float(form.get('other_short_term_gains') or 0),
+                ltcg=float(form.get('other_long_term_gains') or 0),
+                include_fica=form['include_fica'],
+                ss_wage_base_maxed=form['ss_wage_base_maxed'],
+                use_state_engine=form['use_state_engine'],
+                vest_prefills=history,
+            ).to_dict()
+        except Exception as e:
+            logger.warning('year tax display failed: %s', e)
+
+    return render_template(
+        'tax/profile.html',
+        profile=profile,
+        form=form,
+        selected_year=selected_year,
+        years=years,
+        history=history,
+        year_tax=year_tax,
+        source=source,
+        year=date.today().year,
+    )
 
 
 @tax_center_bp.route('/api/lots')
