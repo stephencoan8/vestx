@@ -185,30 +185,35 @@ def compute_w2_year_tax(
         f'({filing}, tax year {year}).'
     )
 
-    # FICA via shared IRS Pub 15 module (SS remaining base + Add'l Medicare)
+    # FICA via shared IRS Pub 15 module (SmartAsset / Pub 15 style):
+    #   SS  = 6.2% × min(annual_wages, SS wage base for year)
+    #   Med = 1.45% × all wages
+    #   Add = 0.9% × max(0, wages − threshold)
+    # Full-year W-2 NEVER uses "SS already maxed" — that flag is only for mid-year
+    # incremental events (next vest after YTD already hit the base). On annual box 1
+    # the first $wage_base of these wages already includes the SS that was paid.
     if include_fica and fwages > 0:
-        from app.utils.payroll_tax import ss_wage_base_for_year
-        ss_base_chk = ss_wage_base_for_year(year)
-        # Full-year: wages determine SS. "Maxed" only if wages ≥ base or empty + override.
-        force_maxed = bool(ss_wage_base_maxed) and (
-            fwages >= ss_base_chk - 1.0 or fwages <= 0
-        )
-        if ss_wage_base_maxed and not force_maxed:
+        if ss_wage_base_maxed:
             notes.append(
-                'SS wage-base maxed flag ignored for full-year calc because annual '
-                f'wages ${fwages:,.0f} are under SS base ${ss_base_chk:,.0f}.'
+                '“SS wage base already maxed” is ignored on the full-year W-2 estimate — '
+                'annual wages still owe Social Security on min(wages, wage base). '
+                'That checkbox only affects mid-year vest/sale increments.'
             )
         fica_r = employee_fica_full_year(
             annual_wages=fwages,
             tax_year=year,
             filing_status=filing,
-            ss_already_maxed=force_maxed,
+            ss_already_maxed=False,
         )
         social_security = fica_r.social_security
         medicare = fica_r.medicare
         additional_medicare = fica_r.additional_medicare
         ss_base = fica_r.ss_wage_base
-        notes.append(f'SS wage base for {year}: ${ss_base:,.0f} (employee FICA module).')
+        notes.append(
+            f'FICA {year}: SS 6.2% on min(${fwages:,.0f}, ${ss_base:,.0f}) = '
+            f'${social_security:,.0f}; Medicare 1.45% = ${medicare:,.0f}; '
+            f'Add’l Medicare = ${additional_medicare:,.0f}.'
+        )
         notes.extend(list(fica_r.notes)[:2])
     else:
         social_security = medicare = additional_medicare = 0.0

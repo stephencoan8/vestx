@@ -133,7 +133,8 @@
         </div>
         <div class="form-group form-check">
           <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if form.ss_wage_base_maxed %}checked{% endif %}>
-          <label for="ss_wage_base_maxed">SS wage base already maxed</label>
+          <label for="ss_wage_base_maxed">SS wage base already maxed (mid-year vest/sale only)</label>
+          <span class="form-hint">Does <strong>not</strong> zero Social Security on the full-year W-2 estimate. Annual FICA always charges 6.2% on min(wages, SS wage base) + 1.45% Medicare — same structure as paycheck calculators (e.g. SmartAsset).</span>
         </div>
 
         <details class="tax-hub-details" style="margin-top:1.25rem;">

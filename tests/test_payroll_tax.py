@@ -211,7 +211,7 @@ class TestFullYearW2Fica:
         assert y.additional_medicare == pytest.approx(f.additional_medicare)
         assert y.total_fica == pytest.approx(f.total)
 
-    def test_maxed_flag_ignored_under_base(self):
+    def test_maxed_flag_ignored_on_full_year_under_base(self):
         y = compute_w2_year_tax(
             tax_year=2024,
             wages=100_000,
@@ -222,6 +222,43 @@ class TestFullYearW2Fica:
         )
         # Still charge SS when wages under base
         assert y.social_security == pytest.approx(100_000 * 0.062)
+
+    def test_maxed_flag_never_zeros_full_year_ss_over_base(self):
+        """
+        User bug: $180k 2024 showed SS $0 + Medicare $2,610 when maxed was checked.
+        Full-year must still charge SS on the wage base ($168,600 × 6.2%).
+        """
+        y = compute_w2_year_tax(
+            tax_year=2024,
+            wages=180_000,
+            filing_status='single',
+            state_code='CA',
+            include_fica=True,
+            ss_wage_base_maxed=True,
+        )
+        assert y.social_security == pytest.approx(168_600 * 0.062)
+        assert y.medicare == pytest.approx(180_000 * 0.0145)
+        assert y.additional_medicare == pytest.approx(0.0)
+        assert y.total_fica == pytest.approx(168_600 * 0.062 + 180_000 * 0.0145)
+        # Must not match the broken Medicare-only total
+        assert y.total_fica != pytest.approx(2_610.0)
+
+    def test_180k_2024_smartasset_style_stack(self):
+        """Rough SmartAsset-style stack: fed + CA + full FICA on $180k single 2024."""
+        y = compute_w2_year_tax(
+            tax_year=2024,
+            wages=180_000,
+            filing_status='single',
+            state_code='CA',
+            include_fica=True,
+            ss_wage_base_maxed=False,
+        )
+        # FICA textbook
+        assert y.total_fica == pytest.approx(10_453.20 + 2_610.00, abs=0.05)
+        # Income tax alone was what user saw (~$45.6k); all-in should be ~$10k higher
+        assert y.income_tax_total == pytest.approx(32_738.5 + 12_877.63, abs=1.0)
+        assert y.total_tax == pytest.approx(y.income_tax_total + y.total_fica, abs=0.05)
+        assert y.effective_rate > 0.30  # not the broken ~26.8% Medicare-only all-in
 
 
 class TestSalePathFicaNoDoublePeel:
