@@ -464,25 +464,241 @@ def stacking_ordinary_income(profile: dict) -> float:
     return max(other, ytd)
 
 
-def compute_fica(ordinary_equity: float, profile: dict) -> float:
-    if not profile.get('include_fica', True):
-        return 0.0
-    year = profile.get('tax_year', 2026)
-    wage_base = SS_WAGE_BASE.get(year, 184500)
-    ytd = profile.get('ytd_wages', 0.0) or 0.0
-    # FICA remaining wage base should also respect stacking ordinary if ytd empty
-    ytd_for_fica = max(ytd, float(profile.get('other_ordinary_income') or 0.0))
+def compute_fica_components(ordinary_equity: float, profile: dict) -> Dict[str, float]:
+    """
+    Incremental FICA on equity ordinary given YTD / year wages already earned.
+    Returns component amounts and the rates actually applied to this slice.
+    """
+    equity = max(0.0, float(ordinary_equity or 0.0))
+    empty = {
+        'social_security': 0.0,
+        'medicare': 0.0,
+        'additional_medicare': 0.0,
+        'total': 0.0,
+        'ss_rate': 0.0,
+        'medicare_rate': 0.0,
+        'additional_medicare_rate': 0.0,
+        'ss_wage_base': 0.0,
+        'ytd_for_fica': 0.0,
+    }
+    if not profile.get('include_fica', True) or equity <= 0:
+        year = int(profile.get('tax_year') or date.today().year)
+        empty['ss_wage_base'] = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
+        return empty
+
+    year = int(profile.get('tax_year') or date.today().year)
+    wage_base = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
+    ytd = float(profile.get('ytd_wages', 0.0) or 0.0)
+    other = float(profile.get('other_ordinary_income') or 0.0)
+    # Wages already in the year before this equity slice
+    ytd_for_fica = max(ytd, other)
+
     ss = 0.0
+    ss_rate_applied = 0.0
     if not profile.get('ss_wage_base_maxed'):
         remaining = max(0.0, wage_base - ytd_for_fica)
-        ss = min(ordinary_equity, remaining) * SS_RATE
-    medicare = ordinary_equity * MEDICARE_RATE
+        ss = min(equity, remaining) * SS_RATE
+        if equity > 0 and ss > 0:
+            ss_rate_applied = ss / equity  # blended if partially over base
+    medicare = equity * MEDICARE_RATE
     filing = profile.get('filing_status', 'single')
-    thr = ADD_MEDICARE_THRESHOLD.get(filing, 200000)
-    add_base = max(0.0, (ytd_for_fica + ordinary_equity) - thr)
-    # Additional Medicare only on wages over threshold — approximate on equity portion
-    add_med = min(ordinary_equity, add_base) * ADDITIONAL_MEDICARE_RATE if add_base > 0 else 0.0
-    return ss + medicare + add_med
+    thr = float(ADD_MEDICARE_THRESHOLD.get(filing, 200000))
+    add_base = max(0.0, (ytd_for_fica + equity) - thr)
+    add_med = min(equity, add_base) * ADDITIONAL_MEDICARE_RATE if add_base > 0 else 0.0
+    add_rate_applied = (add_med / equity) if equity > 0 and add_med > 0 else 0.0
+
+    return {
+        'social_security': ss,
+        'medicare': medicare,
+        'additional_medicare': add_med,
+        'total': ss + medicare + add_med,
+        'ss_rate': ss_rate_applied,
+        'medicare_rate': MEDICARE_RATE if medicare > 0 else 0.0,
+        'additional_medicare_rate': add_rate_applied,
+        'ss_wage_base': wage_base,
+        'ytd_for_fica': ytd_for_fica,
+    }
+
+
+def compute_fica(ordinary_equity: float, profile: dict) -> float:
+    return float(compute_fica_components(ordinary_equity, profile)['total'])
+
+
+def resolve_engine_profile_for_year(user, tax_year: int) -> dict:
+    """
+    Build tax-engine profile dict for a calendar year.
+
+    Prefer TaxYearProfile for that year; else main TaxProfile money only if its
+    active tax_year matches; else zero wages (never bleed another year's income).
+    """
+    from app.models.tax_profile import TaxProfile
+    from app.models.tax_year_profile import TaxYearProfile
+
+    year = int(tax_year)
+    main = TaxProfile.for_user(user)
+    year_row = TaxYearProfile.get_for(user.id, year)
+
+    if year_row:
+        d = {
+            'filing_status': year_row.filing_status or 'single',
+            'state_code': (year_row.state_code or 'CA').upper(),
+            'federal_ordinary_rate': year_row.federal_ordinary_rate,
+            'federal_ltcg_rate': year_row.federal_ltcg_rate,
+            'state_ordinary_rate': float(year_row.state_ordinary_rate or 0.0),
+            'state_cg_rate': float(
+                year_row.state_cg_rate
+                if year_row.state_cg_rate is not None
+                else (year_row.state_ordinary_rate or 0.0)
+            ),
+            'use_bracket_engine': bool(
+                year_row.use_bracket_engine if year_row.use_bracket_engine is not None else True
+            ),
+            'use_state_engine': bool(
+                year_row.use_state_engine if year_row.use_state_engine is not None else True
+            ),
+            'other_ordinary_income': float(year_row.other_ordinary_income or 0.0),
+            'ytd_wages': float(year_row.ytd_wages or 0.0),
+            'other_long_term_gains': float(year_row.other_long_term_gains or 0.0),
+            'other_short_term_gains': float(year_row.other_short_term_gains or 0.0),
+            'include_fica': bool(year_row.include_fica if year_row.include_fica is not None else True),
+            'ss_wage_base_maxed': bool(year_row.ss_wage_base_maxed),
+            'include_niit': bool(year_row.include_niit if year_row.include_niit is not None else True),
+            'amt_credit_carryforward': float(year_row.amt_credit_carryforward or 0.0),
+            'ca_amt_credit_carryforward': float(year_row.ca_amt_credit_carryforward or 0.0),
+            'tax_year': year,
+            'profile_source': 'tax_year_profile',
+        }
+    else:
+        d = main.to_engine_dict()
+        d['tax_year'] = year
+        d['profile_source'] = 'main_profile'
+        if int(main.tax_year or 0) != year:
+            # Past/future year with no saved row — don't use current-year wages
+            d['other_ordinary_income'] = 0.0
+            d['ytd_wages'] = 0.0
+            d['other_long_term_gains'] = 0.0
+            d['other_short_term_gains'] = 0.0
+            d['ss_wage_base_maxed'] = False
+            d['profile_source'] = 'defaults'
+            # Keep filing/state/engines from main; clear flat rate overrides
+            d['federal_ordinary_rate'] = None
+            d['federal_ltcg_rate'] = None
+
+    # Bracket engine on → progressive (ignore legacy flat User rate seed)
+    if d.get('use_bracket_engine', True):
+        d['federal_ordinary_rate'] = None
+        d['federal_ltcg_rate'] = None
+
+    stacked = max(float(d.get('other_ordinary_income') or 0), float(d.get('ytd_wages') or 0))
+    d['other_ordinary_income'] = stacked
+    d['stacking_ordinary_income'] = stacked
+    return d
+
+
+def compute_vest_ordinary_tax(profile: dict, vest_ordinary: float) -> Dict[str, Any]:
+    """
+    Incremental tax on RSU/cash vest ordinary income for a tax year.
+
+    Stacks the vest on that year's Tax Profile wages (same engine as Sales & Tax).
+    If year wages already look like full W-2 (include this vest), the base is
+    wages − vest so we don't double-count.
+    """
+    vest = max(0.0, float(vest_ordinary or 0.0))
+    year = int(profile.get('tax_year') or date.today().year)
+    filing = profile.get('filing_status') or 'single'
+    if filing not in ('single', 'mfj', 'mfs', 'hoh'):
+        filing = 'single'
+
+    stacked = stacking_ordinary_income(profile)
+    # Full-year W-2 usually already includes RSU ordinary — peel this vest off the base
+    if stacked + 0.01 >= vest > 0:
+        base_ord = max(0.0, stacked - vest)
+        wages_mode = 'w2_includes_vest'
+    else:
+        base_ord = stacked
+        wages_mode = 'wages_plus_vest'
+
+    # Profile slice BEFORE this vest (for FICA remaining base + incremental income tax)
+    base_profile = dict(profile)
+    base_profile['tax_year'] = year
+    base_profile['other_ordinary_income'] = base_ord
+    base_profile['ytd_wages'] = base_ord
+    # Auto-max SS when base already clears wage base for the year
+    ss_base = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
+    if base_ord >= ss_base:
+        base_profile['ss_wage_base_maxed'] = True
+
+    base_layer = _federal_state_layer(
+        base_profile,
+        year=year,
+        filing=filing,
+        other_ord=base_ord,
+        equity_ordinary=0.0,
+        stcg_pos=0.0,
+        ltcg_pos=0.0,
+        amt_bargain=0.0,
+    )
+    full_layer = _federal_state_layer(
+        base_profile,
+        year=year,
+        filing=filing,
+        other_ord=base_ord,
+        equity_ordinary=vest,
+        stcg_pos=0.0,
+        ltcg_pos=0.0,
+        amt_bargain=0.0,
+    )
+
+    federal_tax = max(0.0, float(full_layer['federal_ordinary_tax']) - float(base_layer['federal_ordinary_tax']))
+    # NIIT rarely applies to pure wages; include incremental just in case
+    federal_tax += max(0.0, float(full_layer['niit']) - float(base_layer['niit']))
+    state_tax = max(0.0, float(full_layer['state_tax']) - float(base_layer['state_tax']))
+
+    fica = compute_fica_components(vest, base_profile)
+    total_tax = federal_tax + state_tax + float(fica['total'])
+    eff = (total_tax / vest) if vest > 0 else 0.0
+    fed_rate = (federal_tax / vest) if vest > 0 else 0.0
+    state_rate = (state_tax / vest) if vest > 0 else 0.0
+
+    notes = [
+        f'Incremental tax on vest vs {year} Tax Profile ordinary base ${base_ord:,.0f} '
+        f'({wages_mode}; year wages ${stacked:,.0f}).',
+        f'Federal {"brackets" if profile.get("use_bracket_engine", True) else "flat"} · '
+        f'state {"engine" if profile.get("use_state_engine", True) else "flat"} · tax year {year}.',
+    ]
+    if stacked <= 0:
+        notes.append(
+            f'No wages saved for {year} in Tax Profile — vest taxed from $0 stack '
+            f'(enter {year} W-2 wages on Tax profile for accurate marginal rates).'
+        )
+
+    return {
+        'tax_year': year,
+        'gross_value': vest,
+        'base_ordinary': base_ord,
+        'year_wages': stacked,
+        'wages_mode': wages_mode,
+        'federal_tax': federal_tax,
+        'state_tax': state_tax,
+        'social_security_tax': float(fica['social_security']),
+        'medicare_tax': float(fica['medicare']),
+        'additional_medicare_tax': float(fica['additional_medicare']),
+        'total_fica': float(fica['total']),
+        'total_tax': total_tax,
+        'net_value': vest - total_tax,
+        'federal_rate': fed_rate,
+        'state_rate': state_rate,
+        'social_security_rate': float(fica['ss_rate']),
+        'medicare_rate': float(fica['medicare_rate']),
+        'additional_medicare_rate': float(fica['additional_medicare_rate']),
+        'effective_rate': eff,
+        'ordinary_marginal': float(full_layer.get('ord_marginal') or 0),
+        'state_marginal': float(getattr(full_layer.get('state_result'), 'marginal_rate', 0) or 0),
+        'ss_wage_base': float(fica['ss_wage_base']),
+        'include_fica': bool(profile.get('include_fica', True)),
+        'profile_source': profile.get('profile_source') or 'engine',
+        'notes': notes,
+    }
 
 
 def compute_amt(
@@ -527,9 +743,11 @@ def _federal_state_layer(
 
     total_ordinary = other_ord + equity_ordinary + stcg_pos
     ordinary_brackets = _year_table(ORDINARY_BRACKETS, year)[filing]
-    use_brackets = profile.get('use_bracket_engine', True)
+    # Bracket engine wins when enabled — legacy User.federal_tax_rate often seeds
+    # federal_ordinary_rate (e.g. 35%) and must not force a flat rate on top.
+    use_brackets = bool(profile.get('use_bracket_engine', True))
 
-    if use_brackets and profile.get('federal_ordinary_rate') is None:
+    if use_brackets:
         federal_ordinary_tax = progressive_tax(total_ordinary, ordinary_brackets)
         ord_marginal = marginal_rate(total_ordinary, ordinary_brackets)
     else:

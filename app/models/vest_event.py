@@ -163,12 +163,10 @@ class VestEvent(db.Model):
     
     def get_comprehensive_tax_breakdown(self, user=None, _tax_profile=None, _annual_incomes=None, _cached_rates=None, _year_income=None) -> dict:
         """
-        Get detailed tax breakdown including FICA, Medicare, Social Security.
-        Uses user's simplified tax preferences (federal rate, state rate, FICA toggle).
+        Incremental tax at vest using that calendar year's Tax Profile
+        (progressive federal + CA + FICA) — same engine as Sales & Tax / W-2 estimate.
 
-        Args:
-            user: Optional User instance to avoid per-call DB lookups (pass current_user
-                  from routes when iterating many vests).
+        Rates shown are effective on this vest (tax ÷ gross), not legacy flat User rates.
         """
         try:
             if user is None:
@@ -181,88 +179,84 @@ class VestEvent(db.Model):
                     'net_value': self.net_value
                 }
 
-            federal_rate = user.get_federal_tax_rate()
-            state_rate = user.get_state_tax_rate()
-            include_fica = user.include_fica if user.include_fica is not None else True
-            ss_wage_base_maxed = bool(getattr(user, 'ss_wage_base_maxed', False))
+            from app.utils.tax_engine import (
+                resolve_engine_profile_for_year,
+                compute_vest_ordinary_tax,
+            )
 
-            gross_value = self.value_at_vest
-            federal_tax = gross_value * federal_rate
-            state_tax = gross_value * state_rate
-            
-            # FICA components (if enabled)
-            if include_fica:
-                # Social Security: 6.2% up to wage base (skip if already maxed)
-                if ss_wage_base_maxed:
-                    ss_rate = 0.0
-                    social_security_tax = 0
-                else:
-                    ss_wage_base = 168600
-                    ss_rate = 0.062
-                    # Simplified: assume this vest pushes user over the cap if gross > wage base
-                    if gross_value < ss_wage_base:
-                        social_security_tax = gross_value * ss_rate
-                    else:
-                        social_security_tax = ss_wage_base * ss_rate
-                
-                # Medicare: 1.45% on all income (always applies)
-                medicare_rate = 0.0145
-                medicare_tax = gross_value * medicare_rate
-                
-                # Additional Medicare: 0.9% on income over threshold
-                # $200k single, $250k married - simplified to $200k
-                additional_medicare_threshold = 200000
-                additional_medicare_rate = 0.009
-                if gross_value > additional_medicare_threshold:
-                    additional_medicare_tax = (gross_value - additional_medicare_threshold) * additional_medicare_rate
-                else:
-                    additional_medicare_tax = 0
-                    additional_medicare_rate = 0.0  # Show 0% if not applicable
+            year = int(self.tax_year or (self.vest_date.year if self.vest_date else date.today().year))
+            gross_value = float(self.value_at_vest or 0.0)
+
+            # ISO vest is not W-2 ordinary at vest (AMT at exercise) — skip engine
+            from app.models.grant import ShareType
+            st = self.grant.share_type if self.grant else None
+            if st in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value):
+                return {
+                    'has_breakdown': True,
+                    'gross_value': gross_value,
+                    'federal_tax': 0.0,
+                    'state_tax': 0.0,
+                    'social_security_tax': 0.0,
+                    'medicare_tax': 0.0,
+                    'additional_medicare_tax': 0.0,
+                    'total_fica': 0.0,
+                    'total_tax': 0.0,
+                    'net_value': gross_value,
+                    'net_amount': gross_value,
+                    'federal_rate': 0.0,
+                    'state_rate': 0.0,
+                    'social_security_rate': 0.0,
+                    'medicare_rate': 0.0,
+                    'additional_medicare_rate': 0.0,
+                    'effective_rate': 0.0,
+                    'include_fica': False,
+                    'tax_year': year,
+                    'notes': ['ISO vest: no W-2 ordinary at vest (AMT may apply at exercise).'],
+                    'profile_source': 'iso_skip',
+                }
+
+            if _tax_profile is not None and isinstance(_tax_profile, dict):
+                profile = dict(_tax_profile)
+                profile['tax_year'] = year
             else:
-                ss_rate = 0.0
-                social_security_tax = 0
-                medicare_rate = 0.0
-                medicare_tax = 0
-                additional_medicare_rate = 0.0
-                additional_medicare_tax = 0
-            
-            # Total FICA
-            total_fica = social_security_tax + medicare_tax + additional_medicare_tax
-            
-            # Total tax
-            total_tax = federal_tax + state_tax + total_fica
-            net_value = gross_value - total_tax
-            
-            # Effective rate (for display)
-            effective_rate = total_tax / gross_value if gross_value > 0 else 0.0
-            
+                profile = resolve_engine_profile_for_year(user, year)
+
+            result = compute_vest_ordinary_tax(profile, gross_value)
             return {
                 'has_breakdown': True,
-                'gross_value': gross_value,
-                'federal_tax': federal_tax,
-                'state_tax': state_tax,
-                'social_security_tax': social_security_tax,
-                'medicare_tax': medicare_tax,
-                'additional_medicare_tax': additional_medicare_tax,
-                'total_fica': total_fica,  # Template expects 'total_fica'
-                'total_tax': total_tax,
-                'net_value': net_value,
-                'net_amount': net_value,  # Template also uses 'net_amount' in some places
-                'federal_rate': federal_rate,
-                'state_rate': state_rate,
-                'social_security_rate': ss_rate,
-                'medicare_rate': medicare_rate,
-                'additional_medicare_rate': additional_medicare_rate,
-                'effective_rate': effective_rate,  # Overall tax rate
-                'include_fica': include_fica,
-                'tax_year': self.tax_year or self.vest_date.year
+                'gross_value': result['gross_value'],
+                'federal_tax': result['federal_tax'],
+                'state_tax': result['state_tax'],
+                'social_security_tax': result['social_security_tax'],
+                'medicare_tax': result['medicare_tax'],
+                'additional_medicare_tax': result['additional_medicare_tax'],
+                'total_fica': result['total_fica'],
+                'total_tax': result['total_tax'],
+                'net_value': result['net_value'],
+                'net_amount': result['net_value'],
+                # Display rates = effective on this vest (matches dollars shown)
+                'federal_rate': result['federal_rate'],
+                'state_rate': result['state_rate'],
+                'social_security_rate': result['social_security_rate'],
+                'medicare_rate': result['medicare_rate'],
+                'additional_medicare_rate': result['additional_medicare_rate'],
+                'effective_rate': result['effective_rate'],
+                'include_fica': result['include_fica'],
+                'tax_year': year,
+                'base_ordinary': result.get('base_ordinary'),
+                'year_wages': result.get('year_wages'),
+                'ordinary_marginal': result.get('ordinary_marginal'),
+                'state_marginal': result.get('state_marginal'),
+                'ss_wage_base': result.get('ss_wage_base'),
+                'profile_source': result.get('profile_source'),
+                'notes': result.get('notes') or [],
             }
-            
+
         except Exception as e:
-            # Log the error but don't crash
             import logging
-            logging.getLogger(__name__).error(f"Error in get_comprehensive_tax_breakdown: {e}")
-            # Fallback to basic breakdown
+            logging.getLogger(__name__).error(
+                'Error in get_comprehensive_tax_breakdown: %s', e, exc_info=True
+            )
             return {
                 'has_breakdown': False,
                 'gross_value': self.value_at_vest,
@@ -277,14 +271,13 @@ class VestEvent(db.Model):
                                  user=None,
                                  _tax_profile=None) -> dict:
         """
-        Estimate tax withholding for future vesting events.
-        Uses user's simple tax preferences from their profile.
-
-        Args:
-            current_stock_price: Stock price to use for estimation (defaults to latest)
-            user: Optional User instance to avoid per-call DB lookups
+        Estimate tax withholding for future vesting events via year Tax Profile engine.
         """
         from app.models.grant import ShareType, GrantType
+        from app.utils.tax_engine import (
+            resolve_engine_profile_for_year,
+            compute_vest_ordinary_tax,
+        )
 
         if self.has_vested:
             return {
@@ -298,33 +291,46 @@ class VestEvent(db.Model):
 
         if user is None:
             user = self.grant.user if self.grant else None
-        if not user:
-            tax_rate = 0.22 + 0.093 + 0.0765
-        else:
-            tax_rate = user.get_tax_rates()['total']
-        
+
         # Calculate vest value based on grant type
         if self.grant.share_type == ShareType.CASH.value:
             vest_value = self.shares_vested
         elif self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            # ISOs: tax on spread (current_price - strike_price)
             spread = current_stock_price - self.grant.share_price_at_grant
             vest_value = self.shares_vested * spread if spread > 0 else 0.0
+            return {
+                'tax_amount': 0.0,
+                'is_estimated': True,
+                'tax_rate': 0.0,
+                'note': 'ISO: no W-2 ordinary at vest',
+            }
         elif self.grant.grant_type == GrantType.ESPP.value and self.grant.espp_discount:
-            # ESPP: tax on discount portion (ordinary income)
-            discount_gain = self.shares_vested * current_stock_price * self.grant.espp_discount
-            vest_value = discount_gain
+            vest_value = self.shares_vested * current_stock_price * self.grant.espp_discount
         else:
-            # RSUs/RSAs: full value is taxable as ordinary income
             vest_value = self.shares_vested * current_stock_price
-        
-        # Calculate estimated tax
-        estimated_tax = vest_value * tax_rate
-        
+
+        year = int(self.tax_year or (self.vest_date.year if self.vest_date else date.today().year))
+        if not user:
+            # Fallback flat CA-ish stack if no user context
+            tax_rate = 0.24 + 0.093 + 0.0145
+            return {
+                'tax_amount': vest_value * tax_rate,
+                'is_estimated': True,
+                'tax_rate': tax_rate,
+            }
+
+        if _tax_profile is not None and isinstance(_tax_profile, dict):
+            profile = dict(_tax_profile)
+            profile['tax_year'] = year
+        else:
+            profile = resolve_engine_profile_for_year(user, year)
+
+        result = compute_vest_ordinary_tax(profile, float(vest_value or 0))
         return {
-            'tax_amount': estimated_tax,
+            'tax_amount': result['total_tax'],
             'is_estimated': True,
-            'tax_rate': tax_rate
+            'tax_rate': result['effective_rate'],
+            'breakdown': result,
         }
     
     def get_estimated_sale_tax(self, current_stock_price: float = None,

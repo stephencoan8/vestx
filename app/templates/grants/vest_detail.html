@@ -135,6 +135,18 @@
  {% set tax_breakdown = vest_data.tax_breakdown %}
  <div class="tax-subsection">
  <h4> Estimated Tax (System Calculated)</h4>
+ <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.85rem;">
+ Incremental tax on this vest using <strong>{{ tax_breakdown.tax_year }}</strong> Tax Profile
+ (progressive federal + CA + FICA) — same engine as Sales &amp; Tax / year W-2 estimate.
+ {% if tax_breakdown.year_wages is defined and tax_breakdown.year_wages %}
+ Stacked on year wages ≈ <strong>${{ "{:,.0f}".format(tax_breakdown.year_wages) }}</strong>
+ {% if tax_breakdown.base_ordinary is defined %}
+ (base before this vest ≈ ${{ "{:,.0f}".format(tax_breakdown.base_ordinary) }}).
+ {% endif %}
+ {% else %}
+ No wages saved for {{ tax_breakdown.tax_year }} yet — open Tax profile and enter that year’s W-2.
+ {% endif %}
+ </p>
  {% if not vest_event.has_vested %}
  <p style="color: var(--warning); font-style: italic; margin-bottom: 1rem;">
  ⏰ This vest hasn't occurred yet - these are projected taxes.
@@ -147,11 +159,11 @@
  <span class="amount">${{ "{:,.2f}".format(tax_breakdown.gross_value) }}</span>
  </div>
  <div class="tax-summary-row tax-item">
- <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}%):</span>
+ <span>Federal Income Tax ({{ "%.2f"|format(tax_breakdown.federal_rate * 100) }}% on this vest):</span>
  <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.federal_tax) }}</span>
  </div>
  <div class="tax-summary-row tax-item">
- <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}%):</span>
+ <span>State Income Tax ({{ "%.2f"|format(tax_breakdown.state_rate * 100) }}% on this vest):</span>
  <span class="amount">-${{ "{:,.2f}".format(tax_breakdown.state_tax) }}</span>
  </div>
  <div class="tax-summary-row tax-item">
@@ -176,6 +188,12 @@
  <span><strong>Estimated Effective Rate:</strong></span>
  <span class="amount"><strong>{{ "%.2f"|format(tax_breakdown.effective_rate * 100) }}%</strong></span>
  </div>
+ {% if tax_breakdown.ordinary_marginal is defined and tax_breakdown.ordinary_marginal %}
+ <div class="tax-summary-row" style="font-size:0.85rem;color:var(--text-muted);">
+ <span>Next-dollar federal marginal · CA marginal</span>
+ <span>{{ "%.0f"|format(tax_breakdown.ordinary_marginal * 100) }}% · {{ "%.1f"|format((tax_breakdown.state_marginal or 0) * 100) }}%</span>
+ </div>
+ {% endif %}
  </div>
  </div>
  {% else %}

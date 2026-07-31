@@ -63,9 +63,11 @@ class TaxProfile(db.Model):
         profile = cls(
             user_id=user.id,
             state_code='CA',  # default for this product audience; user can change
-            federal_ordinary_rate=user.federal_tax_rate if user.federal_tax_rate is not None else 0.24,
-            state_ordinary_rate=user.state_tax_rate if user.state_tax_rate is not None else 0.0,
-            state_cg_rate=user.state_tax_rate if user.state_tax_rate is not None else 0.0,
+            # Leave federal rates null so bracket engine is used (do not seed flat User rate)
+            federal_ordinary_rate=None,
+            federal_ltcg_rate=None,
+            state_ordinary_rate=0.0,
+            state_cg_rate=0.0,
             include_fica=user.include_fica if user.include_fica is not None else True,
             ss_wage_base_maxed=bool(getattr(user, 'ss_wage_base_maxed', False)),
             use_bracket_engine=True,
