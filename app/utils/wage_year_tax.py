@@ -17,17 +17,13 @@ from typing import Any, Dict, List, Optional
 
 from app.utils.tax_engine import (
     ORDINARY_BRACKETS,
-    SS_WAGE_BASE,
-    SS_RATE,
-    MEDICARE_RATE,
-    ADDITIONAL_MEDICARE_RATE,
-    ADD_MEDICARE_THRESHOLD,
     NIIT_THRESHOLD,
     progressive_tax,
     marginal_rate,
     preferential_ltcg_tax,
     _year_table,
 )
+from app.utils.payroll_tax import employee_fica_full_year
 
 
 # Federal standard deduction (approx IRS inflation-adjusted)
@@ -189,24 +185,35 @@ def compute_w2_year_tax(
         f'({filing}, tax year {year}).'
     )
 
-    # FICA on fica wages only — SS base for THIS tax year
-    ss_base = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
-    if year not in SS_WAGE_BASE:
-        notes.append(f'SS wage base for {year} not tabled — using ${ss_base:,.0f}.')
-    else:
-        notes.append(f'SS wage base for {year}: ${ss_base:,.0f}.')
-
+    # FICA via shared IRS Pub 15 module (SS remaining base + Add'l Medicare)
     if include_fica and fwages > 0:
-        if ss_wage_base_maxed:
-            social_security = 0.0
-            notes.append('SS treated as already maxed — Medicare only on FICA wages.')
-        else:
-            social_security = min(fwages, ss_base) * SS_RATE
-        medicare = fwages * MEDICARE_RATE
-        add_thr = float(ADD_MEDICARE_THRESHOLD.get(filing, 200000))
-        additional_medicare = max(0.0, fwages - add_thr) * ADDITIONAL_MEDICARE_RATE
+        from app.utils.payroll_tax import ss_wage_base_for_year
+        ss_base_chk = ss_wage_base_for_year(year)
+        # Full-year: wages determine SS. "Maxed" only if wages ≥ base or empty + override.
+        force_maxed = bool(ss_wage_base_maxed) and (
+            fwages >= ss_base_chk - 1.0 or fwages <= 0
+        )
+        if ss_wage_base_maxed and not force_maxed:
+            notes.append(
+                'SS wage-base maxed flag ignored for full-year calc because annual '
+                f'wages ${fwages:,.0f} are under SS base ${ss_base_chk:,.0f}.'
+            )
+        fica_r = employee_fica_full_year(
+            annual_wages=fwages,
+            tax_year=year,
+            filing_status=filing,
+            ss_already_maxed=force_maxed,
+        )
+        social_security = fica_r.social_security
+        medicare = fica_r.medicare
+        additional_medicare = fica_r.additional_medicare
+        ss_base = fica_r.ss_wage_base
+        notes.append(f'SS wage base for {year}: ${ss_base:,.0f} (employee FICA module).')
+        notes.extend(list(fica_r.notes)[:2])
     else:
         social_security = medicare = additional_medicare = 0.0
+        from app.utils.payroll_tax import ss_wage_base_for_year
+        ss_base = ss_wage_base_for_year(year)
 
     total_fica = social_security + medicare + additional_medicare
     income_tax_total = federal_income + state_tax

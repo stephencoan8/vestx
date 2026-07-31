@@ -98,17 +98,16 @@ from app.utils.amt import (  # noqa: E402
     FED_AMT_28_THRESHOLD as AMT_HIGH_THRESHOLD,
 )
 
-SS_RATE = 0.062
-MEDICARE_RATE = 0.0145
-ADDITIONAL_MEDICARE_RATE = 0.009
-SS_WAGE_BASE = {
-    2022: 147000,
-    2023: 160200,
-    2024: 168600,
-    2025: 176100,
-    2026: 184500,
-}
-ADD_MEDICARE_THRESHOLD = {'single': 200000, 'hoh': 200000, 'mfs': 125000, 'mfj': 250000}
+# FICA constants — single source of truth is app.utils.payroll_tax (IRS Pub 15)
+from app.utils.payroll_tax import (  # noqa: E402
+    SS_EMPLOYEE_RATE as SS_RATE,
+    MEDICARE_EMPLOYEE_RATE as MEDICARE_RATE,
+    ADDITIONAL_MEDICARE_RATE,
+    SS_WAGE_BASE,
+    ADD_MEDICARE_THRESHOLD,
+    employee_fica,
+    profile_ytd_before_equity,
+)
 
 
 def _year_table(table: dict, year: int) -> dict:
@@ -466,57 +465,59 @@ def stacking_ordinary_income(profile: dict) -> float:
 
 def compute_fica_components(ordinary_equity: float, profile: dict) -> Dict[str, float]:
     """
-    Incremental FICA on equity ordinary given YTD / year wages already earned.
-    Returns component amounts and the rates actually applied to this slice.
+    Incremental employee FICA on equity ordinary — delegates to payroll_tax.employee_fica.
+
+    YTD before this equity is inferred from the year Tax Profile (peels equity
+    out of full-year W-2 so SS remaining base is correct).
     """
     equity = max(0.0, float(ordinary_equity or 0.0))
-    empty = {
-        'social_security': 0.0,
-        'medicare': 0.0,
-        'additional_medicare': 0.0,
-        'total': 0.0,
-        'ss_rate': 0.0,
-        'medicare_rate': 0.0,
-        'additional_medicare_rate': 0.0,
-        'ss_wage_base': 0.0,
-        'ytd_for_fica': 0.0,
-    }
-    if not profile.get('include_fica', True) or equity <= 0:
-        year = int(profile.get('tax_year') or date.today().year)
-        empty['ss_wage_base'] = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
-        return empty
-
     year = int(profile.get('tax_year') or date.today().year)
-    wage_base = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
-    ytd = float(profile.get('ytd_wages', 0.0) or 0.0)
-    other = float(profile.get('other_ordinary_income') or 0.0)
-    # Wages already in the year before this equity slice
-    ytd_for_fica = max(ytd, other)
+    filing = profile.get('filing_status') or 'single'
+    if not profile.get('include_fica', True) or equity <= 0:
+        from app.utils.payroll_tax import ss_wage_base_for_year
+        return {
+            'social_security': 0.0,
+            'medicare': 0.0,
+            'additional_medicare': 0.0,
+            'total': 0.0,
+            'ss_rate': 0.0,
+            'medicare_rate': 0.0,
+            'additional_medicare_rate': 0.0,
+            'ss_wage_base': ss_wage_base_for_year(year),
+            'ytd_for_fica': profile_ytd_before_equity(profile, 0.0),
+        }
 
-    ss = 0.0
-    ss_rate_applied = 0.0
-    if not profile.get('ss_wage_base_maxed'):
-        remaining = max(0.0, wage_base - ytd_for_fica)
-        ss = min(equity, remaining) * SS_RATE
-        if equity > 0 and ss > 0:
-            ss_rate_applied = ss / equity  # blended if partially over base
-    medicare = equity * MEDICARE_RATE
-    filing = profile.get('filing_status', 'single')
-    thr = float(ADD_MEDICARE_THRESHOLD.get(filing, 200000))
-    add_base = max(0.0, (ytd_for_fica + equity) - thr)
-    add_med = min(equity, add_base) * ADDITIONAL_MEDICARE_RATE if add_base > 0 else 0.0
-    add_rate_applied = (add_med / equity) if equity > 0 and add_med > 0 else 0.0
+    # Sale/goal path: profile wages are non-equity base (do not peel equity).
+    # Vest path calls employee_fica directly with an explicit YTD.
+    ytd_before = profile_ytd_before_equity(profile, equity, wages_include_equity=False)
+    from app.utils.payroll_tax import ss_wage_base_for_year
+    wage_base = ss_wage_base_for_year(year)
+    # Honor maxed only when YTD already clears the base, or empty YTD + user flag
+    force_maxed = False
+    if bool(profile.get('ss_wage_base_maxed')):
+        if ytd_before >= wage_base - 1.0 or ytd_before <= 0:
+            force_maxed = True
 
+    r = employee_fica(
+        period_wages=equity,
+        ytd_wages_before=ytd_before,
+        tax_year=year,
+        filing_status=filing,
+        ss_already_maxed=force_maxed,
+    )
     return {
-        'social_security': ss,
-        'medicare': medicare,
-        'additional_medicare': add_med,
-        'total': ss + medicare + add_med,
-        'ss_rate': ss_rate_applied,
-        'medicare_rate': MEDICARE_RATE if medicare > 0 else 0.0,
-        'additional_medicare_rate': add_rate_applied,
-        'ss_wage_base': wage_base,
-        'ytd_for_fica': ytd_for_fica,
+        'social_security': r.social_security,
+        'medicare': r.medicare,
+        'additional_medicare': r.additional_medicare,
+        'total': r.total,
+        'ss_rate': r.ss_effective_rate,
+        'medicare_rate': r.medicare_rate,
+        'additional_medicare_rate': r.additional_medicare_effective_rate,
+        'ss_wage_base': r.ss_wage_base,
+        'ytd_for_fica': r.ytd_wages_before,
+        'ss_taxable_wages': r.ss_taxable_wages,
+        'ss_remaining_before': r.ss_remaining_before,
+        'notes': list(r.notes),
     }
 
 
@@ -595,13 +596,22 @@ def resolve_engine_profile_for_year(user, tax_year: int) -> dict:
     return d
 
 
-def compute_vest_ordinary_tax(profile: dict, vest_ordinary: float) -> Dict[str, Any]:
+def compute_vest_ordinary_tax(
+    profile: dict,
+    vest_ordinary: float,
+    *,
+    wages_include_this_vest: Optional[bool] = None,
+    has_vested: Optional[bool] = None,
+) -> Dict[str, Any]:
     """
     Incremental tax on RSU/cash vest ordinary income for a tax year.
 
     Stacks the vest on that year's Tax Profile wages (same engine as Sales & Tax).
-    If year wages already look like full W-2 (include this vest), the base is
-    wages − vest so we don't double-count.
+
+    wages_include_this_vest:
+      True  — profile wages are full W-2 box 1 already including this vest → peel it
+      False — profile wages are salary/YTD without this vest → stack on top
+      None  — infer: past calendar years / has_vested → peel; future vests → stack
     """
     vest = max(0.0, float(vest_ordinary or 0.0))
     year = int(profile.get('tax_year') or date.today().year)
@@ -610,52 +620,130 @@ def compute_vest_ordinary_tax(profile: dict, vest_ordinary: float) -> Dict[str, 
         filing = 'single'
 
     stacked = stacking_ordinary_income(profile)
-    # Full-year W-2 usually already includes RSU ordinary — peel this vest off the base
-    if stacked + 0.01 >= vest > 0:
+    if wages_include_this_vest is None:
+        # Past years: Tax Profile W-2 is full-year (includes RSU). Future: usually not yet.
+        if has_vested is True:
+            wages_include_this_vest = stacked + 0.01 >= vest > 0
+        elif has_vested is False:
+            wages_include_this_vest = False
+        else:
+            wages_include_this_vest = (year < date.today().year) and (stacked + 0.01 >= vest > 0)
+
+    if wages_include_this_vest and vest > 0 and stacked + 0.01 >= vest:
         base_ord = max(0.0, stacked - vest)
         wages_mode = 'w2_includes_vest'
     else:
         base_ord = stacked
         wages_mode = 'wages_plus_vest'
 
-    # Profile slice BEFORE this vest (for FICA remaining base + incremental income tax)
+    # Profile slice BEFORE this vest (income tax stack only — FICA uses ytd=base_ord)
     base_profile = dict(profile)
     base_profile['tax_year'] = year
     base_profile['other_ordinary_income'] = base_ord
     base_profile['ytd_wages'] = base_ord
-    # Auto-max SS when base already clears wage base for the year
-    ss_base = float(SS_WAGE_BASE.get(year) or SS_WAGE_BASE.get(2025, 176100))
-    if base_ord >= ss_base:
-        base_profile['ss_wage_base_maxed'] = True
+
+    # Apply federal + CA standard deductions to BOTH stacks so incremental tax
+    # respects remaining std ded (fixes false 32% cliff just above $191,950 gross).
+    from app.utils.wage_year_tax import FED_STD_DEDUCTION, CA_STD_DEDUCTION, _std_for
+    fed_std = _std_for(FED_STD_DEDUCTION, year, filing)
+    ca_std = _std_for(CA_STD_DEDUCTION, year, filing)
+
+    def _taxable(ord_amt: float, std: float) -> float:
+        return max(0.0, float(ord_amt) - float(std))
 
     base_layer = _federal_state_layer(
         base_profile,
         year=year,
         filing=filing,
-        other_ord=base_ord,
+        other_ord=_taxable(base_ord, fed_std),
         equity_ordinary=0.0,
         stcg_pos=0.0,
         ltcg_pos=0.0,
         amt_bargain=0.0,
     )
+    # CA uses separate ordinary input — feed CA-taxable via state by adjusting other_ord
+    # for federal stack uses fed std; for state, recompute with ca std on ordinary only.
     full_layer = _federal_state_layer(
         base_profile,
         year=year,
         filing=filing,
-        other_ord=base_ord,
-        equity_ordinary=vest,
+        other_ord=_taxable(base_ord, fed_std),
+        equity_ordinary=vest,  # vest is incremental; std already removed from base
         stcg_pos=0.0,
         ltcg_pos=0.0,
         amt_bargain=0.0,
     )
+    # When base is below fed std, part of vest fills the remaining std — subtract that
+    # from equity taxed at federal by re-running with combined taxable.
+    base_taxable_fed = _taxable(base_ord, fed_std)
+    full_taxable_fed = _taxable(base_ord + vest, fed_std)
+    # Correct federal ordinary delta using taxable incomes (not gross)
+    if abs(full_taxable_fed - base_taxable_fed - vest) > 0.01:
+        base_layer = _federal_state_layer(
+            base_profile, year=year, filing=filing,
+            other_ord=base_taxable_fed, equity_ordinary=0.0,
+            stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
+        )
+        full_layer = _federal_state_layer(
+            base_profile, year=year, filing=filing,
+            other_ord=base_taxable_fed, equity_ordinary=max(0.0, full_taxable_fed - base_taxable_fed),
+            stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
+        )
+
+    # State: CA std on ordinary stack (no federal-style LTCG preference)
+    base_ca = _taxable(base_ord, ca_std)
+    full_ca_ord = _taxable(base_ord + vest, ca_std)
+    ca_equity = max(0.0, full_ca_ord - base_ca)
+    base_state = _federal_state_layer(
+        base_profile, year=year, filing=filing,
+        other_ord=base_ca, equity_ordinary=0.0,
+        stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
+    )
+    full_state = _federal_state_layer(
+        base_profile, year=year, filing=filing,
+        other_ord=base_ca, equity_ordinary=ca_equity,
+        stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
+    )
 
     federal_tax = max(0.0, float(full_layer['federal_ordinary_tax']) - float(base_layer['federal_ordinary_tax']))
-    # NIIT rarely applies to pure wages; include incremental just in case
     federal_tax += max(0.0, float(full_layer['niit']) - float(base_layer['niit']))
-    state_tax = max(0.0, float(full_layer['state_tax']) - float(base_layer['state_tax']))
+    # State delta uses CA-std-adjusted stacks (not federal std)
+    state_tax = max(0.0, float(full_state['state_tax']) - float(base_state['state_tax']))
 
-    fica = compute_fica_components(vest, base_profile)
-    total_tax = federal_tax + state_tax + float(fica['total'])
+    # FICA: YTD = wages before this vest (do NOT re-peel via compute_fica_components)
+    include_fica = bool(profile.get('include_fica', True))
+    if include_fica and vest > 0:
+        from app.utils.payroll_tax import ss_wage_base_for_year
+        wage_base = ss_wage_base_for_year(year)
+        # Honor maxed flag only if YTD already at base, or flag set with unknown YTD
+        force_maxed = False
+        if bool(profile.get('ss_wage_base_maxed')):
+            if base_ord >= wage_base - 1.0 or base_ord <= 0:
+                force_maxed = True
+        fica_r = employee_fica(
+            period_wages=vest,
+            ytd_wages_before=base_ord,
+            tax_year=year,
+            filing_status=filing,
+            ss_already_maxed=force_maxed,
+        )
+        ss_tax = fica_r.social_security
+        med_tax = fica_r.medicare
+        add_med = fica_r.additional_medicare
+        total_fica = fica_r.total
+        ss_rate = fica_r.ss_effective_rate
+        med_rate = fica_r.medicare_rate
+        add_rate = fica_r.additional_medicare_effective_rate
+        ss_base = fica_r.ss_wage_base
+        fica_notes = list(fica_r.notes)
+    else:
+        ss_tax = med_tax = add_med = total_fica = 0.0
+        ss_rate = med_rate = add_rate = 0.0
+        from app.utils.payroll_tax import ss_wage_base_for_year
+        ss_base = ss_wage_base_for_year(year)
+        fica_notes = []
+
+    total_tax = federal_tax + state_tax + total_fica
     eff = (total_tax / vest) if vest > 0 else 0.0
     fed_rate = (federal_tax / vest) if vest > 0 else 0.0
     state_rate = (state_tax / vest) if vest > 0 else 0.0
@@ -665,7 +753,10 @@ def compute_vest_ordinary_tax(profile: dict, vest_ordinary: float) -> Dict[str, 
         f'({wages_mode}; year wages ${stacked:,.0f}).',
         f'Federal {"brackets" if profile.get("use_bracket_engine", True) else "flat"} · '
         f'state {"engine" if profile.get("use_state_engine", True) else "flat"} · tax year {year}.',
+        f'FICA YTD before vest ${base_ord:,.0f} · SS base ${ss_base:,.0f} · '
+        f'SS on this vest ${ss_tax:,.2f} (eff {ss_rate*100:.2f}%).',
     ]
+    notes.extend(fica_notes[:2])
     if stacked <= 0:
         notes.append(
             f'No wages saved for {year} in Tax Profile — vest taxed from $0 stack '
@@ -680,22 +771,24 @@ def compute_vest_ordinary_tax(profile: dict, vest_ordinary: float) -> Dict[str, 
         'wages_mode': wages_mode,
         'federal_tax': federal_tax,
         'state_tax': state_tax,
-        'social_security_tax': float(fica['social_security']),
-        'medicare_tax': float(fica['medicare']),
-        'additional_medicare_tax': float(fica['additional_medicare']),
-        'total_fica': float(fica['total']),
+        'social_security_tax': ss_tax,
+        'medicare_tax': med_tax,
+        'additional_medicare_tax': add_med,
+        'total_fica': total_fica,
         'total_tax': total_tax,
         'net_value': vest - total_tax,
         'federal_rate': fed_rate,
         'state_rate': state_rate,
-        'social_security_rate': float(fica['ss_rate']),
-        'medicare_rate': float(fica['medicare_rate']),
-        'additional_medicare_rate': float(fica['additional_medicare_rate']),
+        'social_security_rate': ss_rate,
+        'medicare_rate': med_rate,
+        'additional_medicare_rate': add_rate,
         'effective_rate': eff,
         'ordinary_marginal': float(full_layer.get('ord_marginal') or 0),
-        'state_marginal': float(getattr(full_layer.get('state_result'), 'marginal_rate', 0) or 0),
-        'ss_wage_base': float(fica['ss_wage_base']),
-        'include_fica': bool(profile.get('include_fica', True)),
+        'state_marginal': float(getattr(full_state.get('state_result'), 'marginal_rate', 0) or 0),
+        'federal_std_deduction': fed_std,
+        'ca_std_deduction': ca_std,
+        'ss_wage_base': ss_base,
+        'include_fica': include_fica,
         'profile_source': profile.get('profile_source') or 'engine',
         'notes': notes,
     }

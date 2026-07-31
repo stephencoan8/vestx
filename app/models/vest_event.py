@@ -221,7 +221,14 @@ class VestEvent(db.Model):
             else:
                 profile = resolve_engine_profile_for_year(user, year)
 
-            result = compute_vest_ordinary_tax(profile, gross_value)
+            result = compute_vest_ordinary_tax(
+                profile,
+                gross_value,
+                has_vested=bool(self.has_vested),
+                # Past vests: Tax Profile W-2 is full year including RSU.
+                # Future: stack vest on top of saved wages (do not peel).
+                wages_include_this_vest=True if self.has_vested else False,
+            )
             return {
                 'has_breakdown': True,
                 'gross_value': result['gross_value'],
@@ -325,7 +332,12 @@ class VestEvent(db.Model):
         else:
             profile = resolve_engine_profile_for_year(user, year)
 
-        result = compute_vest_ordinary_tax(profile, float(vest_value or 0))
+        result = compute_vest_ordinary_tax(
+            profile,
+            float(vest_value or 0),
+            has_vested=False,
+            wages_include_this_vest=False,
+        )
         return {
             'tax_amount': result['total_tax'],
             'is_estimated': True,
