@@ -100,6 +100,8 @@ def hub():
         float(profile.other_ordinary_income or 0) > 0
         or float(profile.ytd_wages or 0) > 0
     )
+    from app.utils.wage_year_tax import list_years_with_vests
+    past_years = list_years_with_vests(current_user.id)
     return render_template(
         'tax/hub.html',
         profile=profile,
@@ -111,8 +113,78 @@ def hub():
         inventory=inventory,
         profile_ready=profile_ready,
         today=date.today(),
+        past_years=past_years,
         grok_enabled=xai_advisor.is_configured(current_user),
     )
+
+
+@tax_center_bp.route('/api/year-tax', methods=['GET', 'POST'])
+@login_required
+def api_year_tax():
+    """
+    Full-year W-2 style tax for a past (or current) calendar year.
+
+    GET  ?year=2024 → vest history prefills for that year
+    POST { year, wages, other_ordinary?, stcg?, ltcg?, filing_status?, include_fica? }
+         → progressive federal + CA + FICA
+    """
+    try:
+        from app.utils.wage_year_tax import (
+            build_year_vest_prefill,
+            compute_w2_year_tax,
+            list_years_with_vests,
+        )
+        profile = TaxProfile.for_user(current_user)
+
+        if request.method == 'GET':
+            year = int(request.args.get('year') or (date.today().year - 1))
+            pref = build_year_vest_prefill(current_user.id, year)
+            return _api_json({
+                'success': True,
+                'years': list_years_with_vests(current_user.id),
+                'prefill': pref,
+                'defaults': {
+                    'filing_status': profile.filing_status or 'single',
+                    'state_code': (profile.state_code or 'CA').upper(),
+                    'include_fica': bool(profile.include_fica if profile.include_fica is not None else True),
+                    'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+                    'use_state_engine': bool(
+                        profile.use_state_engine if profile.use_state_engine is not None else True
+                    ),
+                },
+            })
+
+        data = request.get_json(silent=True) or {}
+        year = int(data.get('year') or data.get('tax_year') or (date.today().year - 1))
+        pref = build_year_vest_prefill(current_user.id, year)
+        wages = data.get('wages')
+        if wages is None or wages == '':
+            # If user didn't type wages, suggest equity-only (they should round up with salary)
+            wages = 0.0
+        wages = float(wages)
+        result = compute_w2_year_tax(
+            tax_year=year,
+            filing_status=data.get('filing_status') or profile.filing_status or 'single',
+            state_code=(data.get('state_code') or profile.state_code or 'CA').upper(),
+            wages=wages,
+            other_ordinary=float(data.get('other_ordinary') or 0),
+            stcg=float(data.get('stcg') or 0),
+            ltcg=float(data.get('ltcg') or 0),
+            include_fica=bool(data.get('include_fica', True)),
+            ss_wage_base_maxed=bool(data.get('ss_wage_base_maxed', False)),
+            use_state_engine=bool(
+                data.get('use_state_engine', profile.use_state_engine if profile.use_state_engine is not None else True)
+            ),
+            vest_prefills=pref,
+        )
+        return _api_json({'success': True, 'result': result.to_dict(), 'prefill': pref})
+    except Exception as e:
+        logger.error('year-tax failed: %s', e, exc_info=True)
+        return _api_json({
+            'success': False,
+            'error': str(e),
+            'detail': traceback.format_exc()[-1200:],
+        }, 500)
 
 
 @tax_center_bp.route('/profile', methods=['GET', 'POST'])
