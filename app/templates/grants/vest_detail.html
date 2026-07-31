@@ -74,17 +74,46 @@
  </span>
  </div>
  <div class="info-item">
- <label>Gross Value:</label>
+ <label>Gross value <span class="tax-muted">(pre-tax)</span></label>
  <span class="highlight">${{ "{:,.2f}".format(vest_data.gross_value) }}</span>
+ <small class="tax-muted-sm">Shares vested × price at vest</small>
  </div>
  <div class="info-item">
- <label>Shares Received:</label>
+ <label>Shares received</label>
  <span id="sharesReceivedDisplay">{{ "%.4f"|format(vest_data.shares_received) }}</span>
+ {% if (vest_data.shares_withheld_for_taxes or 0) > 0 %}
+ <small class="tax-muted-sm">{{ "%.4f"|format(vest_data.shares_withheld_for_taxes) }} sold/withheld for tax</small>
+ {% endif %}
  </div>
  <div class="info-item">
- <label>Net Value:</label>
+ <label>Net value <span class="tax-muted">(after withholding)</span></label>
  <span id="netValueDisplay" class="highlight">${{ "{:,.2f}".format(vest_data.net_value) }}</span>
+ <small class="tax-muted-sm">Shares you keep × price at vest</small>
  </div>
+ {% set _tax_w = vest_data.tax_withheld_value or 0 %}
+ {% set _gross = vest_data.gross_value or 0 %}
+ {% if _gross > 0 and _tax_w < 0.01 and (vest_data.shares_withheld_for_taxes or 0) < 0.0001 %}
+ <div class="info-item" style="grid-column: 1 / -1;">
+ <div class="info-box" style="margin:0;">
+ <strong>Gross and net match</strong> because no tax was recorded yet (no cash paid, no shares sold to cover).
+ That is not “gross after tax” — <em>gross is always pre-tax</em>; <em>net is after sell-to-cover / cash withheld</em>.
+ {% if vest_data.tax_breakdown and vest_data.tax_breakdown.total_tax %}
+ Estimated tax at vest (from your simplified rates):
+ <strong>${{ "{:,.2f}".format(vest_data.tax_breakdown.total_tax) }}</strong>
+ → rough after-tax
+ <strong>${{ "{:,.2f}".format(_gross - vest_data.tax_breakdown.total_tax) }}</strong>
+ (enter actual withholding in Vest Details to update net).
+ {% else %}
+ Open <strong>Vest Details</strong> below to record cash paid or shares sold for taxes.
+ {% endif %}
+ </div>
+ </div>
+ {% elif _tax_w >= 0.01 %}
+ <div class="info-item">
+ <label>Tax withheld <span class="tax-muted">(recorded)</span></label>
+ <span>${{ "{:,.2f}".format(_tax_w) }}</span>
+ </div>
+ {% endif %}
  </div>
  </section>
 
