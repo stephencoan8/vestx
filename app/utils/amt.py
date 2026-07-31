@@ -228,7 +228,8 @@ def compute_amt_stack(
         tmt=fed_tmt,
         exemption_used=fed_ex,
         opening_credit=federal_credit_opening,
-        generate_credit_from_amt=iso_bargain_preference > 0 or True,
+        # Credit generation only when ISO bargain (or other AMT preference) actually exists
+        generate_credit_from_amt=bool(iso_bargain_preference and iso_bargain_preference > 0),
     )
 
     california = None

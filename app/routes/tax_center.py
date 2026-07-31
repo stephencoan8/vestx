@@ -130,6 +130,51 @@ def _money_float(val, default=0.0):
         return default if default is None else float(default)
 
 
+def _engine_profile_for_request(user, data: Optional[dict] = None) -> dict:
+    """
+    Year-scoped tax engine profile for analyze / goal / sales / exercises.
+
+    Prefer TaxYearProfile for the request year so past-year plans never inherit
+    current-year wages from the active TaxProfile mirror.
+    """
+    from app.utils.tax_engine import resolve_engine_profile_for_year
+
+    data = data or {}
+    main = TaxProfile.for_user(user)
+    try:
+        year = int(
+            data.get('tax_year')
+            or data.get('year')
+            or main.tax_year
+            or date.today().year
+        )
+    except (TypeError, ValueError):
+        year = int(main.tax_year or date.today().year)
+
+    eng = resolve_engine_profile_for_year(user, year)
+    # Allow what-if overrides from the request without mutating DB
+    if data.get('other_ordinary_income') is not None:
+        try:
+            v = float(data['other_ordinary_income'])
+            eng['other_ordinary_income'] = v
+            eng['stacking_ordinary_income'] = max(v, float(eng.get('ytd_wages') or 0))
+        except (TypeError, ValueError):
+            pass
+    if data.get('ytd_wages') is not None:
+        try:
+            v = float(data['ytd_wages'])
+            eng['ytd_wages'] = v
+            eng['stacking_ordinary_income'] = max(
+                float(eng.get('other_ordinary_income') or 0), v
+            )
+        except (TypeError, ValueError):
+            pass
+    if data.get('filing_status'):
+        eng['filing_status'] = data['filing_status']
+    eng['tax_year'] = year
+    return eng
+
+
 @tax_center_bp.route('/api/year-tax', methods=['GET', 'POST'])
 @login_required
 def api_year_tax():
@@ -584,12 +629,7 @@ def api_analyze():
     """
     try:
         data = request.get_json() or {}
-        profile = TaxProfile.for_user(current_user)
-        eng = profile.to_engine_dict()
-        if data.get('tax_year'):
-            eng['tax_year'] = int(data['tax_year'])
-        if data.get('other_ordinary_income') is not None:
-            eng['other_ordinary_income'] = float(data['other_ordinary_income'])
+        eng = _engine_profile_for_request(current_user, data)
 
         sale_date_raw = data.get('sale_date') or date.today().isoformat()
         sale_date = datetime.fromisoformat(sale_date_raw).date()
@@ -709,8 +749,7 @@ def api_goal():
     """
     try:
         data = request.get_json() or {}
-        profile = TaxProfile.for_user(current_user)
-        eng = profile.to_engine_dict()
+        eng = _engine_profile_for_request(current_user, data)
         live = get_latest_user_price(current_user.id) or 0.0
         lots = build_lots_for_user(current_user.id)
 
@@ -1110,10 +1149,8 @@ def api_record_sale():
 
         db.session.commit()
 
-        # Tax analysis for this sale alone
-        profile = TaxProfile.for_user(current_user)
-        eng = profile.to_engine_dict()
-        eng['tax_year'] = sale_date.year
+        # Tax analysis for this sale alone (year-scoped profile)
+        eng = _engine_profile_for_request(current_user, {'tax_year': sale_date.year})
         lot_in = LotSaleInput(
             vest_event_id=vest.id,
             grant_id=grant.id,
@@ -1199,9 +1236,7 @@ def api_record_exercise():
         db.session.add(ex)
         db.session.commit()
 
-        profile = TaxProfile.for_user(current_user)
-        eng = profile.to_engine_dict()
-        eng['tax_year'] = exercise_date.year
+        eng = _engine_profile_for_request(current_user, {'tax_year': exercise_date.year})
         # AMT-only scenario: zero sale, just exercise preference via dummy zero-share? 
         # Use analyze with empty sales but we need AMT from bargain — call analyze_sales with empty
         # and inject via a synthetic approach: create lot sale 0 shares won't work.

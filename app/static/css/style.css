@@ -2159,14 +2159,16 @@ body.advisor-open .app-main {
     transform: translateY(0);
     transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.tax-profile-body.is-fading {
+.tax-profile-body.is-fading,
+.tax-profile-kpis.is-fading {
     opacity: 0;
     transform: translateY(6px);
     pointer-events: none;
 }
-.tax-year-result-card {
-    transition: opacity 0.2s ease;
+.tax-profile-kpis {
+    transition: opacity 0.16s ease, transform 0.16s ease;
 }
+.tax-profile-kpis.is-recalc,
 .tax-year-result-card.is-recalc {
     opacity: 0.72;
 }
@@ -2175,14 +2177,164 @@ body.advisor-open .app-main {
     letter-spacing: 0.01em;
     text-align: right;
 }
-.tax-result-head {
-    margin-bottom: 0.5rem;
+.tax-profile-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.85rem;
+    margin-top: 0.35rem;
 }
-.stat-sublabel {
-    font-size: 0.68rem;
+.tax-status-pill {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+}
+.tax-status-pill[data-source="saved"] {
+    border-color: var(--copper-border, var(--border-subtle));
+    color: var(--text-primary);
+    background: var(--accent-soft, transparent);
+}
+.tax-profile-cockpit {
+    display: grid;
+    grid-template-columns: minmax(17rem, 0.95fr) minmax(20rem, 1.15fr);
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 1rem;
+}
+@media (max-width: 900px) {
+    .tax-profile-cockpit {
+        grid-template-columns: 1fr;
+    }
+}
+.tax-profile-inputs .tax-box1-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--text-muted);
-    margin-top: 0.15rem;
-    letter-spacing: 0.02em;
+    margin-bottom: 0.4rem;
+}
+.tax-box1-wrap {
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--copper-border, var(--border-subtle));
+    border-radius: var(--radius-sm);
+    background: var(--input-bg);
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.tax-box1-wrap:focus-within {
+    border-color: var(--accent, #c4a574);
+    box-shadow: 0 0 0 3px var(--accent-soft, rgba(196, 165, 116, 0.25));
+}
+.tax-box1-prefix {
+    padding: 0 0.15rem 0 0.85rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.tax-box1-input {
+    flex: 1;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 1.45rem !important;
+    font-weight: 600 !important;
+    padding: 0.75rem 0.85rem 0.75rem 0.25rem !important;
+    text-align: right;
+}
+.tax-equity-chip {
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    padding: 0.4rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft, var(--bg-primary));
+    border: 1px solid var(--border-subtle);
+}
+.tax-profile-id-row {
+    margin-top: 1rem;
+}
+.tax-profile-save-row {
+    margin-top: 1rem;
+    margin-bottom: 0.25rem;
+}
+.tax-save-hint {
+    margin: 0 0 0.5rem;
+}
+.tax-check-col .form-check {
+    margin-bottom: 0.35rem;
+}
+.tax-comp-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 0.75rem;
+}
+.tax-comp-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+.tax-comp-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+.tax-comp-val {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+.tax-comp-total {
+    margin-top: 0.35rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.tax-profile-empty {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0;
+    padding: 0.5rem 0;
+}
+.tax-profile-history {
+    margin-top: 0.25rem;
+}
+.tax-profile-history > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.tax-profile-history > summary::-webkit-details-marker { display: none; }
+.tax-profile-history > summary::before {
+    content: "▸ ";
+    color: var(--copper, var(--text-muted));
+}
+.tax-profile-history[open] > summary::before {
+    content: "▾ ";
+}
+.past-history-summary .past-history-stats {
+    font-weight: 500;
 }
 .form-actions .past-year-loading {
     margin: 0 0 0 0.75rem;

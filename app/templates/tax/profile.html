@@ -5,10 +5,20 @@
      data-year="{{ selected_year }}"
      data-api="{{ url_for('tax_center.api_year_tax') }}"
      data-profile-url="{{ url_for('tax_center.tax_profile') }}">
+
   <header class="page-header past-year-head">
     <div>
       <h1>Tax profile</h1>
-      <p class="tax-panel-lead">Pick a year — form, vest history, and W-2 estimate update for that year.</p>
+      <p class="tax-panel-lead">Year stack for Sales &amp; Tax · live W-2 estimate</p>
+      <div class="tax-profile-meta-row">
+        <span class="tax-status-pill" id="sourcePill"
+              data-source="{{ source }}">{% if source == 'saved' %}Saved{% else %}Unsaved{% endif %}</span>
+        <span class="tax-muted-sm" id="identityChip">
+          <span class="year-label">{{ selected_year }}</span>
+          · {{ (form.filing_status or 'single')|upper }}
+          · {{ form.state_code or 'CA' }}
+        </span>
+      </div>
     </div>
     <div class="past-year-picker">
       <label for="tax_year_nav">Tax year</label>
@@ -21,245 +31,265 @@
     </div>
   </header>
 
-  <div id="taxProfileBody" class="tax-profile-body">
-    {# Vest history #}
-    <div id="vestHistoryCard" class="detail-card past-year-history" style="margin-bottom:1rem;{% if not (history and history.event_count) %}display:none;{% endif %}">
-      <div class="past-history-title">
-        <strong id="histTitle">{{ selected_year }} vest history</strong>
-        <span class="past-history-stats" id="histStats">
-          {% if history and history.event_count %}
-          {{ history.event_count }} event(s)
-          · RSU ~${{ "{:,.0f}".format(history.rsu_vest_gross or 0) }}
-          {% if history.cash_bonus_gross %} · cash ~${{ "{:,.0f}".format(history.cash_bonus_gross) }}{% endif %}
-          {% if history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO skipped{% endif %}
-          {% endif %}
-        </span>
-      </div>
-      <div class="past-history-events" id="histEvents">
-        {% if history and history.events %}
-        {% for ev in history.events[:15] %}
-        <div class="past-history-row">
-          <span>{{ ev.vest_date }}</span>
-          <span class="tax-muted-sm">{{ ev.label }}</span>
-          <span>${{ "{:,.0f}".format(ev.gross_value or 0) }}</span>
-        </div>
-        {% endfor %}
-        {% endif %}
-      </div>
-      <p class="form-hint" style="margin:0.65rem 0 0;" id="histHint">
-        Equity vest ordinary is usually already in W-2 box 1. Enter <strong>total</strong> wages for
-        <span class="year-label">{{ selected_year }}</span> (salary + RSU), not equity alone on top of itself.
-        {% if history and history.suggested_equity_in_w2 %}
-        <span id="histEquityHint"> VestX equity ordinary this year ≈ <strong id="histEquityVal">${{ "{:,.0f}".format(history.suggested_equity_in_w2) }}</strong>.</span>
-        {% else %}
-        <span id="histEquityHint" hidden> VestX equity ordinary this year ≈ <strong id="histEquityVal">$0</strong>.</span>
-        {% endif %}
-      </p>
+  {# KPI strip — primary value; one accent number #}
+  <div class="tax-situation tax-profile-kpis" id="yearKpis">
+    <div class="tax-sit-card accent">
+      <div class="tax-sit-label">Total tax</div>
+      <div class="tax-sit-value" data-k="total_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_tax) }}{% else %}—{% endif %}</div>
+      <div class="tax-sit-sub">fed + CA + FICA · <span class="year-label">{{ selected_year }}</span></div>
     </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">All-in effective</div>
+      <div class="tax-sit-value" data-k="effective_rate">{% if year_tax %}{{ "%.1f"|format(year_tax.effective_rate * 100) }}%{% else %}—{% endif %}</div>
+      <div class="tax-sit-sub">income-tax only <span data-k="income_tax_effective_rate">{% if year_tax %}{{ "%.1f"|format((year_tax.income_tax_effective_rate or 0) * 100) }}%{% else %}—{% endif %}</span></div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Next-dollar marginal</div>
+      <div class="tax-sit-value tax-sit-value-sm" data-k="marginal_display">{% if year_tax %}{{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}% · {{ "%.1f"|format(year_tax.state_marginal * 100) }}%{% else %}—{% endif %}</div>
+      <div class="tax-sit-sub">federal · CA</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">FICA</div>
+      <div class="tax-sit-value" data-k="total_fica">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_fica) }}{% else %}—{% endif %}</div>
+      <div class="tax-sit-sub">SS + Medicare + Add’l</div>
+    </div>
+  </div>
 
-    <div class="detail-card">
-      <p class="tax-panel-lead" style="margin-bottom: 1rem;" id="sourceBanner">
-        {% if source == 'saved' %}
-        Showing <strong>saved <span class="year-label">{{ selected_year }}</span></strong> inputs.
-        {% else %}
-        No saved row for <strong class="year-label">{{ selected_year }}</strong> yet — fill wages and save.
-        {% endif %}
-        Active planning year after save: <strong class="year-label">{{ selected_year }}</strong>.
-      </p>
-
+  <div id="taxProfileBody" class="tax-profile-body tax-profile-cockpit">
+    {# LEFT: primary inputs #}
+    <section class="detail-card tax-profile-inputs">
       <form method="post" id="taxProfileForm" autocomplete="off">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="tax_year" id="tax_year" value="{{ selected_year }}">
 
-        <h3 class="tax-subhead"><span class="year-label">{{ selected_year }}</span> essentials</h3>
-        <div class="form-row">
+        <label class="tax-box1-label" for="other_ordinary_income">
+          W-2 box 1 · <span class="year-label">{{ selected_year }}</span>
+        </label>
+        <div class="tax-box1-wrap">
+          <span class="tax-box1-prefix">$</span>
+          <input type="text" inputmode="decimal" class="money-input tax-box1-input"
+                 id="other_ordinary_income" name="other_ordinary_income"
+                 value="{{ '{:,.2f}'.format(form.other_ordinary_income or 0) }}" required data-money>
+        </div>
+        <div class="tax-equity-chip" id="equityChip" {% if not (history and history.suggested_equity_in_w2) %}hidden{% endif %}>
+          VestX equity ordinary ≈ <strong id="histEquityVal">{% if history and history.suggested_equity_in_w2 %}${{ "{:,.0f}".format(history.suggested_equity_in_w2) }}{% else %}$0{% endif %}</strong>
+          <span class="tax-muted-sm"> · include in box 1, don’t double-count</span>
+        </div>
+
+        <div class="form-row tax-profile-id-row">
           <div class="form-group">
-            <label for="filing_status">Filing status</label>
+            <label for="filing_status">Filing</label>
             <select id="filing_status" name="filing_status">
-              {% for code, label in [('single','Single'),('mfj','Married filing jointly'),('mfs','Married filing separately'),('hoh','Head of household')] %}
+              {% for code, label in [('single','Single'),('mfj','Married jointly'),('mfs','Married separately'),('hoh','Head of household')] %}
               <option value="{{ code }}" {% if form.filing_status == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </div>
           <div class="form-group">
             <label for="state_code">State</label>
-            <input type="text" id="state_code" name="state_code" maxlength="2" value="{{ form.state_code or '' }}" placeholder="CA">
+            <input type="text" id="state_code" name="state_code" maxlength="2"
+                   value="{{ form.state_code or '' }}" placeholder="CA">
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="other_ordinary_income">W-2 / annual ordinary income ($)</label>
-            <input type="text" inputmode="decimal" class="money-input" id="other_ordinary_income" name="other_ordinary_income"
-                   value="{{ '{:,.2f}'.format(form.other_ordinary_income or 0) }}" required data-money>
-            <span class="form-hint"><span class="year-label">{{ selected_year }}</span> box 1 wages (salary + RSU vest). Used for brackets, CA, NIIT, sale stacking.</span>
-          </div>
-          <div class="form-group">
-            <label for="ytd_wages">YTD wages for sale stacking ($)</label>
-            <input type="text" inputmode="decimal" class="money-input" id="ytd_wages" name="ytd_wages"
-                   value="{{ '{:,.2f}'.format(form.ytd_wages or 0) }}" data-money>
-            <span class="form-hint">For this year’s full W-2 estimate, tax uses box 1 above. Set YTD ≈ wages on a completed year (saved for sale stacking). Not mixed with other years.</span>
-          </div>
+        <div class="form-actions tax-profile-save-row">
+          <button type="submit" class="btn btn-primary" id="saveYearBtn">Save <span class="year-label">{{ selected_year }}</span></button>
+          <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Sales &amp; Tax</a>
+          <span id="recalcStatus" class="past-year-loading" hidden>Updating…</span>
         </div>
+        <p class="tax-muted-sm tax-save-hint">Save sets this year as the active planning stack for sales &amp; goals.</p>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="amt_credit_carryforward">Federal AMT credit ($)</label>
-            <input type="text" inputmode="decimal" class="money-input" id="amt_credit_carryforward" name="amt_credit_carryforward"
-                   value="{{ '{:,.2f}'.format(form.amt_credit_carryforward or 0) }}" data-money>
-          </div>
-          <div class="form-group">
-            <label for="ca_amt_credit_carryforward">CA AMT credit ($)</label>
-            <input type="text" inputmode="decimal" class="money-input" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
-                   value="{{ '{:,.2f}'.format(form.ca_amt_credit_carryforward or 0) }}" data-money>
-          </div>
-        </div>
-
-        <div class="form-group form-check" style="margin-top:0.75rem;">
-          <input type="checkbox" id="use_bracket_engine" name="use_bracket_engine" {% if form.use_bracket_engine %}checked{% endif %}>
-          <label for="use_bracket_engine">Federal bracket engine</label>
-        </div>
-        <div class="form-group form-check">
-          <input type="checkbox" id="use_state_engine" name="use_state_engine" {% if form.use_state_engine %}checked{% endif %}>
-          <label for="use_state_engine">State engine (CA PIT + MHST)</label>
-        </div>
-        <div class="form-group form-check">
-          <input type="checkbox" id="include_niit" name="include_niit" {% if form.include_niit %}checked{% endif %}>
-          <label for="include_niit">Include NIIT (3.8%)</label>
-        </div>
-        <div class="form-group form-check">
-          <input type="checkbox" id="include_fica" name="include_fica" {% if form.include_fica %}checked{% endif %}>
-          <label for="include_fica">Include FICA</label>
-        </div>
-        <div class="form-group form-check">
-          <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if form.ss_wage_base_maxed %}checked{% endif %}>
-          <label for="ss_wage_base_maxed">SS wage base already maxed (mid-year vest/sale only)</label>
-          <span class="form-hint">Does <strong>not</strong> zero Social Security on the full-year W-2 estimate. Annual FICA always charges 6.2% on min(wages, SS wage base) + 1.45% Medicare — same structure as paycheck calculators (e.g. SmartAsset).</span>
-        </div>
-
-        <details class="tax-hub-details" style="margin-top:1.25rem;">
-          <summary>Advanced — other gains &amp; rate overrides</summary>
+        <details class="tax-hub-details" id="planningExtras" {% if (form.ytd_wages or 0)|float > 0 or (form.amt_credit_carryforward or 0)|float > 0 or (form.ca_amt_credit_carryforward or 0)|float > 0 or (form.other_long_term_gains or 0)|float > 0 or (form.other_short_term_gains or 0)|float > 0 %}open{% endif %}>
+          <summary>Planning extras</summary>
           <div class="tax-details-body">
             <div class="form-row">
               <div class="form-group">
-                <label for="other_long_term_gains">Other LTCG ($)</label>
+                <label for="ytd_wages">YTD wages (sale stacking)</label>
+                <input type="text" inputmode="decimal" class="money-input" id="ytd_wages" name="ytd_wages"
+                       value="{{ '{:,.2f}'.format(form.ytd_wages or 0) }}" data-money>
+              </div>
+              <div class="form-group">
+                <label for="amt_credit_carryforward">Fed AMT credit</label>
+                <input type="text" inputmode="decimal" class="money-input" id="amt_credit_carryforward" name="amt_credit_carryforward"
+                       value="{{ '{:,.2f}'.format(form.amt_credit_carryforward or 0) }}" data-money>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="ca_amt_credit_carryforward">CA AMT credit</label>
+                <input type="text" inputmode="decimal" class="money-input" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
+                       value="{{ '{:,.2f}'.format(form.ca_amt_credit_carryforward or 0) }}" data-money>
+              </div>
+              <div class="form-group">
+                <label for="other_long_term_gains">Other LTCG</label>
                 <input type="text" inputmode="decimal" class="money-input" id="other_long_term_gains" name="other_long_term_gains"
                        value="{{ '{:,.2f}'.format(form.other_long_term_gains or 0) }}" data-money>
               </div>
-              <div class="form-group">
-                <label for="other_short_term_gains">Other STCG ($)</label>
-                <input type="text" inputmode="decimal" class="money-input" id="other_short_term_gains" name="other_short_term_gains"
-                       value="{{ '{:,.2f}'.format(form.other_short_term_gains or 0) }}" data-money>
-              </div>
             </div>
+            <div class="form-group">
+              <label for="other_short_term_gains">Other STCG</label>
+              <input type="text" inputmode="decimal" class="money-input" id="other_short_term_gains" name="other_short_term_gains"
+                     value="{{ '{:,.2f}'.format(form.other_short_term_gains or 0) }}" data-money>
+            </div>
+          </div>
+        </details>
+
+        <details class="tax-hub-details">
+          <summary>Engines &amp; FICA flags</summary>
+          <div class="tax-details-body tax-check-col">
+            <div class="form-group form-check">
+              <input type="checkbox" id="use_bracket_engine" name="use_bracket_engine" {% if form.use_bracket_engine %}checked{% endif %}>
+              <label for="use_bracket_engine">Federal brackets</label>
+            </div>
+            <div class="form-group form-check">
+              <input type="checkbox" id="use_state_engine" name="use_state_engine" {% if form.use_state_engine %}checked{% endif %}>
+              <label for="use_state_engine">State engine (CA PIT + MHST)</label>
+            </div>
+            <div class="form-group form-check">
+              <input type="checkbox" id="include_niit" name="include_niit" {% if form.include_niit %}checked{% endif %}>
+              <label for="include_niit">NIIT 3.8%</label>
+            </div>
+            <div class="form-group form-check">
+              <input type="checkbox" id="include_fica" name="include_fica" {% if form.include_fica %}checked{% endif %}>
+              <label for="include_fica">Include FICA on W-2 estimate</label>
+            </div>
+            <div class="form-group form-check">
+              <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if form.ss_wage_base_maxed %}checked{% endif %}>
+              <label for="ss_wage_base_maxed">SS already maxed (mid-year vest/sale only)</label>
+            </div>
+            <p class="form-hint">Full-year W-2 always charges SS on min(wages, wage base). Maxed flag does not zero annual SS.</p>
+          </div>
+        </details>
+
+        <details class="tax-hub-details">
+          <summary>Rate overrides</summary>
+          <div class="tax-details-body">
             <div class="form-row">
               <div class="form-group">
-                <label for="federal_ordinary_rate">Override federal ordinary (%)</label>
+                <label for="federal_ordinary_rate">Fed ordinary % (blank = brackets)</label>
                 <input type="number" step="0.01" id="federal_ordinary_rate" name="federal_ordinary_rate"
                        value="{% if form.federal_ordinary_rate is not none %}{{ (form.federal_ordinary_rate * 100)|round(2) }}{% endif %}"
-                       placeholder="blank = brackets">
+                       placeholder="brackets">
               </div>
               <div class="form-group">
-                <label for="federal_ltcg_rate">Override LTCG (%)</label>
+                <label for="federal_ltcg_rate">LTCG % override</label>
                 <input type="number" step="0.01" id="federal_ltcg_rate" name="federal_ltcg_rate"
                        value="{% if form.federal_ltcg_rate is not none %}{{ (form.federal_ltcg_rate * 100)|round(2) }}{% endif %}"
-                       placeholder="blank = 0/15/20">
+                       placeholder="0/15/20">
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label for="state_ordinary_rate">Flat state ordinary (%)</label>
+                <label for="state_ordinary_rate">Flat state ordinary %</label>
                 <input type="number" step="0.01" id="state_ordinary_rate" name="state_ordinary_rate"
                        value="{{ ((form.state_ordinary_rate or 0) * 100)|round(2) }}">
               </div>
               <div class="form-group">
-                <label for="state_cg_rate">Flat state CG (%)</label>
+                <label for="state_cg_rate">Flat state CG %</label>
                 <input type="number" step="0.01" id="state_cg_rate" name="state_cg_rate"
                        value="{{ ((form.state_cg_rate or 0) * 100)|round(2) }}">
               </div>
             </div>
           </div>
         </details>
-
-        <div class="form-actions" style="margin-top:1.25rem;">
-          <button type="submit" class="btn btn-primary" id="saveYearBtn">Save <span class="year-label">{{ selected_year }}</span> profile</button>
-          <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Back to Sales &amp; Tax</a>
-          <span id="recalcStatus" class="past-year-loading" hidden>Updating estimate…</span>
-        </div>
       </form>
-    </div>
+    </section>
 
-    {# W-2 estimate — always present for live updates #}
-    <div class="detail-card tax-year-result-card" id="yearTaxCard">
-      <div class="tax-result-head">
-        <h2 id="yearTaxHeading"><span class="year-label">{{ selected_year }}</span> W-2 estimate</h2>
-        <p class="tax-panel-lead" id="yearTaxLead">
-          Full-year federal + CA + FICA for <strong class="year-label">{{ selected_year }}</strong> only
-          (that year’s brackets &amp; SS base — not the current year). Standard deductions applied.
-        </p>
-      </div>
-      <div id="yearTaxEmpty" class="tax-panel-lead" style="margin:0;{% if year_tax %}display:none;{% endif %}">
-        Enter <span class="year-label">{{ selected_year }}</span> W-2 wages — estimate updates as you type.
+    {# RIGHT: composition #}
+    <section class="detail-card tax-year-result-card" id="yearTaxCard">
+      <div id="yearTaxEmpty" class="tax-profile-empty" {% if year_tax %}hidden{% endif %}>
+        Enter box 1 wages — estimate updates as you type.
       </div>
       <div id="yearTaxBody" {% if not year_tax %}hidden{% endif %}>
-        <div class="stats-grid tax-hero-stats">
-          <div class="stat-card accent"><div class="stat-content">
-            <div class="stat-label">Total tax (all-in)</div>
-            <div class="stat-value tax-stat-val" data-k="total_tax">${{ "{:,.0f}".format(year_tax.total_tax) if year_tax else "0" }}</div>
-          </div></div>
-          <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">All-in effective</div>
-            <div class="stat-value tax-stat-val" data-k="effective_rate">{{ "%.1f"|format(year_tax.effective_rate * 100) if year_tax else "0.0" }}%</div>
-            <div class="stat-sublabel">fed + CA + FICA</div>
-          </div></div>
-          <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">Income-tax effective</div>
-            <div class="stat-value tax-stat-val" data-k="income_tax_effective_rate">{% if year_tax %}{{ "%.1f"|format((year_tax.income_tax_effective_rate or 0) * 100) }}{% else %}0.0{% endif %}%</div>
-            <div class="stat-sublabel">fed + CA only</div>
-          </div></div>
-          <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">Federal income</div>
-            <div class="stat-value tax-stat-val" data-k="federal_income_tax">${{ "{:,.0f}".format(year_tax.federal_income_tax) if year_tax else "0" }}</div>
-          </div></div>
-          <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">State</div>
-            <div class="stat-value tax-stat-val" data-k="state_tax">${{ "{:,.0f}".format(year_tax.state_tax) if year_tax else "0" }}</div>
-          </div></div>
-          <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">FICA</div>
-            <div class="stat-value tax-stat-val" data-k="total_fica">${{ "{:,.0f}".format(year_tax.total_fica) if year_tax else "0" }}</div>
-          </div></div>
-          <div class="stat-card"><div class="stat-content">
-            <div class="stat-label">Wages used (box 1)</div>
-            <div class="stat-value tax-stat-val" data-k="wages">${{ "{:,.0f}".format(year_tax.wages) if year_tax else "0" }}</div>
-          </div></div>
-        </div>
-        <div class="tax-stack" style="margin-top:1rem;">
-          <div class="tax-stack-row">
-            <div class="tax-stack-item"><span class="tax-stack-label">Fed ordinary</span><span class="tax-stack-val" data-k="federal_ordinary_tax">${{ "{:,.0f}".format(year_tax.federal_ordinary_tax) if year_tax else "0" }}</span></div>
-            <div class="tax-stack-item" id="niitRow" {% if not year_tax or not year_tax.niit %}hidden{% endif %}><span class="tax-stack-label">NIIT</span><span class="tax-stack-val" data-k="niit">${{ "{:,.0f}".format(year_tax.niit) if year_tax and year_tax.niit else "0" }}</span></div>
-            <div class="tax-stack-item"><span class="tax-stack-label">CA PIT</span><span class="tax-stack-val" data-k="state_regular_tax">${{ "{:,.0f}".format(year_tax.state_regular_tax) if year_tax else "0" }}</span></div>
-            <div class="tax-stack-item" id="mhstRow" {% if not year_tax or not year_tax.state_surtax %}hidden{% endif %}><span class="tax-stack-label">CA MHST</span><span class="tax-stack-val" data-k="state_surtax">${{ "{:,.0f}".format(year_tax.state_surtax) if year_tax and year_tax.state_surtax else "0" }}</span></div>
-            <div class="tax-stack-item"><span class="tax-stack-label">SS</span><span class="tax-stack-val" data-k="social_security">${{ "{:,.0f}".format(year_tax.social_security) if year_tax else "0" }}</span></div>
-            <div class="tax-stack-item"><span class="tax-stack-label">Medicare</span><span class="tax-stack-val" data-k="medicare">${{ "{:,.0f}".format(year_tax.medicare) if year_tax else "0" }}</span></div>
+        <h3 class="tax-comp-title">Composition</h3>
+        <div class="tax-comp-rows">
+          <div class="tax-comp-row">
+            <span>Federal income</span>
+            <span class="tax-comp-val" data-k="federal_income_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.federal_income_tax) }}{% else %}—{% endif %}</span>
           </div>
-          <div class="tax-stack-meta" id="yearTaxMeta">
-            {% if year_tax %}
-            Tax year {{ year_tax.tax_year }} · next-dollar marginal ordinary {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}%
-            · CA {{ "%.1f"|format(year_tax.state_marginal * 100) }}%
-            · SS base ${{ "{:,.0f}".format(year_tax.ss_wage_base) }}
-            {% if year_tax.federal_std_deduction is defined %} · fed std ded ${{ "{:,.0f}".format(year_tax.federal_std_deduction) }}{% endif %}
-            {% endif %}
+          <div class="tax-comp-row">
+            <span>State</span>
+            <span class="tax-comp-val" data-k="state_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.state_tax) }}{% else %}—{% endif %}</span>
+          </div>
+          <div class="tax-comp-row">
+            <span>FICA</span>
+            <span class="tax-comp-val" data-k="total_fica_comp">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_fica) }}{% else %}—{% endif %}</span>
+          </div>
+          <div class="tax-comp-row tax-comp-total">
+            <span>All-in</span>
+            <span class="tax-comp-val" data-k="total_tax_comp">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_tax) }}{% else %}—{% endif %}</span>
           </div>
         </div>
-        <ul class="tax-notes-list" id="yearTaxNotes">
-          {% if year_tax and year_tax.notes %}
-          {% for n in year_tax.notes[:5] %}<li>{{ n }}</li>{% endfor %}
-          {% endif %}
-        </ul>
+
+        <details class="tax-hub-details" open>
+          <summary>FICA detail</summary>
+          <div class="tax-stack tax-details-body">
+            <div class="tax-stack-row">
+              <div class="tax-stack-item"><span class="tax-stack-label">Social Security</span><span class="tax-stack-val" data-k="social_security">{% if year_tax %}${{ "{:,.0f}".format(year_tax.social_security) }}{% else %}$0{% endif %}</span></div>
+              <div class="tax-stack-item"><span class="tax-stack-label">Medicare</span><span class="tax-stack-val" data-k="medicare">{% if year_tax %}${{ "{:,.0f}".format(year_tax.medicare) }}{% else %}$0{% endif %}</span></div>
+              <div class="tax-stack-item" id="addMedRow" {% if not year_tax or not year_tax.additional_medicare %}hidden{% endif %}>
+                <span class="tax-stack-label">Add’l Medicare</span>
+                <span class="tax-stack-val" data-k="additional_medicare">{% if year_tax and year_tax.additional_medicare %}${{ "{:,.0f}".format(year_tax.additional_medicare) }}{% else %}$0{% endif %}</span>
+              </div>
+            </div>
+            <div class="tax-stack-meta" id="ficaMeta">
+              {% if year_tax %}SS base ${{ "{:,.0f}".format(year_tax.ss_wage_base) }} · wages ${{ "{:,.0f}".format(year_tax.wages) }}{% endif %}
+            </div>
+          </div>
+        </details>
+
+        <details class="tax-hub-details">
+          <summary>Full stack</summary>
+          <div class="tax-stack tax-details-body">
+            <div class="tax-stack-row">
+              <div class="tax-stack-item"><span class="tax-stack-label">Fed ordinary</span><span class="tax-stack-val" data-k="federal_ordinary_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.federal_ordinary_tax) }}{% else %}$0{% endif %}</span></div>
+              <div class="tax-stack-item" id="niitRow" {% if not year_tax or not year_tax.niit %}hidden{% endif %}><span class="tax-stack-label">NIIT</span><span class="tax-stack-val" data-k="niit">{% if year_tax and year_tax.niit %}${{ "{:,.0f}".format(year_tax.niit) }}{% else %}$0{% endif %}</span></div>
+              <div class="tax-stack-item"><span class="tax-stack-label">CA PIT</span><span class="tax-stack-val" data-k="state_regular_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.state_regular_tax) }}{% else %}$0{% endif %}</span></div>
+              <div class="tax-stack-item" id="mhstRow" {% if not year_tax or not year_tax.state_surtax %}hidden{% endif %}><span class="tax-stack-label">CA MHST</span><span class="tax-stack-val" data-k="state_surtax">{% if year_tax and year_tax.state_surtax %}${{ "{:,.0f}".format(year_tax.state_surtax) }}{% else %}$0{% endif %}</span></div>
+            </div>
+            <div class="tax-stack-meta" id="yearTaxMeta">
+              {% if year_tax %}
+              Tax year {{ year_tax.tax_year }}
+              {% if year_tax.federal_std_deduction is defined %} · fed std ded ${{ "{:,.0f}".format(year_tax.federal_std_deduction) }}{% endif %}
+              {% endif %}
+            </div>
+            <ul class="tax-notes-list" id="yearTaxNotes">
+              {% if year_tax and year_tax.notes %}
+              {% for n in year_tax.notes[:3] %}<li>{{ n }}</li>{% endfor %}
+              {% endif %}
+            </ul>
+          </div>
+        </details>
       </div>
-    </div>
+    </section>
   </div>
+
+  {# Vest history — collapsed ledger #}
+  <details class="detail-card past-year-history tax-profile-history" id="vestHistoryCard"
+           style="{% if not (history and history.event_count) %}display:none;{% endif %}">
+    <summary class="past-history-summary">
+      <span id="histTitle"><span class="year-label">{{ selected_year }}</span> vest history</span>
+      <span class="past-history-stats" id="histStats">
+        {% if history and history.event_count %}
+        {{ history.event_count }} event(s)
+        · RSU ~${{ "{:,.0f}".format(history.rsu_vest_gross or 0) }}
+        {% if history.cash_bonus_gross %} · cash ~${{ "{:,.0f}".format(history.cash_bonus_gross) }}{% endif %}
+        {% if history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO skipped{% endif %}
+        {% endif %}
+      </span>
+    </summary>
+    <div class="past-history-events" id="histEvents">
+      {% if history and history.events %}
+      {% for ev in history.events[:15] %}
+      <div class="past-history-row">
+        <span>{{ ev.vest_date }}</span>
+        <span class="tax-muted-sm">{{ ev.label }}</span>
+        <span>${{ "{:,.0f}".format(ev.gross_value or 0) }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </details>
 </div>
 
 <script>
@@ -269,6 +299,7 @@
   var api = page.getAttribute('data-api');
   var profileUrl = page.getAttribute('data-profile-url');
   var body = document.getElementById('taxProfileBody');
+  var kpis = document.getElementById('yearKpis');
   var yearSel = document.getElementById('tax_year_nav');
   var yearHidden = document.getElementById('tax_year');
   var form = document.getElementById('taxProfileForm');
@@ -286,13 +317,11 @@
       maximumFractionDigits: d
     });
   }
-
   function formatMoneyInput(n) {
     var v = Number(n);
     if (!isFinite(v)) v = 0;
     return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-
   function parseMoney(str) {
     if (str == null || str === '') return 0;
     if (typeof str === 'number') return isFinite(str) ? str : 0;
@@ -300,6 +329,14 @@
     if (!s || s === '-' || s === '.') return 0;
     var n = parseFloat(s);
     return isFinite(n) ? n : 0;
+  }
+  function setMoney(el, n) {
+    if (!el) return;
+    el.textContent = money(n, 0);
+  }
+  function setText(sel, t) {
+    var el = typeof sel === 'string' ? document.querySelector(sel) : sel;
+    if (el) el.textContent = t;
   }
 
   function setYearLabels(y) {
@@ -313,14 +350,20 @@
     if (yearSel && String(yearSel.value) !== String(y)) yearSel.value = String(y);
   }
 
-  function setSourceBanner(source, y) {
-    var el = document.getElementById('sourceBanner');
+  function setSourcePill(source) {
+    var el = document.getElementById('sourcePill');
     if (!el) return;
-    if (source === 'saved') {
-      el.innerHTML = 'Showing <strong>saved <span class="year-label">' + y + '</span></strong> inputs. Active planning year after save: <strong class="year-label">' + y + '</strong>.';
-    } else {
-      el.innerHTML = 'No saved row for <strong class="year-label">' + y + '</strong> yet — fill wages and save. Active planning year after save: <strong class="year-label">' + y + '</strong>.';
-    }
+    el.setAttribute('data-source', source || 'new');
+    el.textContent = (source === 'saved') ? 'Saved' : 'Unsaved';
+  }
+
+  function updateIdentityChip(f) {
+    var el = document.getElementById('identityChip');
+    if (!el || !f) return;
+    el.innerHTML =
+      '<span class="year-label">' + currentYear + '</span> · ' +
+      String(f.filing_status || 'single').toUpperCase() + ' · ' +
+      (f.state_code || 'CA');
   }
 
   function renderHistory(h, y) {
@@ -328,14 +371,15 @@
     var title = document.getElementById('histTitle');
     var stats = document.getElementById('histStats');
     var events = document.getElementById('histEvents');
-    var equityHint = document.getElementById('histEquityHint');
+    var chip = document.getElementById('equityChip');
     var equityVal = document.getElementById('histEquityVal');
     if (!h || !h.event_count) {
       if (card) card.style.display = 'none';
+      if (chip) chip.hidden = true;
       return;
     }
     if (card) card.style.display = '';
-    if (title) title.textContent = y + ' vest history';
+    if (title) title.innerHTML = '<span class="year-label">' + y + '</span> vest history';
     var parts = [h.event_count + ' event(s)', 'RSU ~' + money(h.rsu_vest_gross || 0)];
     if (h.cash_bonus_gross) parts.push('cash ~' + money(h.cash_bonus_gross));
     if (h.iso_vest_events_skipped) parts.push(h.iso_vest_events_skipped + ' ISO skipped');
@@ -352,12 +396,12 @@
         events.appendChild(row);
       });
     }
-    if (equityHint && equityVal) {
+    if (chip && equityVal) {
       if (h.suggested_equity_in_w2) {
-        equityHint.hidden = false;
+        chip.hidden = false;
         equityVal.textContent = money(h.suggested_equity_in_w2);
       } else {
-        equityHint.hidden = true;
+        chip.hidden = true;
       }
     }
   }
@@ -387,7 +431,6 @@
       var el = document.getElementById(id);
       if (el) el.checked = !!f[id];
     });
-    // rate overrides as percent
     var fo = document.getElementById('federal_ordinary_rate');
     var fl = document.getElementById('federal_ltcg_rate');
     var so = document.getElementById('state_ordinary_rate');
@@ -400,44 +443,52 @@
       : ((Number(f.state_ordinary_rate || 0) * 100).toFixed(2));
     if (sc) sc.value = f.state_cg_rate_pct != null ? f.state_cg_rate_pct
       : ((Number(f.state_cg_rate || 0) * 100).toFixed(2));
-  }
-
-  function setMoney(el, n) {
-    if (!el) return;
-    el.textContent = money(n, 0);
+    updateIdentityChip(f);
   }
 
   function renderResult(r, y) {
     var empty = document.getElementById('yearTaxEmpty');
     var taxBody = document.getElementById('yearTaxBody');
     if (!r) {
-      if (empty) empty.style.display = '';
+      if (empty) empty.hidden = false;
       if (taxBody) taxBody.hidden = true;
+      setText('[data-k="total_tax"]', '—');
+      setText('[data-k="effective_rate"]', '—');
+      setText('[data-k="income_tax_effective_rate"]', '—');
+      setText('[data-k="marginal_display"]', '—');
+      setText('[data-k="total_fica"]', '—');
       return;
     }
-    if (empty) empty.style.display = 'none';
+    if (empty) empty.hidden = true;
     if (taxBody) taxBody.hidden = false;
 
     setMoney(document.querySelector('[data-k="total_tax"]'), r.total_tax);
-    var eff = document.querySelector('[data-k="effective_rate"]');
-    if (eff) eff.textContent = (Number(r.effective_rate || 0) * 100).toFixed(1) + '%';
-    var ieff = document.querySelector('[data-k="income_tax_effective_rate"]');
-    if (ieff) {
-      var ir = r.income_tax_effective_rate;
-      if (ir == null && r.income_tax_total != null && r.wages) {
-        ir = Number(r.income_tax_total) / Math.max(1, Number(r.wages) + Number(r.stcg || 0) + Number(r.ltcg || 0));
-      }
-      ieff.textContent = (Number(ir || 0) * 100).toFixed(1) + '%';
+    setMoney(document.querySelector('[data-k="total_tax_comp"]'), r.total_tax);
+    setText('[data-k="effective_rate"]', (Number(r.effective_rate || 0) * 100).toFixed(1) + '%');
+    var ir = r.income_tax_effective_rate;
+    if (ir == null && r.income_tax_total != null && r.wages) {
+      ir = Number(r.income_tax_total) / Math.max(1, Number(r.wages) + Number(r.stcg || 0) + Number(r.ltcg || 0));
     }
+    setText('[data-k="income_tax_effective_rate"]', (Number(ir || 0) * 100).toFixed(1) + '%');
+    setText(
+      '[data-k="marginal_display"]',
+      Math.round(Number(r.ordinary_marginal || 0) * 100) + '% · ' +
+      (Number(r.state_marginal || 0) * 100).toFixed(1) + '%'
+    );
+    setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
+    setMoney(document.querySelector('[data-k="total_fica_comp"]'), r.total_fica);
     setMoney(document.querySelector('[data-k="federal_income_tax"]'), r.federal_income_tax);
     setMoney(document.querySelector('[data-k="state_tax"]'), r.state_tax);
-    setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
-    setMoney(document.querySelector('[data-k="wages"]'), r.wages);
     setMoney(document.querySelector('[data-k="federal_ordinary_tax"]'), r.federal_ordinary_tax);
     setMoney(document.querySelector('[data-k="state_regular_tax"]'), r.state_regular_tax);
     setMoney(document.querySelector('[data-k="social_security"]'), r.social_security);
     setMoney(document.querySelector('[data-k="medicare"]'), r.medicare);
 
+    var addMed = document.getElementById('addMedRow');
+    if (addMed) {
+      addMed.hidden = !(r.additional_medicare > 0);
+      setMoney(addMed.querySelector('[data-k="additional_medicare"]'), r.additional_medicare || 0);
+    }
     var niitRow = document.getElementById('niitRow');
     if (niitRow) {
       niitRow.hidden = !(r.niit > 0);
@@ -449,20 +500,21 @@
       setMoney(mhstRow.querySelector('[data-k="state_surtax"]'), r.state_surtax);
     }
 
+    var ficaMeta = document.getElementById('ficaMeta');
+    if (ficaMeta) {
+      ficaMeta.textContent =
+        'SS base ' + money(r.ss_wage_base) + ' · wages ' + money(r.wages);
+    }
     var meta = document.getElementById('yearTaxMeta');
     if (meta) {
-      var ty = r.tax_year || y;
       meta.textContent =
-        'Tax year ' + ty +
-        ' · next-dollar marginal ordinary ' + Math.round(Number(r.ordinary_marginal || 0) * 100) + '%' +
-        ' · CA ' + (Number(r.state_marginal || 0) * 100).toFixed(1) + '%' +
-        ' · SS base ' + money(r.ss_wage_base) +
+        'Tax year ' + (r.tax_year || y) +
         (r.federal_std_deduction != null ? ' · fed std ded ' + money(r.federal_std_deduction) : '');
     }
     var notes = document.getElementById('yearTaxNotes');
     if (notes) {
       notes.innerHTML = '';
-      (r.notes || []).slice(0, 5).forEach(function (n) {
+      (r.notes || []).slice(0, 3).forEach(function (n) {
         var li = document.createElement('li');
         li.textContent = n;
         notes.appendChild(li);
@@ -473,13 +525,11 @@
   function applyPackage(data) {
     var y = data.year;
     setYearLabels(y);
-    setSourceBanner(data.source, y);
+    setSourcePill(data.source);
     renderHistory(data.history, y);
     applyForm(data.form);
     renderResult(data.result, y);
-    // Keep select options in sync if API returns extra years
     if (yearSel && Array.isArray(data.years)) {
-      var cur = String(yearSel.value);
       var have = {};
       Array.prototype.forEach.call(yearSel.options, function (o) { have[o.value] = true; });
       data.years.forEach(function (yy) {
@@ -495,15 +545,16 @@
   }
 
   function fade(toOut, done) {
-    if (!body) { if (done) done(); return; }
-    body.classList.toggle('is-fading', !!toOut);
+    [body, kpis].forEach(function (el) {
+      if (el) el.classList.toggle('is-fading', !!toOut);
+    });
     if (toOut) {
       setTimeout(function () { if (done) done(); }, 160);
     } else {
-      // force reflow then remove
-      void body.offsetWidth;
       requestAnimationFrame(function () {
-        body.classList.remove('is-fading');
+        [body, kpis].forEach(function (el) {
+          if (el) el.classList.remove('is-fading');
+        });
         if (done) done();
       });
     }
@@ -511,9 +562,6 @@
 
   function loadYear(y) {
     y = parseInt(y, 10);
-    if (!y || y === currentYear && !switching) {
-      // still allow forced reload
-    }
     var seq = ++switchSeq;
     switching = true;
     if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Loading ' + y + '…'; }
@@ -524,7 +572,6 @@
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json' }
           }).then(function (r) { return r.json(); });
-
       loader
         .then(function (data) {
           if (seq !== switchSeq) return;
@@ -532,7 +579,7 @@
           applyPackage(data);
           try {
             history.replaceState({ year: y }, '', profileUrl + '?year=' + encodeURIComponent(y));
-          } catch (e) { /* ignore */ }
+          } catch (e) {}
           fade(false);
           if (statusEl) statusEl.hidden = true;
           switching = false;
@@ -540,11 +587,6 @@
         .catch(function (err) {
           if (seq !== switchSeq) return;
           console.error(err);
-          if (statusEl) {
-            statusEl.hidden = false;
-            statusEl.textContent = 'Could not load year — retrying full page…';
-          }
-          // Fallback hard nav
           window.location = profileUrl + '?year=' + encodeURIComponent(y);
         });
     });
@@ -579,46 +621,38 @@
   function runRecalc() {
     if (switching) return;
     var payload = collectPayload();
-    if (recalcEl) { recalcEl.hidden = false; }
+    if (recalcEl) recalcEl.hidden = false;
     var card = document.getElementById('yearTaxCard');
     if (card) card.classList.add('is-recalc');
+    if (kpis) kpis.classList.add('is-recalc');
     var opts = {
       method: 'POST',
       credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload)
     };
-    if (typeof window.VESTX_CSRF === 'string') {
-      opts.headers['X-CSRFToken'] = window.VESTX_CSRF;
-    }
+    if (typeof window.VESTX_CSRF === 'string') opts.headers['X-CSRFToken'] = window.VESTX_CSRF;
     var runner = (typeof window.vestxFetchJson === 'function')
       ? window.vestxFetchJson(api, opts)
       : fetch(api, opts).then(function (r) { return r.json(); });
-
     runner
       .then(function (data) {
         if (!data || !data.success) throw new Error((data && data.error) || 'Recalc failed');
-        // Only update tax result — keep typed form values as-is
         renderResult(data.result, currentYear);
         if (data.history) renderHistory(data.history, currentYear);
+        updateIdentityChip(payload);
       })
-      .catch(function (err) {
-        console.warn('recalc', err);
-      })
+      .catch(function (err) { console.warn('recalc', err); })
       .finally(function () {
         if (recalcEl) recalcEl.hidden = true;
         if (card) card.classList.remove('is-recalc');
+        if (kpis) kpis.classList.remove('is-recalc');
       });
   }
 
-  // Money input UX: format on blur, raw-ish on focus
   document.querySelectorAll('[data-money]').forEach(function (el) {
     el.addEventListener('focus', function () {
       var n = parseMoney(el.value);
-      // show unformatted with 2 decimals while editing for easier caret
       el.value = n === 0 ? '' : String(n);
       try { el.select(); } catch (e) {}
     });
@@ -627,7 +661,6 @@
     });
     el.addEventListener('input', scheduleRecalc);
     el.addEventListener('keydown', function (e) {
-      // allow digits, one decimal, navigation, shortcuts
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       var ok = /[0-9.]/.test(e.key) ||
         e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Tab' ||
@@ -636,21 +669,16 @@
     });
   });
 
-  // Non-money form changes also recalculate
   ['filing_status', 'state_code', 'include_fica', 'ss_wage_base_maxed',
-   'include_niit', 'use_bracket_engine', 'use_state_engine',
-   'other_long_term_gains', 'other_short_term_gains'].forEach(function (id) {
+   'include_niit', 'use_bracket_engine', 'use_state_engine'].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener('change', scheduleRecalc);
-    if (el.tagName === 'SELECT' || el.type === 'checkbox') {
-      el.addEventListener('change', scheduleRecalc);
-    } else {
-      el.addEventListener('input', scheduleRecalc);
-    }
+    el.addEventListener('change', function () {
+      scheduleRecalc();
+      if (id === 'filing_status' || id === 'state_code') updateIdentityChip(collectPayload());
+    });
   });
 
-  // Strip commas before submit so backend always gets clean numbers
   if (form) {
     form.addEventListener('submit', function () {
       form.querySelectorAll('[data-money]').forEach(function (el) {
@@ -658,7 +686,6 @@
       });
     });
   }
-
   if (yearSel) {
     yearSel.addEventListener('change', function () {
       var y = parseInt(yearSel.value, 10);
@@ -666,8 +693,6 @@
       loadYear(y);
     });
   }
-
-  // Ensure money fields are formatted on first paint
   document.querySelectorAll('[data-money]').forEach(function (el) {
     el.value = formatMoneyInput(parseMoney(el.value));
   });
