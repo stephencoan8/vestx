@@ -346,79 +346,84 @@
     </div>
   </section>
 
-  {# ===================== PAST YEARS (W-2) ===================== #}
+  {# ===================== PAST YEARS (year-first package) ===================== #}
   <section class="detail-card tax-hub-panel" id="panelPast" data-tax-panel="past" hidden>
-    <div class="tax-panel-head">
+    <div class="tax-panel-head past-year-head">
       <div>
         <h2>Past year taxes</h2>
-        <p class="tax-panel-lead">
-          Full-year W-2 style estimate (progressive federal + CA + FICA). Pick a year, enter round wages,
-          run calc. RSU vest totals from VestX prefill as a hint — fold them into W-2, don’t double-count.
-        </p>
+        <p class="tax-panel-lead">Select a year — VestX loads that year’s vest history, your saved inputs, and the tax stack together.</p>
       </div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
+      <div class="past-year-picker">
         <label for="pastYear">Tax year</label>
-        <select id="pastYear">
+        <select id="pastYear" class="past-year-select" aria-label="Tax year">
           {% for y in past_years %}
           <option value="{{ y }}" {% if y == today.year - 1 %}selected{% endif %}>{{ y }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="form-group">
-        <label for="pastFiling">Filing status</label>
-        <select id="pastFiling">
-          <option value="single" {% if profile.filing_status == 'single' %}selected{% endif %}>Single</option>
-          <option value="mfj" {% if profile.filing_status == 'mfj' %}selected{% endif %}>Married filing jointly</option>
-          <option value="mfs" {% if profile.filing_status == 'mfs' %}selected{% endif %}>Married filing separately</option>
-          <option value="hoh" {% if profile.filing_status == 'hoh' %}selected{% endif %}>Head of household</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="pastState">State</label>
-        <input type="text" id="pastState" maxlength="2" value="{{ (profile.state_code or 'CA')|upper }}">
-      </div>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label for="pastWages">W-2 wages (box 1) $</label>
-        <input type="number" step="1000" id="pastWages" placeholder="e.g. 420000" class="themed-input">
-        <span class="form-hint">Salary + RSU vest income for that year (one total)</span>
-      </div>
-      <div class="form-group">
-        <label for="pastOtherOrd">Other ordinary $</label>
-        <input type="number" step="1000" id="pastOtherOrd" value="0" class="themed-input">
-        <span class="form-hint">Bonus outside W-2, side income — not RSU already in box 1</span>
-      </div>
-      <div class="form-group">
-        <label for="pastLtcg">Other LTCG $</label>
-        <input type="number" step="1000" id="pastLtcg" value="0" class="themed-input">
-      </div>
-      <div class="form-group">
-        <label for="pastStcg">Other STCG $</label>
-        <input type="number" step="1000" id="pastStcg" value="0" class="themed-input">
-      </div>
-    </div>
+    <div id="pastYearCard" class="past-year-card" aria-live="polite">
+      <div id="pastLoading" class="past-year-loading" hidden>Loading year…</div>
 
-    <div class="tax-check-row">
-      <label class="form-check"><input type="checkbox" id="pastFica" checked> Include FICA (SS + Medicare)</label>
-      <label class="form-check"><input type="checkbox" id="pastSsMaxed"> SS wage base already maxed</label>
-    </div>
+      <div id="pastHistory" class="past-year-history"></div>
 
-    <div id="pastPrefill" class="info-box" style="display:none;margin:1rem 0;"></div>
+      <div class="past-year-inputs">
+        <div class="past-wages-block">
+          <label for="pastWages">W-2 wages (box 1)</label>
+          <div class="tax-goal-target-row past-wages-row">
+            <span class="tax-goal-prefix">$</span>
+            <input type="number" step="1000" id="pastWages" placeholder="salary + RSU vest" inputmode="numeric">
+          </div>
+          <p class="form-hint" id="pastWagesHint">One total for the year. RSU vest ordinary belongs here, not double-counted below.</p>
+        </div>
 
-    <div class="form-actions">
-      <button type="button" class="btn btn-primary" id="btnPastCalc">Calculate year tax</button>
-    </div>
+        <details class="tax-hub-details past-more-details">
+          <summary>More for this year (optional)</summary>
+          <div class="tax-details-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="pastOtherOrd">Other ordinary $</label>
+                <input type="number" step="1000" id="pastOtherOrd" value="0" class="themed-input">
+              </div>
+              <div class="form-group">
+                <label for="pastLtcg">Other LTCG $</label>
+                <input type="number" step="1000" id="pastLtcg" value="0" class="themed-input">
+              </div>
+              <div class="form-group">
+                <label for="pastStcg">Other STCG $</label>
+                <input type="number" step="1000" id="pastStcg" value="0" class="themed-input">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="pastFiling">Filing</label>
+                <select id="pastFiling">
+                  <option value="single">Single</option>
+                  <option value="mfj">MFJ</option>
+                  <option value="mfs">MFS</option>
+                  <option value="hoh">HoH</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="pastState">State</label>
+                <input type="text" id="pastState" maxlength="2" value="CA" class="themed-input">
+              </div>
+            </div>
+            <div class="tax-check-row">
+              <label class="form-check"><input type="checkbox" id="pastFica" checked> FICA</label>
+              <label class="form-check"><input type="checkbox" id="pastSsMaxed"> SS maxed</label>
+            </div>
+          </div>
+        </details>
+      </div>
 
-    <div id="pastResult" class="tax-result-shell" style="display:none;">
-      <div id="pastStatus" class="tax-result-status"></div>
-      <div class="stats-grid tax-hero-stats" id="pastStats"></div>
-      <div id="pastStack" class="tax-stack" style="display:none;"></div>
-      <ul id="pastNotes" class="tax-notes-list"></ul>
+      <div id="pastResult" class="tax-result-shell past-year-result">
+        <div id="pastStatus" class="tax-result-status">Pick a year to load the package.</div>
+        <div class="stats-grid tax-hero-stats" id="pastStats"></div>
+        <div id="pastStack" class="tax-stack"></div>
+        <ul id="pastNotes" class="tax-notes-list"></ul>
+      </div>
     </div>
   </section>
 
@@ -652,126 +657,263 @@
     showTaxTab('activity');
   });
 
-  // ——— Past year W-2 calculator ———
+  // ——— Past years: year dropdown owns the full package ———
   var pastYearUrl = '{{ url_for("tax_center.api_year_tax") }}';
+  var PAST_STORE = 'vestx_year_tax_by_year';
+  var pastActiveYear = null;
+  var pastLoadSeq = 0;
+  var pastCalcTimer = null;
 
-  function loadPastPrefill() {
-    var year = document.getElementById('pastYear').value;
-    var box = document.getElementById('pastPrefill');
-    if (!year || !window.vestxFetchJson) return;
-    window.vestxFetchJson(pastYearUrl + '?year=' + encodeURIComponent(year), { method: 'GET' })
-      .then(function (data) {
-        var p = data.prefill || {};
-        var eq = Number(p.suggested_equity_in_w2 || 0);
-        box.style.display = 'block';
-        if (!p.event_count) {
-          box.innerHTML = '<strong>' + year + '</strong> — no RSU/cash vests in VestX for this year. Enter total W-2 wages manually.';
-          return;
-        }
-        box.innerHTML = '<strong>' + year + ' from VestX</strong> · ' +
-          (p.event_count || 0) + ' vest event(s) · RSU gross ~$' + Number(p.rsu_vest_gross || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) +
-          (p.cash_bonus_gross ? ' · cash ~$' + Number(p.cash_bonus_gross).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '') +
-          (p.iso_vest_events_skipped ? ' · ' + p.iso_vest_events_skipped + ' ISO vest(s) skipped (not W-2 at vest)' : '') +
-          '<br><span class="tax-muted-sm">' + (p.note || '') + '</span>' +
-          (eq > 0
-            ? '<br><button type="button" class="btn btn-secondary btn-sm" id="btnUseEquityHint" style="margin-top:0.5rem;">Use ~$' +
-              Number(eq).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' as starting wages (add salary yourself)</button>'
-            : '');
-        var b = document.getElementById('btnUseEquityHint');
-        if (b) {
-          b.addEventListener('click', function () {
-            document.getElementById('pastWages').value = Math.round(eq / 1000) * 1000;
-          });
-        }
-        if (data.defaults) {
-          if (data.defaults.filing_status) document.getElementById('pastFiling').value = data.defaults.filing_status;
-          if (data.defaults.state_code) document.getElementById('pastState').value = data.defaults.state_code;
-        }
-      })
-      .catch(function (e) {
-        box.style.display = 'block';
-        box.textContent = 'Could not load vest history: ' + (e.message || e);
-      });
+  function pastStoreAll() {
+    try {
+      var raw = sessionStorage.getItem(PAST_STORE);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
   }
-
-  document.getElementById('pastYear').addEventListener('change', loadPastPrefill);
-
-  document.getElementById('btnPastCalc').addEventListener('click', function () {
-    var btn = document.getElementById('btnPastCalc');
-    btn.disabled = true;
-    btn.textContent = 'Calculating…';
-    var body = {
-      year: parseInt(document.getElementById('pastYear').value, 10),
-      wages: parseFloat(document.getElementById('pastWages').value || 0),
-      other_ordinary: parseFloat(document.getElementById('pastOtherOrd').value || 0),
-      ltcg: parseFloat(document.getElementById('pastLtcg').value || 0),
-      stcg: parseFloat(document.getElementById('pastStcg').value || 0),
+  function pastSaveCurrent() {
+    if (!pastActiveYear) return;
+    var all = pastStoreAll();
+    all[String(pastActiveYear)] = readPastForm();
+    try { sessionStorage.setItem(PAST_STORE, JSON.stringify(all)); } catch (e) {}
+  }
+  function pastLoadSaved(year) {
+    var all = pastStoreAll();
+    return all[String(year)] || null;
+  }
+  function readPastForm() {
+    return {
+      wages: parseFloat(document.getElementById('pastWages').value || 0) || 0,
+      other_ordinary: parseFloat(document.getElementById('pastOtherOrd').value || 0) || 0,
+      ltcg: parseFloat(document.getElementById('pastLtcg').value || 0) || 0,
+      stcg: parseFloat(document.getElementById('pastStcg').value || 0) || 0,
       filing_status: document.getElementById('pastFiling').value,
       state_code: document.getElementById('pastState').value,
       include_fica: document.getElementById('pastFica').checked,
       ss_wage_base_maxed: document.getElementById('pastSsMaxed').checked
     };
-    var run = window.vestxFetchJson
+  }
+  function writePastForm(inputs) {
+    if (!inputs) return;
+    if (inputs.wages != null) document.getElementById('pastWages').value = inputs.wages || '';
+    document.getElementById('pastOtherOrd').value = inputs.other_ordinary != null ? inputs.other_ordinary : 0;
+    document.getElementById('pastLtcg').value = inputs.ltcg != null ? inputs.ltcg : 0;
+    document.getElementById('pastStcg').value = inputs.stcg != null ? inputs.stcg : 0;
+    if (inputs.filing_status) document.getElementById('pastFiling').value = inputs.filing_status;
+    if (inputs.state_code) document.getElementById('pastState').value = inputs.state_code;
+    document.getElementById('pastFica').checked = inputs.include_fica !== false;
+    document.getElementById('pastSsMaxed').checked = !!inputs.ss_wage_base_maxed;
+  }
+
+  function renderPastHistory(hist, year) {
+    var el = document.getElementById('pastHistory');
+    if (!hist) {
+      el.innerHTML = '';
+      return;
+    }
+    var eq = Number(hist.suggested_equity_in_w2 || 0);
+    var parts = ['<div class="past-history-title"><strong>' + year + '</strong> from VestX'];
+    if (hist.event_count) {
+      parts.push(
+        '<span class="past-history-stats">' +
+        hist.event_count + ' vest' + (hist.event_count === 1 ? '' : 's') +
+        ' · RSU ~' + money(hist.rsu_vest_gross || 0) +
+        (hist.cash_bonus_gross ? ' · cash ~' + money(hist.cash_bonus_gross) : '') +
+        (hist.iso_vest_events_skipped ? ' · ' + hist.iso_vest_events_skipped + ' ISO skipped' : '') +
+        '</span>'
+      );
+    } else {
+      parts.push('<span class="past-history-stats">No RSU/cash vests recorded this year</span>');
+    }
+    parts.push('</div>');
+    if (hist.events && hist.events.length) {
+      parts.push('<div class="past-history-events">');
+      hist.events.slice(0, 12).forEach(function (ev) {
+        parts.push(
+          '<div class="past-history-row"><span>' + (ev.vest_date || '') +
+          '</span><span class="tax-muted-sm">' + (ev.label || '') +
+          '</span><span>' + money2(ev.gross_value) + '</span></div>'
+        );
+      });
+      if (hist.events.length > 12) {
+        parts.push('<div class="tax-muted-sm">+' + (hist.events.length - 12) + ' more</div>');
+      }
+      parts.push('</div>');
+    }
+    if (eq > 0) {
+      parts.push(
+        '<p class="form-hint">Equity vest ordinary in VestX ≈ <strong>' + money(eq) +
+        '</strong>. Enter full box-1 wages (salary + this), not equity alone unless that was everything.</p>'
+      );
+    }
+    el.innerHTML = parts.join('');
+  }
+
+  function renderPastResult(r) {
+    if (!r) {
+      document.getElementById('pastStatus').textContent = 'Enter wages for this year to see the tax stack.';
+      document.getElementById('pastStatus').className = 'tax-result-status';
+      document.getElementById('pastStats').innerHTML = '';
+      document.getElementById('pastStack').innerHTML = '';
+      document.getElementById('pastNotes').innerHTML = '';
+      return;
+    }
+    document.getElementById('pastStatus').textContent =
+      r.tax_year + ' package · ' + (r.filing_status || '').toUpperCase() + ' · ' + (r.state_code || '') +
+      ' · full-year estimate (not a filed return)';
+    document.getElementById('pastStatus').className = 'tax-result-status ok';
+    document.getElementById('pastStats').innerHTML = [
+      ['Total tax', money2(r.total_tax), true],
+      ['Effective rate', pct(r.effective_rate), false],
+      ['Federal income', money2(r.federal_income_tax), false],
+      ['State', money2(r.state_tax), false],
+      ['FICA', money2(r.total_fica), false],
+      ['Wages', money2(r.wages), false]
+    ].map(function (c) {
+      return '<div class="stat-card' + (c[2] ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
+        '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
+    }).join('');
+    document.getElementById('pastStack').innerHTML = '<div class="tax-stack-row">' + [
+      ['Fed ordinary', r.federal_ordinary_tax],
+      ['Fed LTCG', r.federal_ltcg_tax],
+      ['NIIT', r.niit],
+      ['CA PIT', r.state_regular_tax],
+      ['CA MHST', r.state_surtax],
+      ['SS', r.social_security],
+      ['Medicare', r.medicare],
+      ['Add’l Med', r.additional_medicare]
+    ].filter(function (x) { return Number(x[1] || 0) > 0.5; }).map(function (x) {
+      return '<div class="tax-stack-item"><span class="tax-stack-label">' + x[0] +
+        '</span><span class="tax-stack-val">' + money2(x[1]) + '</span></div>';
+    }).join('') + '</div>' +
+      '<div class="tax-stack-meta">Marginal ordinary ' + pct(r.ordinary_marginal) +
+      ' · CA marginal ' + pct(r.state_marginal) +
+      ' · SS wage base $' + Number(r.ss_wage_base || 0).toLocaleString('en-US') + '</div>';
+    document.getElementById('pastNotes').innerHTML =
+      (r.notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
+  }
+
+  function applyPastPackage(data) {
+    if (!data || !data.success) {
+      document.getElementById('pastStatus').textContent = (data && data.error) || 'Failed to load year';
+      document.getElementById('pastStatus').className = 'tax-result-status warn';
+      return;
+    }
+    var year = data.year;
+    pastActiveYear = year;
+    // Prefer user-saved inputs for this year, else server package inputs
+    var saved = pastLoadSaved(year);
+    var inputs = saved || data.inputs || {};
+    // If saved exists use it; else use server inputs (includes equity suggestion as wages when no save)
+    writePastForm(inputs);
+    if (data.defaults && !saved) {
+      if (data.defaults.filing_status && !inputs.filing_status) {
+        document.getElementById('pastFiling').value = data.defaults.filing_status;
+      }
+      if (data.defaults.state_code && !inputs.state_code) {
+        document.getElementById('pastState').value = data.defaults.state_code;
+      }
+    }
+    renderPastHistory(data.history, year);
+    document.getElementById('pastWagesHint').textContent =
+      'One total for ' + year + ': salary + RSU vest ordinary (box 1). Saved per year when you switch years.';
+
+    // If we have saved wages, recompute; else show server result if present
+    if (saved && (saved.wages > 0 || saved.other_ordinary > 0)) {
+      runPastCalc(false);
+    } else {
+      renderPastResult(data.result);
+      pastSaveCurrent();
+    }
+  }
+
+  function loadPastPrefill() {
+    // Year-switch entry: save previous year, load full package for new year
+    var yearEl = document.getElementById('pastYear');
+    if (!yearEl) return;
+    var year = parseInt(yearEl.value, 10);
+    if (!year) return;
+
+    if (pastActiveYear && pastActiveYear !== year) {
+      pastSaveCurrent();
+    }
+
+    var seq = ++pastLoadSeq;
+    var loading = document.getElementById('pastLoading');
+    if (loading) loading.hidden = false;
+    document.getElementById('pastStatus').textContent = 'Loading ' + year + '…';
+    document.getElementById('pastStatus').className = 'tax-result-status';
+
+    var fetchFn = window.vestxFetchJson
+      ? window.vestxFetchJson(pastYearUrl + '?year=' + encodeURIComponent(year), { method: 'GET' })
+      : fetch(pastYearUrl + '?year=' + encodeURIComponent(year), {
+          headers: { 'Accept': 'application/json', 'X-CSRFToken': csrf }
+        }).then(function (r) { return r.json(); });
+
+    fetchFn.then(function (data) {
+      if (seq !== pastLoadSeq) return;
+      if (loading) loading.hidden = true;
+      applyPastPackage(data);
+    }).catch(function (e) {
+      if (seq !== pastLoadSeq) return;
+      if (loading) loading.hidden = true;
+      document.getElementById('pastStatus').textContent = e.message || String(e);
+      document.getElementById('pastStatus').className = 'tax-result-status warn';
+    });
+  }
+
+  function runPastCalc(fromUser) {
+    pastSaveCurrent();
+    var year = parseInt(document.getElementById('pastYear').value, 10);
+    var body = Object.assign({ year: year }, readPastForm());
+    if (!(body.wages > 0 || body.other_ordinary > 0 || body.ltcg > 0 || body.stcg > 0)) {
+      renderPastResult(null);
+      return;
+    }
+    if (fromUser) {
+      document.getElementById('pastStatus').textContent = 'Updating ' + year + '…';
+    }
+    var fetchFn = window.vestxFetchJson
       ? window.vestxFetchJson(pastYearUrl, { method: 'POST', body: JSON.stringify(body) })
       : fetch(pastYearUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf, 'Accept': 'application/json' },
           body: JSON.stringify(body)
         }).then(function (r) { return r.json(); });
-    run.then(function (data) {
-      btn.disabled = false;
-      btn.textContent = 'Calculate year tax';
-      var panel = document.getElementById('pastResult');
-      panel.style.display = 'block';
-      if (!data.success || !data.result) {
+    fetchFn.then(function (data) {
+      if (!data.success) {
         document.getElementById('pastStatus').textContent = data.error || 'Calc failed';
         document.getElementById('pastStatus').className = 'tax-result-status warn';
         return;
       }
-      var r = data.result;
-      document.getElementById('pastStatus').textContent =
-        r.tax_year + ' · ' + (r.filing_status || '').toUpperCase() + ' · ' + (r.state_code || '') +
-        ' · full-year estimate (not a filed return)';
-      document.getElementById('pastStatus').className = 'tax-result-status ok';
-      document.getElementById('pastStats').innerHTML = [
-        ['Total tax', money2(r.total_tax), true],
-        ['Effective rate', pct(r.effective_rate), false],
-        ['Federal income', money2(r.federal_income_tax), false],
-        ['State', money2(r.state_tax), false],
-        ['FICA', money2(r.total_fica), false],
-        ['Wages used', money2(r.wages), false]
-      ].map(function (c) {
-        return '<div class="stat-card' + (c[2] ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
-          '</div><div class="stat-value tax-stat-val">' + c[1] + '</div></div></div>';
-      }).join('');
-      var stack = document.getElementById('pastStack');
-      stack.style.display = 'block';
-      stack.innerHTML = '<div class="tax-stack-row">' + [
-        ['Fed ordinary', r.federal_ordinary_tax],
-        ['Fed LTCG', r.federal_ltcg_tax],
-        ['NIIT', r.niit],
-        ['CA PIT', r.state_regular_tax],
-        ['CA MHST', r.state_surtax],
-        ['SS', r.social_security],
-        ['Medicare', r.medicare],
-        ['Add’l Med', r.additional_medicare]
-      ].filter(function (x) { return Number(x[1] || 0) > 0.5; }).map(function (x) {
-        return '<div class="tax-stack-item"><span class="tax-stack-label">' + x[0] +
-          '</span><span class="tax-stack-val">' + money2(x[1]) + '</span></div>';
-      }).join('') + '</div>' +
-        '<div class="tax-stack-meta">Marginal ordinary ' + pct(r.ordinary_marginal) +
-        ' · CA marginal ' + pct(r.state_marginal) +
-        ' · SS wage base $' + Number(r.ss_wage_base || 0).toLocaleString('en-US') + '</div>';
-      document.getElementById('pastNotes').innerHTML =
-        (r.notes || []).map(function (n) { return '<li>' + n + '</li>'; }).join('');
+      // Keep form as-is; only refresh history + result from package
+      if (data.history) renderPastHistory(data.history, data.year);
+      renderPastResult(data.result);
+      pastSaveCurrent();
     }).catch(function (e) {
-      btn.disabled = false;
-      btn.textContent = 'Calculate year tax';
-      document.getElementById('pastResult').style.display = 'block';
       document.getElementById('pastStatus').textContent = e.message || String(e);
       document.getElementById('pastStatus').className = 'tax-result-status warn';
     });
+  }
+
+  function schedulePastCalc() {
+    pastSaveCurrent();
+    if (pastCalcTimer) clearTimeout(pastCalcTimer);
+    pastCalcTimer = setTimeout(function () { runPastCalc(true); }, 350);
+  }
+
+  document.getElementById('pastYear').addEventListener('change', loadPastPrefill);
+  ['pastWages', 'pastOtherOrd', 'pastLtcg', 'pastStcg', 'pastFiling', 'pastState'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', schedulePastCalc);
+    el.addEventListener('input', function () {
+      if (id === 'pastWages' || id === 'pastOtherOrd' || id === 'pastLtcg' || id === 'pastStcg') {
+        schedulePastCalc();
+      }
+    });
   });
+  document.getElementById('pastFica').addEventListener('change', schedulePastCalc);
+  document.getElementById('pastSsMaxed').addEventListener('change', schedulePastCalc);
 
   document.querySelectorAll('[data-goal-fill]').forEach(function (chip) {
     chip.addEventListener('click', function () {

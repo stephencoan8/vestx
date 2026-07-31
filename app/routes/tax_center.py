@@ -122,11 +122,12 @@ def hub():
 @login_required
 def api_year_tax():
     """
-    Full-year W-2 style tax for a past (or current) calendar year.
+    Year-centric W-2 tax package.
 
-    GET  ?year=2024 → vest history prefills for that year
-    POST { year, wages, other_ordinary?, stcg?, ltcg?, filing_status?, include_fica? }
-         → progressive federal + CA + FICA
+    GET  ?year=2024
+         → one payload: years list, vest history, suggested inputs, optional auto result
+    POST { year, wages, ... }
+         → same shape after compute (year package + result)
     """
     try:
         from app.utils.wage_year_tax import (
@@ -135,49 +136,74 @@ def api_year_tax():
             list_years_with_vests,
         )
         profile = TaxProfile.for_user(current_user)
+        years = list_years_with_vests(current_user.id)
+
+        def _defaults():
+            return {
+                'filing_status': profile.filing_status or 'single',
+                'state_code': (profile.state_code or 'CA').upper(),
+                'include_fica': bool(profile.include_fica if profile.include_fica is not None else True),
+                'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+                'use_state_engine': bool(
+                    profile.use_state_engine if profile.use_state_engine is not None else True
+                ),
+            }
+
+        def _package(year: int, inputs: Optional[dict] = None, *, run: bool = False):
+            pref = build_year_vest_prefill(current_user.id, year)
+            d = _defaults()
+            inputs = dict(inputs or {})
+            # Suggested starting wages: equity vest gross (user edits to add salary)
+            equity = float(pref.get('suggested_equity_in_w2') or 0)
+            wages = inputs.get('wages')
+            if wages is None or wages == '':
+                wages = equity if equity > 0 else 0.0
+            wages = float(wages)
+            payload = {
+                'success': True,
+                'year': year,
+                'years': years,
+                'defaults': d,
+                'history': pref,
+                'inputs': {
+                    'wages': wages,
+                    'other_ordinary': float(inputs.get('other_ordinary') or 0),
+                    'stcg': float(inputs.get('stcg') or 0),
+                    'ltcg': float(inputs.get('ltcg') or 0),
+                    'filing_status': inputs.get('filing_status') or d['filing_status'],
+                    'state_code': (inputs.get('state_code') or d['state_code']).upper(),
+                    'include_fica': bool(inputs['include_fica']) if 'include_fica' in inputs else d['include_fica'],
+                    'ss_wage_base_maxed': bool(inputs['ss_wage_base_maxed']) if 'ss_wage_base_maxed' in inputs else d['ss_wage_base_maxed'],
+                },
+                'result': None,
+            }
+            if run or wages > 0:
+                result = compute_w2_year_tax(
+                    tax_year=year,
+                    filing_status=payload['inputs']['filing_status'],
+                    state_code=payload['inputs']['state_code'],
+                    wages=payload['inputs']['wages'],
+                    other_ordinary=payload['inputs']['other_ordinary'],
+                    stcg=payload['inputs']['stcg'],
+                    ltcg=payload['inputs']['ltcg'],
+                    include_fica=payload['inputs']['include_fica'],
+                    ss_wage_base_maxed=payload['inputs']['ss_wage_base_maxed'],
+                    use_state_engine=d['use_state_engine'],
+                    vest_prefills=pref,
+                )
+                payload['result'] = result.to_dict()
+            return payload
 
         if request.method == 'GET':
             year = int(request.args.get('year') or (date.today().year - 1))
+            # Auto-run if we have equity history so year switch shows a full card
             pref = build_year_vest_prefill(current_user.id, year)
-            return _api_json({
-                'success': True,
-                'years': list_years_with_vests(current_user.id),
-                'prefill': pref,
-                'defaults': {
-                    'filing_status': profile.filing_status or 'single',
-                    'state_code': (profile.state_code or 'CA').upper(),
-                    'include_fica': bool(profile.include_fica if profile.include_fica is not None else True),
-                    'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
-                    'use_state_engine': bool(
-                        profile.use_state_engine if profile.use_state_engine is not None else True
-                    ),
-                },
-            })
+            auto = float(pref.get('suggested_equity_in_w2') or 0) > 0
+            return _api_json(_package(year, run=auto))
 
         data = request.get_json(silent=True) or {}
         year = int(data.get('year') or data.get('tax_year') or (date.today().year - 1))
-        pref = build_year_vest_prefill(current_user.id, year)
-        wages = data.get('wages')
-        if wages is None or wages == '':
-            # If user didn't type wages, suggest equity-only (they should round up with salary)
-            wages = 0.0
-        wages = float(wages)
-        result = compute_w2_year_tax(
-            tax_year=year,
-            filing_status=data.get('filing_status') or profile.filing_status or 'single',
-            state_code=(data.get('state_code') or profile.state_code or 'CA').upper(),
-            wages=wages,
-            other_ordinary=float(data.get('other_ordinary') or 0),
-            stcg=float(data.get('stcg') or 0),
-            ltcg=float(data.get('ltcg') or 0),
-            include_fica=bool(data.get('include_fica', True)),
-            ss_wage_base_maxed=bool(data.get('ss_wage_base_maxed', False)),
-            use_state_engine=bool(
-                data.get('use_state_engine', profile.use_state_engine if profile.use_state_engine is not None else True)
-            ),
-            vest_prefills=pref,
-        )
-        return _api_json({'success': True, 'result': result.to_dict(), 'prefill': pref})
+        return _api_json(_package(year, inputs=data, run=True))
     except Exception as e:
         logger.error('year-tax failed: %s', e, exc_info=True)
         return _api_json({

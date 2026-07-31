@@ -2094,6 +2094,101 @@ body.advisor-open .app-main {
     font-size: 0.88rem;
     color: var(--text-secondary);
 }
+
+/* Past years — year-first package */
+.past-year-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+.past-year-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 9rem;
+}
+.past-year-picker label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+.past-year-select {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    padding: 0.55rem 0.75rem !important;
+    min-width: 8rem;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--copper-border);
+    border-radius: var(--radius-sm);
+}
+.past-year-card {
+    margin-top: 0.5rem;
+    padding-top: 0.25rem;
+}
+.past-year-loading {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+.past-year-history {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.15rem;
+}
+.past-history-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+}
+.past-history-stats {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.past-history-events {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-height: 9rem;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+}
+.past-history-row {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr auto;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.past-wages-block {
+    margin-bottom: 0.85rem;
+    max-width: 22rem;
+}
+.past-wages-block label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.35rem;
+}
+.past-wages-row {
+    max-width: 22rem;
+}
+.past-more-details {
+    margin-bottom: 1rem;
+}
+.past-year-result {
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 1rem;
+}
 .tax-activity-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
