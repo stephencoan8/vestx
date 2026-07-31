@@ -115,18 +115,34 @@ def hub():
     )
 
 
+def _money_float(val, default=0.0):
+    """Parse money from number, or string with $ / commas. default may be None."""
+    if val is None or val == '':
+        return default if default is None else float(default)
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace('$', '').replace(',', '').replace(' ', '')
+    if not s or s in ('-', '.', '-.'):
+        return default if default is None else float(default)
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return default if default is None else float(default)
+
+
 @tax_center_bp.route('/api/year-tax', methods=['GET', 'POST'])
 @login_required
 def api_year_tax():
     """
-    Year-centric W-2 tax package.
+    Year-centric tax profile package for soft year switching + live W-2 calc.
 
     GET  ?year=2024
-         → one payload: years list, vest history, suggested inputs, optional auto result
-    POST { year, wages, ... }
-         → same shape after compute (year package + result)
+         → years, form (saved TaxYearProfile or seeds), vest history, W-2 result
+    POST { year, other_ordinary_income / wages, ... }
+         → recompute W-2 from current form fields (no save)
     """
     try:
+        from app.models.tax_year_profile import TaxYearProfile
         from app.utils.wage_year_tax import (
             build_year_vest_prefill,
             compute_w2_year_tax,
@@ -134,73 +150,182 @@ def api_year_tax():
         )
         profile = TaxProfile.for_user(current_user)
         years = list_years_with_vests(current_user.id)
+        if not years:
+            years = list(range(date.today().year, date.today().year - 8, -1))
 
-        def _defaults():
-            return {
+        def _seed_form(year: int) -> tuple:
+            year_row = TaxYearProfile.get_for(current_user.id, year)
+            if year_row:
+                return year_row.to_form_dict(), 'saved'
+            form = {
+                'tax_year': year,
                 'filing_status': profile.filing_status or 'single',
-                'state_code': (profile.state_code or 'CA').upper(),
-                'include_fica': bool(profile.include_fica if profile.include_fica is not None else True),
-                'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+                'state_code': profile.state_code or 'CA',
+                'federal_ordinary_rate': profile.federal_ordinary_rate,
+                'federal_ltcg_rate': profile.federal_ltcg_rate,
+                'state_ordinary_rate': profile.state_ordinary_rate or 0.0,
+                'state_cg_rate': (
+                    profile.state_cg_rate
+                    if profile.state_cg_rate is not None
+                    else (profile.state_ordinary_rate or 0)
+                ),
+                'use_bracket_engine': bool(
+                    profile.use_bracket_engine if profile.use_bracket_engine is not None else True
+                ),
                 'use_state_engine': bool(
                     profile.use_state_engine if profile.use_state_engine is not None else True
                 ),
+                'other_ordinary_income': (
+                    float(profile.other_ordinary_income or 0)
+                    if profile.tax_year == year
+                    else 0.0
+                ),
+                'ytd_wages': (
+                    float(profile.ytd_wages or 0) if profile.tax_year == year else 0.0
+                ),
+                'other_long_term_gains': (
+                    float(profile.other_long_term_gains or 0)
+                    if profile.tax_year == year
+                    else 0.0
+                ),
+                'other_short_term_gains': (
+                    float(profile.other_short_term_gains or 0)
+                    if profile.tax_year == year
+                    else 0.0
+                ),
+                'include_fica': bool(
+                    profile.include_fica if profile.include_fica is not None else True
+                ),
+                'ss_wage_base_maxed': bool(profile.ss_wage_base_maxed),
+                'include_niit': bool(
+                    profile.include_niit if profile.include_niit is not None else True
+                ),
+                'amt_credit_carryforward': float(profile.amt_credit_carryforward or 0),
+                'ca_amt_credit_carryforward': float(profile.ca_amt_credit_carryforward or 0),
             }
+            return form, 'new'
 
-        def _package(year: int, inputs: Optional[dict] = None, *, run: bool = False):
-            pref = build_year_vest_prefill(current_user.id, year)
-            d = _defaults()
-            inputs = dict(inputs or {})
-            # Suggested starting wages: equity vest gross (user edits to add salary)
-            equity = float(pref.get('suggested_equity_in_w2') or 0)
-            wages = inputs.get('wages')
-            if wages is None or wages == '':
-                wages = equity if equity > 0 else 0.0
-            wages = float(wages)
-            payload = {
-                'success': True,
-                'year': year,
-                'years': years,
-                'defaults': d,
-                'history': pref,
-                'inputs': {
-                    'wages': wages,
-                    'other_ordinary': float(inputs.get('other_ordinary') or 0),
-                    'stcg': float(inputs.get('stcg') or 0),
-                    'ltcg': float(inputs.get('ltcg') or 0),
-                    'filing_status': inputs.get('filing_status') or d['filing_status'],
-                    'state_code': (inputs.get('state_code') or d['state_code']).upper(),
-                    'include_fica': bool(inputs['include_fica']) if 'include_fica' in inputs else d['include_fica'],
-                    'ss_wage_base_maxed': bool(inputs['ss_wage_base_maxed']) if 'ss_wage_base_maxed' in inputs else d['ss_wage_base_maxed'],
-                },
-                'result': None,
-            }
-            if run or wages > 0:
+        def _merge_inputs(base: dict, data: dict) -> dict:
+            out = dict(base)
+            out['tax_year'] = int(data.get('year') or data.get('tax_year') or out.get('tax_year') or date.today().year)
+            if 'filing_status' in data and data['filing_status']:
+                out['filing_status'] = data['filing_status']
+            if 'state_code' in data and data['state_code'] is not None:
+                out['state_code'] = str(data['state_code']).upper()[:2] or out.get('state_code')
+
+            # Accept both API names and profile form names
+            wages = data.get('other_ordinary_income', data.get('wages', data.get('other_ordinary')))
+            if wages is not None and wages != '':
+                out['other_ordinary_income'] = _money_float(wages, 0)
+            if 'ytd_wages' in data and data['ytd_wages'] is not None and data['ytd_wages'] != '':
+                out['ytd_wages'] = _money_float(data['ytd_wages'], 0)
+            stcg = data.get('other_short_term_gains', data.get('stcg'))
+            if stcg is not None and stcg != '':
+                out['other_short_term_gains'] = _money_float(stcg, 0)
+            ltcg = data.get('other_long_term_gains', data.get('ltcg'))
+            if ltcg is not None and ltcg != '':
+                out['other_long_term_gains'] = _money_float(ltcg, 0)
+            for k in (
+                'amt_credit_carryforward',
+                'ca_amt_credit_carryforward',
+            ):
+                if k in data and data[k] is not None and data[k] != '':
+                    out[k] = _money_float(data[k], 0)
+
+            for bk in ('include_fica', 'ss_wage_base_maxed', 'include_niit',
+                       'use_bracket_engine', 'use_state_engine'):
+                if bk in data:
+                    out[bk] = bool(data[bk])
+
+            # Optional % overrides (pass through as 0–1 or percent)
+            for rk in ('federal_ordinary_rate', 'federal_ltcg_rate',
+                       'state_ordinary_rate', 'state_cg_rate'):
+                if rk in data and data[rk] not in (None, ''):
+                    v = _money_float(data[rk], 0)
+                    out[rk] = (v / 100.0) if v > 1 else v
+            return out
+
+        def _wages_for_calc(form: dict) -> float:
+            return max(
+                float(form.get('other_ordinary_income') or 0),
+                float(form.get('ytd_wages') or 0),
+            )
+
+        def _package(year: int, form: dict, source: str, history: dict, *, run: bool = True):
+            if year not in years:
+                years_out = sorted(set(years) | {year}, reverse=True)
+            else:
+                years_out = years
+            wages = _wages_for_calc(form)
+            result = None
+            if run and wages > 0:
                 result = compute_w2_year_tax(
                     tax_year=year,
-                    filing_status=payload['inputs']['filing_status'],
-                    state_code=payload['inputs']['state_code'],
-                    wages=payload['inputs']['wages'],
-                    other_ordinary=payload['inputs']['other_ordinary'],
-                    stcg=payload['inputs']['stcg'],
-                    ltcg=payload['inputs']['ltcg'],
-                    include_fica=payload['inputs']['include_fica'],
-                    ss_wage_base_maxed=payload['inputs']['ss_wage_base_maxed'],
-                    use_state_engine=d['use_state_engine'],
-                    vest_prefills=pref,
-                )
-                payload['result'] = result.to_dict()
-            return payload
+                    filing_status=form.get('filing_status') or 'single',
+                    state_code=form.get('state_code') or 'CA',
+                    wages=wages,
+                    other_ordinary=0,
+                    stcg=float(form.get('other_short_term_gains') or 0),
+                    ltcg=float(form.get('other_long_term_gains') or 0),
+                    include_fica=bool(form.get('include_fica', True)),
+                    ss_wage_base_maxed=bool(form.get('ss_wage_base_maxed')),
+                    use_state_engine=bool(form.get('use_state_engine', True)),
+                    vest_prefills=history,
+                ).to_dict()
+            # Client-friendly form: rates as percent for override fields
+            form_out = dict(form)
+            form_out['tax_year'] = year
+            for rk in ('federal_ordinary_rate', 'federal_ltcg_rate',
+                       'state_ordinary_rate', 'state_cg_rate'):
+                v = form_out.get(rk)
+                if v is not None and v != '':
+                    try:
+                        fv = float(v)
+                        form_out[rk + '_pct'] = round(fv * 100.0, 4) if fv <= 1 else round(fv, 4)
+                    except (TypeError, ValueError):
+                        form_out[rk + '_pct'] = None
+                else:
+                    form_out[rk + '_pct'] = None
+            return {
+                'success': True,
+                'year': year,
+                'years': years_out,
+                'source': source,
+                'form': form_out,
+                'history': history,
+                'result': result,
+                # legacy keys for any older clients
+                'inputs': {
+                    'wages': wages,
+                    'other_ordinary': 0,
+                    'stcg': float(form.get('other_short_term_gains') or 0),
+                    'ltcg': float(form.get('other_long_term_gains') or 0),
+                    'filing_status': form.get('filing_status') or 'single',
+                    'state_code': (form.get('state_code') or 'CA').upper(),
+                    'include_fica': bool(form.get('include_fica', True)),
+                    'ss_wage_base_maxed': bool(form.get('ss_wage_base_maxed')),
+                },
+            }
 
         if request.method == 'GET':
-            year = int(request.args.get('year') or (date.today().year - 1))
-            # Auto-run if we have equity history so year switch shows a full card
-            pref = build_year_vest_prefill(current_user.id, year)
-            auto = float(pref.get('suggested_equity_in_w2') or 0) > 0
-            return _api_json(_package(year, run=auto))
+            year = int(request.args.get('year') or profile.tax_year or date.today().year)
+            form, source = _seed_form(year)
+            history = build_year_vest_prefill(current_user.id, year)
+            # New year with no wages yet: leave 0 so user types full W-2 (equity shown as hint)
+            return _api_json(_package(year, form, source, history, run=True))
 
         data = request.get_json(silent=True) or {}
-        year = int(data.get('year') or data.get('tax_year') or (date.today().year - 1))
-        return _api_json(_package(year, inputs=data, run=True))
+        year = int(data.get('year') or data.get('tax_year') or date.today().year)
+        form, source = _seed_form(year)
+        form = _merge_inputs(form, data)
+        history = build_year_vest_prefill(current_user.id, year)
+        # Live recalc always uses posted values; mark source as draft if not saved-only
+        if any(k in data for k in (
+            'other_ordinary_income', 'wages', 'ytd_wages',
+            'other_short_term_gains', 'other_long_term_gains', 'stcg', 'ltcg',
+        )):
+            source = 'draft' if source == 'new' else 'saved'
+        return _api_json(_package(year, form, source, history, run=True))
     except Exception as e:
         logger.error('year-tax failed: %s', e, exc_info=True)
         return _api_json({
@@ -233,20 +358,22 @@ def tax_profile():
         raw = request.form.get(name, '') if request.method == 'POST' else ''
         if raw is None or str(raw).strip() == '':
             return default
-        return float(raw)
+        return _money_float(raw, default if default is not None else 0)
 
     if request.method == 'POST':
         try:
             ty = int(request.form.get('tax_year') or date.today().year)
             fo = request.form.get('federal_ordinary_rate')
             fl = request.form.get('federal_ltcg_rate')
+            fo_n = _money_float(fo, None) if fo not in (None, '') else None
+            fl_n = _money_float(fl, None) if fl not in (None, '') else None
             data = {
                 'filing_status': request.form.get('filing_status') or 'single',
                 'state_code': (request.form.get('state_code') or '').upper()[:2] or None,
                 'use_bracket_engine': request.form.get('use_bracket_engine') == 'on',
                 'use_state_engine': request.form.get('use_state_engine') == 'on',
-                'federal_ordinary_rate': float(fo) / 100.0 if fo not in (None, '') else None,
-                'federal_ltcg_rate': float(fl) / 100.0 if fl not in (None, '') else None,
+                'federal_ordinary_rate': (fo_n / 100.0) if fo_n is not None else None,
+                'federal_ltcg_rate': (fl_n / 100.0) if fl_n is not None else None,
                 'state_ordinary_rate': (_f('state_ordinary_rate', 0) or 0) / 100.0,
                 'state_cg_rate': (_f('state_cg_rate', 0) or 0) / 100.0,
                 'other_ordinary_income': _f('other_ordinary_income', 0) or 0,
