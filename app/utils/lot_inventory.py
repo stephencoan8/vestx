@@ -90,8 +90,13 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             unexercised = 0
             latest_ex = None
 
-        fmv_vest = vest.share_price_at_vest or 0.0
-        strike = grant.share_price_at_grant if is_iso else 0.0
+        # RSU/RSA cost basis = FMV on vest date (W-2 income already taxed on that FMV).
+        # ISO sell basis starts at strike (bargain/AMT is separate).
+        fmv_vest = float(vest.share_price_at_vest or 0.0)
+        # Fallback: explicit as-of lookup (same helper; helps if property path failed)
+        if fmv_vest <= 0 and vest.vest_date:
+            fmv_vest = float(get_latest_user_price(user_id, as_of_date=vest.vest_date) or 0.0)
+        strike = float(grant.share_price_at_grant or 0.0) if is_iso else 0.0
         if is_iso:
             basis = strike
         else:
@@ -99,6 +104,7 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
 
         holding_days = (as_of - vest.vest_date).days
         unrealized = (current_price - basis) * available_to_sell if available_to_sell else 0.0
+        basis_missing = (not is_iso) and basis <= 0 and available_to_sell > 0
 
         lots.append({
             'vest_event_id': vest.id,
@@ -123,6 +129,7 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             'is_long_term': holding_days >= 365,
             'exercise_date': latest_ex.exercise_date.isoformat() if latest_ex and latest_ex.exercise_date else None,
             'fmv_at_exercise': latest_ex.fmv_at_exercise if latest_ex else None,
+            'basis_missing': basis_missing,
             'label': f"{grant.grant_type} {grant.share_type.upper()} · {vest.vest_date.isoformat()}",
         })
 

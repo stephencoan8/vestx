@@ -39,28 +39,58 @@ def _public_start() -> date:
     return public_market_start()
 
 
+def _user_key_for_private_prices(user_id: int) -> Optional[bytes]:
+    """
+    Decrypt the user's Fernet key for private pre-IPO prices.
+
+    HTTP: only the authenticated owner may decrypt (no cross-user reads).
+    Background jobs (no request / no login): load via master key for that user_id
+    so RSU cost basis (FMV at vest) is not zeroed when Grok/goal engines run async.
+    """
+    # Active browser session: enforce ownership
+    if has_request_context():
+        try:
+            authed = bool(getattr(current_user, 'is_authenticated', False))
+            cuid = getattr(current_user, 'id', None) if authed else None
+        except Exception:
+            authed, cuid = False, None
+
+        if not authed:
+            return None
+        if cuid != user_id:
+            logger.warning(
+                "Blocked private price decrypt for user %s while %s is authenticated",
+                user_id, cuid,
+            )
+            return None
+        try:
+            return current_user.get_decrypted_user_key()
+        except EncryptionError:
+            logger.error("Cannot load private prices for user %s: encryption key failure", user_id)
+            return None
+        except Exception as e:
+            logger.error("Cannot load private prices for user %s: %s", user_id, e)
+            return None
+
+    # No request context (advisor job thread, CLI, etc.): server-side master key
+    try:
+        from app.models.user import User
+        user = User.query.get(user_id)
+        if not user:
+            return None
+        return user.get_decrypted_user_key()
+    except EncryptionError:
+        logger.error("Background private price decrypt failed for user %s: key error", user_id)
+        return None
+    except Exception as e:
+        logger.error("Background private price decrypt failed for user %s: %s", user_id, e)
+        return None
+
+
 def _load_private_history(user_id: int) -> List[Tuple[date, float]]:
     """Decrypt user-entered prices strictly before public market start."""
-    try:
-        authed = bool(getattr(current_user, 'is_authenticated', False))
-        cuid = getattr(current_user, 'id', None) if authed else None
-    except Exception:
-        authed, cuid = False, None
-
-    if not authed or cuid != user_id:
-        logger.warning(
-            "Attempt to decrypt user price for user %s while %s is authenticated",
-            user_id, cuid,
-        )
-        return []
-
-    try:
-        user_key = current_user.get_decrypted_user_key()
-    except EncryptionError:
-        logger.error("Cannot load private prices for user %s: encryption key failure", user_id)
-        return []
-    except Exception as e:
-        logger.error("Cannot load private prices for user %s: %s", user_id, e)
+    user_key = _user_key_for_private_prices(user_id)
+    if not user_key:
         return []
 
     cutover = _public_start()
