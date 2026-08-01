@@ -97,7 +97,8 @@ No rush mandate — prioritize correctness and product density over shipping spe
 2. **Year-scoped engine** on analyze / goal / record sale / record exercise.  
 3. **AMT credit generation** only with ISO bargain.  
 4. **LTCG tables** for 2023–2024.  
-5. This document.
+5. This document.  
+6. **PR A done** — `app/utils/sale_tax_estimate.py`: one `analyze_sales` path for vest sale estimates, recorded sales, Finance (stacked multi-lot KPIs), and legacy sale-planning API. Flat 15% / User rate paths removed.
 
 ---
 
@@ -105,7 +106,7 @@ No rush mandate — prioritize correctness and product density over shipping spe
 
 | PR | Theme | Avoid mixing |
 |----|--------|--------------|
-| **A** | Unify Grants sale tax → `analyze_sales` + kill flat Finance sliders | Security |
+| **A** | ~~Unify Grants sale tax → `analyze_sales`~~ **SHIPPED** | — |
 | **B** | Std ded on `_federal_state_layer` base/full | UI redesign |
 | **C** | Split `tax_center` into profile / engine_api / activity / advisor | Math |
 | **D** | Alembic baseline; retire `migrate_*.py` | Features |
