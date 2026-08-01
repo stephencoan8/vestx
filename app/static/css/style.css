@@ -2449,6 +2449,26 @@ body.advisor-open .app-main {
 #lotsTable .tax-th-check {
     width: 2rem;
 }
+#lotsTable tr.tax-lot-row-link {
+    cursor: pointer;
+}
+#lotsTable tr.tax-lot-row-link:hover {
+    background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+}
+#lotsTable .tax-lot-link {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+#lotsTable .tax-lot-link:hover .tax-lot-label {
+    color: var(--accent-bright, var(--copper));
+    text-decoration: underline;
+}
+#lotsTable .tax-lot-no-nav {
+    cursor: default;
+}
 
 @media (max-width: 900px) {
     .tax-situation {

@@ -254,7 +254,7 @@
           {% set basis = (lot.strike_price or lot.cost_basis_per_share) if lot.is_iso else lot.cost_basis_per_share %}
           {% set max_q = held if held > 0 else unex %}
           <tr
-            class="tax-lot-row"
+            class="tax-lot-row tax-lot-row-link"
             data-vest="{{ lot.vest_event_id }}"
             data-available="{{ held }}"
             data-unexercised="{{ unex }}"
@@ -263,11 +263,15 @@
             data-exercised="{{ 'true' if lot.exercise_date else 'false' }}"
             data-has-held="{{ '1' if held > 0 else '0' }}"
             data-has-unex="{{ '1' if unex > 0 else '0' }}"
+            data-href="{{ url_for('grants.vest_detail', vest_id=lot.vest_event_id) }}"
+            title="Open vest detail"
           >
-            <td><input type="checkbox" class="lot-check" {% if max_q <= 0 %}disabled{% endif %}></td>
+            <td class="tax-lot-no-nav"><input type="checkbox" class="lot-check" {% if max_q <= 0 %}disabled{% endif %}></td>
             <td data-value="{{ lot.label }} #{{ lot.vest_event_id }}">
-              <span class="tax-lot-label">{{ lot.label }}</span>
-              <span class="tax-lot-id">#{{ lot.vest_event_id }}</span>
+              <a href="{{ url_for('grants.vest_detail', vest_id=lot.vest_event_id) }}" class="tax-lot-link" title="Open vest detail">
+                <span class="tax-lot-label">{{ lot.label }}</span>
+                <span class="tax-lot-id">#{{ lot.vest_event_id }}</span>
+              </a>
             </td>
             <td data-value="{{ lot.share_type }}">{{ lot.share_type }}</td>
             <td data-value="{{ held }}">{{ "{:,.2f}".format(held) }}</td>
@@ -275,7 +279,7 @@
             <td data-value="{{ basis or 0 }}">${{ "{:,.2f}".format(basis or 0) }}</td>
             <td class="tax-muted-sm" data-value="{{ lot.exercise_date or '' }}">{{ lot.exercise_date or '—' }}</td>
             <td data-value="{{ 'LT' if lot.is_long_term else 'ST' }}">{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
-            <td data-value="0">
+            <td class="tax-lot-no-nav" data-value="0">
               <input type="number" class="lot-qty form-control" step="0.01" min="0"
                      max="{{ max_q }}" value="0"
                      {% if max_q <= 0 %}disabled{% endif %}>
@@ -937,6 +941,19 @@
   });
   updateStrategyHint();
   updatePlanFieldVisibility();
+
+  // Lot table: click row (except checkbox/qty) → vest detail
+  (function initLotsNav() {
+    const table = document.getElementById('lotsTable');
+    if (!table) return;
+    table.addEventListener('click', function (e) {
+      if (e.target.closest('.tax-lot-no-nav, .lot-check, .lot-qty, a.tax-lot-link')) return;
+      const tr = e.target.closest('tr.tax-lot-row-link');
+      if (!tr) return;
+      const href = tr.getAttribute('data-href');
+      if (href) window.location.href = href;
+    });
+  })();
 
   // Lot table: share-type filter + count (sorting via sortable-tables.js)
   (function initLotsFilter() {
