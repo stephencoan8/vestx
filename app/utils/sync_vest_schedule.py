@@ -106,6 +106,13 @@ def sync_vest_events_for_grant(grant, vest_schedule: List[Dict[str, Any]]) -> Di
                 tax_year=vest_date.year,
             )
             db.session.add(ve)
+            db.session.flush()
+            try:
+                from app.utils.vest_basis import ensure_vest_fmv_snapshot
+                if ve.has_vested:
+                    ensure_vest_fmv_snapshot(ve, user_id=grant.user_id)
+            except Exception:
+                pass
             created += 1
 
     deleted = 0

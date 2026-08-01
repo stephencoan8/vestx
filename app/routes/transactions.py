@@ -67,8 +67,20 @@ def create_sale():
             Grant.user_id == current_user.id
         ).first_or_404()
         
-        # Use vest's share price as cost basis
-        cost_basis_per_share = vest.share_price_at_vest
+        # RSU cost basis = FMV at vest (stored snapshot / price history)
+        from app.models.grant import ShareType
+        from app.utils.vest_basis import rsu_cost_basis_per_share, iso_cost_basis_per_share
+        is_iso = vest.grant and vest.grant.share_type in (
+            ShareType.ISO_5Y.value, ShareType.ISO_6Y.value
+        )
+        if is_iso:
+            cost_basis_per_share = iso_cost_basis_per_share(vest)
+        else:
+            cost_basis_per_share, _ = rsu_cost_basis_per_share(
+                vest, user_id=current_user.id, persist=True
+            )
+        if not cost_basis_per_share or cost_basis_per_share <= 0:
+            cost_basis_per_share = float(vest.share_price_at_vest or 0)
         
         total_proceeds = shares_sold * sale_price
         total_cost_basis = shares_sold * cost_basis_per_share

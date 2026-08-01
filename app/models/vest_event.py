@@ -18,7 +18,9 @@ class VestEvent(db.Model):
     # Vest details
     vest_date = db.Column(db.Date, nullable=False)
     shares_vested = db.Column(db.Float, nullable=False)
-    # Note: share_price_at_vest is now a @property that calculates dynamically
+    # Locked FMV on vest date (RSU cost basis). Snapshot so tax calc does not
+    # depend on live decryption / later price edits. Nullable until resolved.
+    fmv_at_vest = db.Column(db.Float, nullable=True)
     
     # Tax handling - simplified flow:
     # 1. User enters cash_paid (cash paid towards taxes)
@@ -47,24 +49,35 @@ class VestEvent(db.Model):
     @property
     def share_price_at_vest(self) -> float:
         """
-        Get the stock price at vest date from user's encrypted prices.
-        For unvested events (future dates), returns current stock price as estimate.
-        For vested events, returns actual historical price at vest date.
+        FMV on vest date — RSU cost basis source of truth.
+
+        Prefers stored ``fmv_at_vest`` snapshot; otherwise resolves from price
+        history (and persists the snapshot when possible).
         """
         try:
-            # For unvested shares, use latest available price (current price)
-            if not self.has_vested:
-                price = get_latest_user_price(self.grant.user_id)  # Latest price (today or before)
-                return price if price is not None else 0.0
-            
-            # For vested shares, get actual price at vest date
-            price = get_latest_user_price(self.grant.user_id, as_of_date=self.vest_date)
-            return price if price is not None else 0.0
+            from app.utils.vest_basis import resolve_vest_fmv
+            # Avoid write storms on read-only pure display if no grant/user
+            uid = self.grant.user_id if self.grant else None
+            fmv, _src = resolve_vest_fmv(self, user_id=uid, persist=True)
+            return float(fmv or 0.0)
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Error getting share_price_at_vest: {str(e)}", exc_info=True)
-            return 0.0
+            # Last-ditch: raw column or live lookup
+            try:
+                if self.fmv_at_vest and float(self.fmv_at_vest) > 0:
+                    return float(self.fmv_at_vest)
+            except Exception:
+                pass
+            try:
+                if not self.has_vested:
+                    price = get_latest_user_price(self.grant.user_id)
+                else:
+                    price = get_latest_user_price(self.grant.user_id, as_of_date=self.vest_date)
+                return price if price is not None else 0.0
+            except Exception:
+                return 0.0
     
     @property
     def value_at_vest(self) -> float:
@@ -404,7 +417,13 @@ class VestEvent(db.Model):
 
             # Prefer centralized (request-cached) price helper
             as_of = self.vest_date if has_vested else today
-            price_at_vest = get_latest_user_price(self.grant.user_id, as_of_date=as_of) or 0.0
+            from app.utils.vest_basis import resolve_vest_fmv, rsu_cost_basis_per_share
+            if has_vested:
+                price_at_vest, _ = resolve_vest_fmv(
+                    self, user_id=self.grant.user_id, persist=True
+                )
+            else:
+                price_at_vest = get_latest_user_price(self.grant.user_id) or 0.0
 
             if current_price is None:
                 current_price = get_latest_user_price(self.grant.user_id) or 0.0
@@ -450,7 +469,12 @@ class VestEvent(db.Model):
             elif is_iso:
                 cost_basis_per_share = strike_price if strike_price is not None else 0.0
             else:
-                cost_basis_per_share = price_at_vest if has_vested else current_price
+                if has_vested:
+                    cost_basis_per_share, _ = rsu_cost_basis_per_share(
+                        self, user_id=self.grant.user_id, persist=True
+                    )
+                else:
+                    cost_basis_per_share = current_price
 
             tax_breakdown = None
             if not is_cash:

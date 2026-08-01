@@ -137,6 +137,12 @@ def add_price():
     up = UserPrice(user_id=current_user.id, valuation_date=valuation_date, encrypted_price=token)
     db.session.add(up)
     db.session.commit()
+    # Refresh vest FMV snapshots that may have been missing this history
+    try:
+        from app.utils.vest_basis import backfill_user_vest_fmv
+        backfill_user_vest_fmv(current_user.id)
+    except Exception:
+        pass
     AuditLogger.log_security_event(
         'USER_PRICE_ADDED',
         {'user_id': current_user.id, 'price_id': up.id, 'date': up.valuation_date.isoformat()},

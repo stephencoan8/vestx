@@ -159,7 +159,7 @@ def get_latest_user_price(user_id: int, as_of_date: Optional[date] = None) -> Op
     SPCX market data from the first trading day forward.
     """
     effective_date = as_of_date if as_of_date is not None else date.today()
-    cache_key = (user_id, effective_date.isoformat())
+    cache_key = (user_id, effective_date.isoformat(), 'as_of')
 
     cached, hit = _cache_get(cache_key)
     if hit:
@@ -187,6 +187,58 @@ def get_latest_user_price(user_id: int, as_of_date: Optional[date] = None) -> Op
             user_id, e, exc_info=True,
         )
         return None
+
+
+def get_price_on_or_near_date(
+    user_id: int,
+    on_date: date,
+    *,
+    allow_forward_fill: bool = True,
+) -> tuple:
+    """
+    Price for basis / vest FMV lookups.
+
+    Prefer last known price on or before ``on_date``. If none exists and
+    ``allow_forward_fill``, use the earliest later price (planning fallback —
+    never invent a number from thin air, but also never silently use $0 when
+    history exists only after the vest).
+
+    Returns (price_or_None, source) with source in {'as_of','forward_fill','missing'}.
+    """
+    if on_date is None:
+        return None, 'missing'
+    cache_key = (user_id, on_date.isoformat(), 'near', bool(allow_forward_fill))
+    cached, hit = _cache_get(cache_key)
+    if hit:
+        return cached
+
+    try:
+        history = _load_sorted_price_history(user_id)
+        if not history:
+            result = (None, 'missing')
+            _cache_set(cache_key, result)
+            return result
+
+        dates = [d for d, _ in history]
+        idx = bisect.bisect_right(dates, on_date) - 1
+        if idx >= 0:
+            result = (float(history[idx][1]), 'as_of')
+            _cache_set(cache_key, result)
+            return result
+        if allow_forward_fill:
+            # All history is after on_date — take earliest available
+            result = (float(history[0][1]), 'forward_fill')
+            _cache_set(cache_key, result)
+            return result
+        result = (None, 'missing')
+        _cache_set(cache_key, result)
+        return result
+    except Exception as e:
+        logger.error(
+            "Failed near-date price for user %s on %s: %s",
+            user_id, on_date, e, exc_info=True,
+        )
+        return None, 'missing'
 
 
 def warm_user_price_history(user_id: int) -> int:

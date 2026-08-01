@@ -122,6 +122,9 @@ def create_app():
         from app.utils.migrate_tax_year_profiles import migrate_tax_year_profiles
         _safe_migrate('tax_year_profiles', migrate_tax_year_profiles)
 
+        from app.utils.migrate_vest_fmv import migrate_vest_fmv
+        _safe_migrate('vest_fmv', migrate_vest_fmv)
+
         try:
             from app.utils.init_db import init_admin_user
             init_admin_user()

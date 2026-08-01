@@ -87,7 +87,15 @@ def add_grant():
                     tax_year=vest['vest_date'].year
                 )
                 db.session.add(vest_event)
-            
+            db.session.flush()
+            try:
+                from app.utils.vest_basis import ensure_vest_fmv_snapshot
+                for ve in VestEvent.query.filter_by(grant_id=grant.id).all():
+                    if ve.has_vested:
+                        ensure_vest_fmv_snapshot(ve, user_id=current_user.id)
+            except Exception:
+                pass
+
             db.session.commit()
             flash('Grant added successfully!', 'success')
             return redirect(url_for('grants.list_grants'))

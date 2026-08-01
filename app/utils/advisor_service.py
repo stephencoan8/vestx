@@ -104,6 +104,18 @@ def run_advisor_turn(
     except Exception as e:
         logger.warning('tax profile load failed: %s', e)
 
+    # Ensure RSU vest FMV snapshots exist before inventory (background-safe decrypt)
+    try:
+        from app.utils.vest_basis import backfill_user_vest_fmv
+        stats = backfill_user_vest_fmv(user_id)
+        if stats.get('still_missing'):
+            logger.warning(
+                'advisor user %s: %s vested lots still missing FMV after backfill',
+                user_id, stats.get('still_missing'),
+            )
+    except Exception as e:
+        logger.warning('vest FMV backfill before advisor failed: %s', e)
+
     lots = []
     try:
         lots = build_lots_for_user(user_id) or []

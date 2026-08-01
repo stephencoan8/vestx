@@ -90,21 +90,26 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             unexercised = 0
             latest_ex = None
 
-        # RSU/RSA cost basis = FMV on vest date (W-2 income already taxed on that FMV).
+        # RSU/RSA cost basis = FMV on vest date (stored snapshot + price history).
         # ISO sell basis starts at strike (bargain/AMT is separate).
-        fmv_vest = float(vest.share_price_at_vest or 0.0)
-        # Fallback: explicit as-of lookup (same helper; helps if property path failed)
-        if fmv_vest <= 0 and vest.vest_date:
-            fmv_vest = float(get_latest_user_price(user_id, as_of_date=vest.vest_date) or 0.0)
+        from app.utils.vest_basis import resolve_vest_fmv, iso_cost_basis_per_share
+
         strike = float(grant.share_price_at_grant or 0.0) if is_iso else 0.0
         if is_iso:
             basis = strike
+            fmv_vest = float(vest.share_price_at_vest or 0.0)  # display only
+            basis_source = 'strike'
         else:
-            basis = fmv_vest
+            fmv_vest, basis_source = resolve_vest_fmv(
+                vest, user_id=user_id, persist=True
+            )
+            basis = float(fmv_vest or 0.0)
 
         holding_days = (as_of - vest.vest_date).days
         unrealized = (current_price - basis) * available_to_sell if available_to_sell else 0.0
-        basis_missing = (not is_iso) and basis <= 0 and available_to_sell > 0
+        basis_missing = (not is_iso) and basis <= 0 and (
+            available_to_sell > 0 or unexercised > 0 or received > 0
+        )
 
         lots.append({
             'vest_event_id': vest.id,
@@ -123,6 +128,7 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             'cost_basis_per_share': basis,
             'strike_price': strike if is_iso else None,
             'fmv_at_vest': fmv_vest,
+            'basis_source': basis_source,
             'current_price': current_price,
             'unrealized_gain': unrealized,
             'holding_days': holding_days,

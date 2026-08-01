@@ -247,7 +247,13 @@ def estimate_vest_sale_tax(
     if is_iso:
         cost_basis_per_share = float(grant.share_price_at_grant or 0)
     else:
-        cost_basis_per_share = float(vest.share_price_at_vest or 0) if has_vested else float(current_stock_price)
+        from app.utils.vest_basis import rsu_cost_basis_per_share
+        if has_vested:
+            cost_basis_per_share, _src = rsu_cost_basis_per_share(
+                vest, user_id=grant.user_id, persist=True
+            )
+        else:
+            cost_basis_per_share = float(current_stock_price or 0)
 
     cost_basis = shares_held * cost_basis_per_share
     current_value = shares_held * float(current_stock_price)
