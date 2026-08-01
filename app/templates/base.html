@@ -105,6 +105,7 @@
           <span class="advisor-sub" id="advisorStatus">Background jobs · navigate freely · history in this tab</span>
         </div>
         <div class="advisor-header-actions">
+          <button type="button" class="advisor-cancel" id="advisorCancel" title="Cancel the running job" hidden>Cancel</button>
           <button type="button" class="advisor-newchat" id="advisorNewChat" title="Clear conversation">New</button>
           <button type="button" class="advisor-close" id="advisorClose" aria-label="Close">×</button>
         </div>
@@ -118,6 +119,7 @@
       </div>
       <div class="advisor-input-row">
         <textarea id="advisorInput" rows="3" placeholder="Ask anything about your equity… works on every page"></textarea>
+        <button type="button" class="btn btn-secondary advisor-cancel-inline" id="advisorCancelInline" title="Cancel the running job" hidden>Cancel</button>
         <button type="button" class="btn btn-primary" id="advisorSend">Send</button>
       </div>
     </aside>
@@ -195,6 +197,7 @@
         window.VESTX_ADVISOR_URL = '{{ url_for("tax_center.api_advisor") }}';
         window.VESTX_ADVISOR_JOBS_URL = '{{ url_for("tax_center.api_advisor_enqueue") }}';
         window.VESTX_ADVISOR_JOB_URL = '{{ url_for("tax_center.api_advisor_job_status", job_id="__ID__") }}';
+        window.VESTX_ADVISOR_JOB_CANCEL_URL = '{{ url_for("tax_center.api_advisor_job_cancel", job_id="__ID__") }}';
         window.VESTX_ADVISOR_PING_URL = '{{ url_for("tax_center.api_ping") }}';
         window.VESTX_SETTINGS_URL = '{{ url_for("settings.profile") }}';
         window.VESTX_TAX_HUB_URL = '{{ url_for("tax_center.hub") }}';

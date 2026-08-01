@@ -379,7 +379,8 @@ body.advisor-open .app-main {
     gap: 0.35rem;
     flex-shrink: 0;
 }
-.advisor-newchat {
+.advisor-newchat,
+.advisor-cancel {
     background: transparent;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
@@ -394,6 +395,29 @@ body.advisor-open .app-main {
     color: var(--text-primary);
     border-color: var(--copper-border);
     background: var(--bg-hover);
+}
+.advisor-cancel {
+    color: #d4a99a;
+    border-color: rgba(168, 90, 74, 0.45);
+}
+.advisor-cancel:hover {
+    color: var(--text-primary);
+    border-color: rgba(168, 90, 74, 0.7);
+    background: rgba(168, 90, 74, 0.12);
+}
+.advisor-cancel[hidden],
+.advisor-cancel-inline[hidden] {
+    display: none !important;
+}
+.advisor-cancel-inline {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+body.advisor-request-inflight .advisor-cancel,
+body.advisor-request-inflight .advisor-cancel-inline,
+.advisor-panel.advisor-request-inflight .advisor-cancel,
+.advisor-panel.advisor-request-inflight .advisor-cancel-inline {
+    display: inline-flex !important;
 }
 .advisor-header strong {
     display: block;

@@ -85,5 +85,34 @@ def get_job_for_user(job_id: str, user_id: int) -> Optional[AdvisorJob]:
     return job
 
 
+def cancel_job_for_user(job_id: str, user_id: int) -> Optional[AdvisorJob]:
+    """
+    Mark a queued/running job cancelled so the client can free the UI.
+    Background thread may still finish work but will not overwrite cancelled.
+    """
+    job = get_job_for_user(job_id, user_id)
+    if not job:
+        return None
+    if job.status in ('done', 'error', 'cancelled'):
+        return job
+    job.status = 'cancelled'
+    job.phase = 'cancelled'
+    job.error = 'Cancelled by user'
+    job.finished_at = datetime.utcnow()
+    try:
+        job.set_result({
+            'success': False,
+            'cancelled': True,
+            'error': 'Cancelled by user',
+            'phase': 'cancelled',
+            'api_ok': True,
+        })
+    except Exception:
+        pass
+    db.session.commit()
+    logger.info('advisor job cancelled id=%s user=%s', job_id, user_id)
+    return job
+
+
 def job_public_payload(job: AdvisorJob) -> Dict[str, Any]:
     return job.to_public_dict(include_result=True)

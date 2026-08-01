@@ -21,6 +21,8 @@
     var panel = document.getElementById('advisorPanel');
     var closeBtn = document.getElementById('advisorClose');
     var newChatBtn = document.getElementById('advisorNewChat');
+    var cancelBtn = document.getElementById('advisorCancel');
+    var cancelInlineBtn = document.getElementById('advisorCancelInline');
     var sendBtn = document.getElementById('advisorSend');
     var input = document.getElementById('advisorInput');
     var log = document.getElementById('advisorMessages');
@@ -35,6 +37,8 @@
     var activeJobId = null;
     var pollAttempt = 0;
     var pageUnloading = false;
+    var cancelInFlight = false;
+    var enqueueAbort = null;
 
     // —— storage ——
     function saveHistory() {
@@ -86,6 +90,20 @@
         return tmpl.replace('__ID__', encodeURIComponent(jobId));
     }
 
+    function jobCancelUrl(jobId) {
+        var tmpl = window.VESTX_ADVISOR_JOB_CANCEL_URL || '/tax/api/advisor/jobs/__ID__/cancel';
+        return tmpl.replace('__ID__', encodeURIComponent(jobId));
+    }
+
+    function setCancelVisible(show) {
+        [cancelBtn, cancelInlineBtn].forEach(function (btn) {
+            if (!btn) return;
+            if (show) btn.removeAttribute('hidden');
+            else btn.setAttribute('hidden', '');
+            btn.disabled = !!cancelInFlight;
+        });
+    }
+
     function setBusyUi(busy, label) {
         if (fab) {
             fab.classList.toggle('advisor-busy', !!busy);
@@ -95,6 +113,7 @@
                 : 'VestX Advisor — works in background; navigate freely';
         }
         if (panel) panel.classList.toggle('advisor-request-inflight', !!busy);
+        document.body.classList.toggle('advisor-request-inflight', !!busy);
         if (statusEl && busy) {
             statusEl.textContent = label || 'Background job · navigate freely…';
         }
@@ -104,9 +123,10 @@
         }
         if (input) {
             input.placeholder = busy
-                ? 'Job running in background — switch pages anytime…'
+                ? 'Job running — Cancel to stop, or switch pages anytime…'
                 : 'Ask anything about your equity… works on every page';
         }
+        setCancelVisible(!!busy);
     }
 
     function isAdvisorOpen() {
@@ -185,7 +205,7 @@
             '<div class="advisor-loading-text">' +
             '<strong>Background job running…</strong>' +
             '<span class="advisor-loading-phase">Queued · servers free for page loads</span>' +
-            '<span class="advisor-loading-hint">Navigate anywhere — reply attaches when ready' +
+            '<span class="advisor-loading-hint">Hit <strong>Cancel</strong> if this stalls · navigate freely' +
             (jobId ? ' · job ' + String(jobId).slice(0, 8) : '') +
             '</span>' +
             '</div></div>';
@@ -325,6 +345,10 @@
                         finishError(jobId, data);
                         return;
                     }
+                    if (st === 'cancelled') {
+                        finishCancelled(jobId);
+                        return;
+                    }
                     // Unknown — keep polling a bit
                     pollAttempt += 1;
                     if (pollAttempt > 90) {
@@ -348,6 +372,68 @@
 
         pollTimer = setTimeout(tick, 250);
     }
+
+    function finishCancelled(jobId) {
+        if (activeJobId && jobId && activeJobId !== jobId) return;
+        removeLoadingUi();
+        clearPending();
+        cancelInFlight = false;
+        setBusyUi(false);
+        appendMsg('bot', '**Cancelled** — job stopped. You can send a new question.');
+        if (statusEl) statusEl.textContent = 'Cancelled · ready for a new question';
+        try {
+            if (input) input.focus({ preventScroll: true });
+        } catch (e) {
+            if (input) input.focus();
+        }
+    }
+
+    /**
+     * Stop polling immediately and ask the server to mark the job cancelled.
+     * Always frees the chat UI even if the cancel API fails.
+     */
+    function cancelAdvisorJob(opts) {
+        opts = opts || {};
+        var silent = !!opts.silent; // New chat: free UI without extra cancelled bubble
+        if (cancelInFlight && !silent) return;
+        var pending = readPendingJob();
+        var jobId = activeJobId || (pending && pending.jobId) || null;
+
+        // Abort in-flight enqueue POST if still connecting
+        if (enqueueAbort) {
+            try { enqueueAbort.abort(); } catch (e) {}
+            enqueueAbort = null;
+        }
+
+        cancelInFlight = true;
+        stopPolling();
+        // Free UI immediately so a stalled job never traps Send
+        removeLoadingUi();
+        var cancelledId = jobId;
+        clearPending();
+        cancelInFlight = false;
+        setBusyUi(false);
+        if (!silent) {
+            appendMsg('bot', '**Cancelled** — job stopped. You can send a new question.');
+            if (statusEl) statusEl.textContent = 'Cancelled · ready for a new question';
+        } else if (statusEl) {
+            statusEl.textContent = 'Ready';
+        }
+
+        if (cancelledId && window.vestxFetchJson) {
+            window.vestxFetchJson(jobCancelUrl(cancelledId), {
+                method: 'POST',
+                body: JSON.stringify({}),
+            }).catch(function () { /* local cancel already applied */ });
+        }
+        try {
+            if (input && !silent) input.focus({ preventScroll: true });
+        } catch (e) {
+            if (input && !silent) input.focus();
+        }
+    }
+
+    window.vestxCancelAdvisor = cancelAdvisorJob;
 
     function finishSuccess(jobId, data, startedAt) {
         if (activeJobId && activeJobId !== jobId) return;
@@ -447,14 +533,22 @@
         setBusyUi(true, 'Enqueueing background job…');
         showLoadingUi(startedAt, null);
 
+        if (enqueueAbort) {
+            try { enqueueAbort.abort(); } catch (e) {}
+        }
+        enqueueAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
         window.vestxFetchJson(jobsUrl, {
             method: 'POST',
             body: JSON.stringify({
                 messages: messages,
                 plan: window.VESTX_LAST_PLAN || null
-            })
+            }),
+            signal: enqueueAbort ? enqueueAbort.signal : undefined
         })
             .then(function (data) {
+                enqueueAbort = null;
+                if (cancelInFlight) return;
                 var jobId = data.job_id || data.id;
                 if (!jobId) {
                     finishError(null, { error: 'No job_id returned from server' });
@@ -466,12 +560,17 @@
                     messages: messages
                 });
                 activeJobId = jobId;
-                setBusyUi(true, 'Job ' + String(jobId).slice(0, 8) + '… navigate freely');
+                setBusyUi(true, 'Job ' + String(jobId).slice(0, 8) + '… Cancel anytime');
                 showLoadingUi(startedAt, jobId);
                 startPolling(jobId, startedAt);
             })
             .catch(function (e) {
+                enqueueAbort = null;
                 if (pageUnloading) return;
+                if (cancelInFlight || (e && e.name === 'AbortError')) {
+                    finishCancelled(null);
+                    return;
+                }
                 finishError(null, {
                     error: e.message || String(e),
                     status: e.status,
@@ -483,7 +582,7 @@
     function sendAdvisor() {
         if (readPendingJob() || activeJobId) {
             if (statusEl) {
-                statusEl.textContent = 'Job still running — navigate freely; wait for reply';
+                statusEl.textContent = 'Job still running — Cancel to stop, or wait for reply';
             }
             return;
         }
@@ -546,16 +645,39 @@
     if (newChatBtn) {
         newChatBtn.addEventListener('click', function (e) {
             e.preventDefault();
-            clearPending();
-            removeLoadingUi();
+            // New chat also cancels any in-flight job so UI never stays stuck
+            if (activeJobId || readPendingJob()) {
+                cancelAdvisorJob({ silent: true });
+            } else {
+                clearPending();
+                removeLoadingUi();
+                setBusyUi(false);
+            }
             history = [];
             saveHistory();
             clearChatDomKeepWelcome();
             if (statusEl) statusEl.textContent = 'New chat · async jobs · navigate freely';
         });
     }
+    function onCancelClick(e) {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        cancelAdvisorJob();
+    }
+    if (cancelBtn) cancelBtn.addEventListener('click', onCancelClick);
+    if (cancelInlineBtn) cancelInlineBtn.addEventListener('click', onCancelClick);
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && isAdvisorOpen()) closeAdvisor(e);
+        if (e.key === 'Escape' && isAdvisorOpen()) {
+            if (activeJobId || readPendingJob()) {
+                // First Esc cancels job; second closes panel
+                e.preventDefault();
+                cancelAdvisorJob();
+                return;
+            }
+            closeAdvisor(e);
+        }
     });
     if (sendBtn) sendBtn.addEventListener('click', sendAdvisor);
     if (input) {

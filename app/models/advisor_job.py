@@ -21,7 +21,7 @@ class AdvisorJob(db.Model):
     # No DB-level FK: create_all must not fail if users table naming differs across envs
     user_id = db.Column(db.Integer, nullable=False, index=True)
 
-    # queued | running | done | error
+    # queued | running | done | error | cancelled
     status = db.Column(db.String(16), nullable=False, default='queued', index=True)
     phase = db.Column(db.String(64), nullable=True)
 

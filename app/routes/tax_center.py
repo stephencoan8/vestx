@@ -985,6 +985,10 @@ def api_advisor_job_status(job_id: str):
             if payload.get('result'):
                 payload['reply'] = payload['result'].get('reply')
                 payload['engine_plan'] = payload['result'].get('engine_plan')
+        elif job.status == 'cancelled':
+            payload['error'] = job.error or 'Cancelled by user'
+            payload['cancelled'] = True
+            payload['phase'] = 'cancelled'
         return _api_json(payload)
     except Exception as e:
         logger.error('advisor poll failed: %s', e, exc_info=True)
@@ -993,6 +997,39 @@ def api_advisor_job_status(job_id: str):
             'error': str(e),
             'code': 'poll_error',
             'phase': 'poll',
+            'api_ok': False,
+        }, 500)
+
+
+@tax_center_bp.route('/api/advisor/jobs/<job_id>/cancel', methods=['POST'])
+@login_required
+def api_advisor_job_cancel(job_id: str):
+    """Cancel a queued/running advisor job so the chat UI can free itself."""
+    try:
+        from app.utils.advisor_jobs import cancel_job_for_user, job_public_payload
+        job = cancel_job_for_user(job_id, current_user.id)
+        if not job:
+            return _api_json({
+                'success': False,
+                'error': 'Job not found',
+                'code': 'not_found',
+                'phase': 'cancel',
+            }, 404)
+        payload = job_public_payload(job)
+        payload.update({
+            'success': True,
+            'api_ok': True,
+            'cancelled': job.status == 'cancelled' or job.status in ('done', 'error'),
+            'phase': job.phase or job.status,
+        })
+        return _api_json(payload)
+    except Exception as e:
+        logger.error('advisor cancel failed: %s', e, exc_info=True)
+        return _api_json({
+            'success': False,
+            'error': str(e),
+            'code': 'cancel_error',
+            'phase': 'cancel',
             'api_ok': False,
         }, 500)
 

@@ -320,6 +320,10 @@ def execute_job_in_background(app, job_id: str) -> None:
                 job = db.session.get(AdvisorJob, job_id) if hasattr(db.session, 'get') else AdvisorJob.query.get(job_id)
                 if not job:
                     return
+                # User cancelled while we were working — leave cancelled, drop result
+                if job.status == 'cancelled':
+                    logger.info('advisor job %s finished after cancel; not overwriting', job_id)
+                    return
                 job.phase = (result or {}).get('phase') or 'done'
                 if result.get('success') is False and not result.get('reply'):
                     job.status = 'error'
