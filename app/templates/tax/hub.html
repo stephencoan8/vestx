@@ -220,13 +220,13 @@
     </div>
 
     <div class="tax-lots-toolbar" id="lotsToolbar">
-      <div class="tax-lots-filter" role="group" aria-label="Share type filter">
+      <div class="tax-lots-filter" role="group" aria-label="Share type filter (multi-select)">
         <span class="tax-lots-filter-label">Show</span>
-        <button type="button" class="tax-chip tax-lot-filter is-active" data-lot-filter="all">All</button>
-        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="rsu">RSU</button>
-        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso">ISO</button>
-        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_held">ISO held</button>
-        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_unex">ISO unexercised</button>
+        <button type="button" class="tax-chip tax-lot-filter is-active" data-lot-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="rsu" aria-pressed="false">RSU</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso" aria-pressed="false">ISO</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_held" aria-pressed="false">ISO held</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_unex" aria-pressed="false">ISO unexercised</button>
       </div>
       <span class="tax-muted-sm" id="lotsFilterCount"></span>
     </div>
@@ -955,34 +955,55 @@
     });
   })();
 
-  // Lot table: share-type filter + count (sorting via sortable-tables.js)
+  // Lot table: multi-select share-type filters + count (sorting via sortable-tables.js)
   (function initLotsFilter() {
     const table = document.getElementById('lotsTable');
     const countEl = document.getElementById('lotsFilterCount');
-    const chips = document.querySelectorAll('.tax-lot-filter');
+    const chips = Array.prototype.slice.call(document.querySelectorAll('.tax-lot-filter'));
     if (!table || !chips.length) return;
 
-    function matchesFilter(tr, filter) {
+    const allBtn = chips.find(function (c) { return c.getAttribute('data-lot-filter') === 'all'; });
+    const typeChips = chips.filter(function (c) { return c.getAttribute('data-lot-filter') !== 'all'; });
+
+    function selectedFilters() {
+      return typeChips
+        .filter(function (c) { return c.classList.contains('is-active'); })
+        .map(function (c) { return c.getAttribute('data-lot-filter'); });
+    }
+
+    function setChipState(btn, on) {
+      btn.classList.toggle('is-active', !!on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
+    function matchesAny(tr, filters) {
       if (tr.classList.contains('tax-lot-empty')) return true;
+      if (!filters.length) return true; // none selected = all
       const kind = tr.getAttribute('data-kind') || (tr.dataset.iso === 'true' ? 'iso' : 'rsu');
       const held = parseFloat(tr.dataset.available || 0) > 0;
       const unex = parseFloat(tr.dataset.unexercised || 0) > 0;
-      if (filter === 'all') return true;
-      if (filter === 'rsu') return kind === 'rsu';
-      if (filter === 'iso') return kind === 'iso';
-      if (filter === 'iso_held') return kind === 'iso' && held;
-      if (filter === 'iso_unex') return kind === 'iso' && unex;
-      return true;
+      for (let i = 0; i < filters.length; i++) {
+        const f = filters[i];
+        if (f === 'rsu' && kind === 'rsu') return true;
+        if (f === 'iso' && kind === 'iso') return true;
+        if (f === 'iso_held' && kind === 'iso' && held) return true;
+        if (f === 'iso_unex' && kind === 'iso' && unex) return true;
+      }
+      return false;
     }
 
-    function applyFilter(filter) {
+    function applyFilter() {
+      const filters = selectedFilters();
+      // "All" is active only when no type chips are selected
+      if (allBtn) setChipState(allBtn, filters.length === 0);
+
       let visible = 0;
       let total = 0;
       table.querySelectorAll('tbody tr.tax-lot-row').forEach(function (tr) {
         total += 1;
-        const show = matchesFilter(tr, filter);
+        const show = matchesAny(tr, filters);
         tr.style.display = show ? '' : 'none';
-        // Uncheck/hide qty on filtered-out rows so scenarios don't use invisible lots
+        // Uncheck/clear qty on filtered-out rows so scenarios don't use invisible lots
         if (!show) {
           const check = tr.querySelector('.lot-check');
           const qty = tr.querySelector('.lot-qty');
@@ -993,18 +1014,31 @@
         }
       });
       if (countEl) {
-        countEl.textContent = total ? (visible + ' of ' + total + ' lots') : '';
+        const label = filters.length
+          ? (visible + ' of ' + total + ' · ' + filters.join(' + '))
+          : (total ? (visible + ' of ' + total + ' lots') : '');
+        countEl.textContent = label;
       }
     }
 
     chips.forEach(function (btn) {
       btn.addEventListener('click', function () {
-        chips.forEach(function (c) { c.classList.remove('is-active'); });
-        btn.classList.add('is-active');
-        applyFilter(btn.getAttribute('data-lot-filter') || 'all');
+        const key = btn.getAttribute('data-lot-filter') || 'all';
+        if (key === 'all') {
+          // Clear multi-select → show everything
+          typeChips.forEach(function (c) { setChipState(c, false); });
+          setChipState(btn, true);
+        } else {
+          // Toggle this type; deselect "All"
+          setChipState(btn, !btn.classList.contains('is-active'));
+          if (allBtn) setChipState(allBtn, false);
+          // If user turned off the last type chip, back to All
+          if (selectedFilters().length === 0 && allBtn) setChipState(allBtn, true);
+        }
+        applyFilter();
       });
     });
-    applyFilter('all');
+    applyFilter();
   })();
 
   document.getElementById('btnSellMax').addEventListener('click', function () {
