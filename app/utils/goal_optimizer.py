@@ -51,6 +51,9 @@ class GoalRequest:
     allow_iso_sell_held: bool = True
     allow_iso_cashless: bool = True
     allow_iso_exercise_hold: bool = False  # hold burns cash; off by default for net-cash goals
+    # Exercise every unexercised ISO (hold — do not sell ISO stock). Strike + AMT
+    # stack into the same tax engine run; RSU sales fund costs + pocket target.
+    exercise_all_iso: bool = False
     # Optional ISO allocation hints
     iso_max_exercise: Optional[float] = None  # max unexercised to touch
     iso_prefer_hold_fraction: Optional[float] = None  # 0..1 of exercised amount to hold
@@ -289,7 +292,13 @@ def _build_ranked_candidates(
             )
             cands.append((s, 'sell_iso_held', held, reason, is_lt, disp, score))
 
-        if s.is_iso and goal.allow_iso_cashless and unex > 0:
+        # When exercising-all and holding, never cashless-sell those ISOs
+        if (
+            s.is_iso
+            and goal.allow_iso_cashless
+            and unex > 0
+            and not goal.exercise_all_iso
+        ):
             score, reason, is_lt, disp = _lot_rank_score(
                 s, price=price, sale_date=sale_date, mode='cashless'
             )
@@ -301,6 +310,45 @@ def _build_ranked_candidates(
 
     cands.sort(key=lambda x: (x[6], -x[2]))  # best score, then larger lots
     return cands
+
+
+def _iso_exercise_hold_picks(
+    specs: Sequence[LotSpec],
+    *,
+    price: float,
+    fmv: float,
+) -> List[LotPick]:
+    """One iso_exercise_hold pick per unexercised ISO lot (whole shares)."""
+    from app.utils.shares import whole_shares
+
+    picks: List[LotPick] = []
+    for s in specs:
+        unex = float(whole_shares(s.shares_unexercised or 0))
+        if not s.is_iso or unex <= 0:
+            continue
+        bargain = max(0.0, fmv - s.strike_price) * unex
+        picks.append(
+            LotPick(
+                vest_event_id=s.vest_event_id,
+                grant_id=s.grant_id,
+                label=s.label,
+                share_type=s.share_type,
+                is_iso=True,
+                action='iso_exercise_hold',
+                shares=unex,
+                price=fmv,
+                basis_or_strike=s.strike_price,
+                estimated_gain=bargain,
+                is_long_term=False,
+                iso_disposition='hold',
+                rank_score=0.0,
+                reason=(
+                    f'Exercise-and-hold all unexercised ISO · strike ${s.strike_price:.2f} · '
+                    f'AMT bargain ≈ ${bargain:,.0f}'
+                ),
+            )
+        )
+    return picks
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +570,21 @@ def _optimize_goal_impl(
     target = float(goal.target_net_cash or 0)
 
     specs = inventory_to_specs(inventory_lots or [], price)
+
+    # Combined strategy: exercise-all ISO (hold) + fund strike/AMT via RSU + pocket net
+    wants_ex_all = bool(goal.exercise_all_iso) or (
+        goal.allow_iso_exercise_hold
+        and goal.iso_prefer_hold_fraction is not None
+        and float(goal.iso_prefer_hold_fraction) >= 0.999
+    )
+    has_unex_iso = any(
+        s.is_iso and (s.shares_unexercised or 0) > 0 for s in specs
+    )
+    if wants_ex_all and has_unex_iso:
+        return _optimize_exercise_all_iso_and_pocket(
+            profile, specs, goal, sale_date, exercise_date, price, fmv, target
+        )
+
     ranked = _build_ranked_candidates(specs, goal, sale_date, price)
 
     if not ranked:
@@ -666,6 +729,358 @@ def _optimize_goal_impl(
         alternatives = []
 
     return _result_from_eval(goal, picks, ev, target, ranked, alternatives, iso_split)
+
+
+def _optimize_exercise_all_iso_and_pocket(
+    profile: dict,
+    specs: List[LotSpec],
+    goal: GoalRequest,
+    sale_date: date,
+    exercise_date: date,
+    price: float,
+    fmv: float,
+    target: float,
+) -> GoalPlanResult:
+    """
+    Exercise all unexercised ISOs (hold — no ISO sale), then sell min-tax RSUs so that:
+
+        sale_proceeds − stacked_tax − strike_outlay  ≥  target_net_cash
+
+    Target is **pocket net** after funding strike and ISO AMT (same-year stack).
+    """
+    from app.utils.shares import whole_shares
+    from copy import deepcopy as _dc
+
+    iso_picks = _iso_exercise_hold_picks(specs, price=price, fmv=fmv)
+    if not iso_picks:
+        return GoalPlanResult(
+            success=False,
+            goal=goal.to_dict(),
+            achieved_net_cash=0,
+            shortfall=target,
+            total_proceeds=0,
+            total_tax=0,
+            total_strike_outlay=0,
+            effective_tax_rate=0,
+            picks=[],
+            actions_summary=[],
+            efficiency_notes=[],
+            warnings=['exercise_all_iso set but no unexercised ISO shares found.'],
+        )
+
+    # RSU-only ranking for funding + pocket (no ISO cashless, no selling held ISO for this mode)
+    g_rsu = _dc(goal)
+    g_rsu.exercise_all_iso = False
+    g_rsu.allow_iso_cashless = False
+    g_rsu.allow_iso_sell_held = False
+    g_rsu.allow_iso_exercise_hold = False
+    g_rsu.allow_rsu = True
+    ranked = _build_ranked_candidates(specs, g_rsu, sale_date, price)
+
+    # Baseline: exercise only
+    base_ev = _evaluate_picks_with_specs(
+        profile, iso_picks, specs, sale_date, exercise_date, price, fmv
+    )
+    base_net = float(base_ev['net_cash'])
+    base_strike = float(base_ev['strike_outlay'])
+    base_tax = float(base_ev['tax'])
+
+    if not ranked:
+        notes = [
+            f'Exercise-and-hold all unexercised ISO: strike outlay ${base_strike:,.0f}, '
+            f'incremental tax (AMT/etc.) ${base_tax:,.0f}, net cash ${base_net:,.0f}.',
+            'No RSU inventory to fund costs or raise pocket cash.',
+        ]
+        return _result_from_eval(
+            goal, iso_picks, base_ev, target, ranked, [], {
+                'mode': 'exercise_all_hold',
+                'strike_outlay': base_strike,
+                'iso_tax': base_tax,
+                'iso_shares': sum(p.shares for p in iso_picks),
+            }
+        )
+
+    # Pocket target: if user set none, still cover costs (pocket ≥ 0) unless max_net
+    pocket = target if target > 0 else 0.0
+    if target <= 0 and goal.objective == 'max_net':
+        # Sell all efficient RSU + exercise all ISO
+        rsu_alloc = [(c[0], c[1], c[2], c[3], c[4], c[5]) for c in ranked]
+        rsu_picks = _fix_pick_metadata(
+            _picks_from_allocation(rsu_alloc, price), specs, sale_date, exercise_date, fmv
+        )
+        picks = iso_picks + rsu_picks
+        ev = _evaluate_picks_with_specs(
+            profile, picks, specs, sale_date, exercise_date, price, fmv
+        )
+        return _result_from_eval(
+            goal, picks, ev, 0, ranked, [], _iso_fund_meta(iso_picks, base_ev, ev)
+        )
+
+    # Greedy RSU fill until stacked net (with ISO always included) meets pocket target
+    rsu_filled: List[Tuple[LotSpec, str, float, str, bool, str]] = []
+
+    def approx_nps(spec: LotSpec) -> float:
+        gain = max(0.0, price - spec.cost_basis_per_share)
+        rate = 0.28 if (sale_date - spec.vest_date).days >= 365 else 0.42
+        return max(0.01, price - gain * rate)
+
+    for spec, action, max_sh, reason, is_lt, disp, score in ranked:
+        # Approximate current stacked net
+        trial = iso_picks + _fix_pick_metadata(
+            _picks_from_allocation(rsu_filled, price), specs, sale_date, exercise_date, fmv
+        )
+        try:
+            cur = _evaluate_picks_with_specs(
+                profile, trial, specs, sale_date, exercise_date, price, fmv
+            )['net_cash']
+        except Exception:
+            cur = base_net + sum(
+                approx_nps(s) * sh for s, a, sh, _, _, _ in rsu_filled
+            )
+        if cur >= pocket * 0.995:
+            break
+        need = pocket - cur
+        nps = approx_nps(spec)
+        take = min(float(max_sh), max(1.0, need / nps * 1.2))
+        take = float(whole_shares(take))
+        if take < 1 and max_sh >= 1:
+            take = 1.0
+        if take > 1e-6:
+            rsu_filled.append((spec, action, min(take, float(max_sh)), reason, is_lt, disp))
+
+    if not rsu_filled and pocket > base_net:
+        # Force first RSU lot fully into trial
+        spec, action, max_sh, reason, is_lt, disp, score = ranked[0]
+        rsu_filled.append((spec, action, float(max_sh), reason, is_lt, disp))
+
+    rsu_picks = _fix_pick_metadata(
+        _picks_from_allocation(rsu_filled, price), specs, sale_date, exercise_date, fmv
+    )
+    picks = iso_picks + rsu_picks
+
+    # Refine: only scale RSU portion (keep ISO holds fixed)
+    picks = _refine_rsu_with_locked_iso(
+        profile,
+        picks,
+        iso_picks,
+        specs,
+        goal,
+        sale_date,
+        exercise_date,
+        price,
+        fmv,
+        pocket,
+        ranked,
+    )
+
+    try:
+        ev = _evaluate_picks_with_specs(
+            profile, picks, specs, sale_date, exercise_date, price, fmv
+        )
+    except Exception as e:
+        return GoalPlanResult(
+            success=False,
+            goal=goal.to_dict(),
+            achieved_net_cash=0,
+            shortfall=pocket,
+            total_proceeds=0,
+            total_tax=0,
+            total_strike_outlay=base_strike,
+            effective_tax_rate=0,
+            picks=picks,
+            actions_summary=[],
+            efficiency_notes=[f'Exercise+fund evaluation failed: {e}'],
+            warnings=[str(e)],
+            iso_split=_iso_fund_meta(iso_picks, base_ev, base_ev),
+        )
+
+    alts = [
+        {
+            'name': 'Pocket only (no ISO exercise)',
+            'note': 'Drop exercise_all_iso to raise cash without starting the ISO QD clock or paying strike/AMT.',
+        },
+        {
+            'name': 'Cashless ISO instead of hold',
+            'note': 'Selling ISO same-day is DD (ordinary on bargain) — usually worse tax than RSU LT + hold ISO.',
+        },
+    ]
+    return _result_from_eval(
+        goal, picks, ev, pocket, ranked, alts, _iso_fund_meta(iso_picks, base_ev, ev)
+    )
+
+
+def _iso_fund_meta(
+    iso_picks: List[LotPick],
+    base_ev: Dict[str, Any],
+    full_ev: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        'mode': 'exercise_all_hold_fund_rsu',
+        'iso_shares': sum(p.shares for p in iso_picks),
+        'iso_lots': len(iso_picks),
+        'strike_outlay': float(base_ev.get('strike_outlay') or 0),
+        'iso_only_tax': float(base_ev.get('tax') or 0),
+        'iso_only_net': float(base_ev.get('net_cash') or 0),
+        'combined_tax': float(full_ev.get('tax') or 0),
+        'combined_net': float(full_ev.get('net_cash') or 0),
+        'rsu_gross': float(full_ev.get('proceeds') or 0),
+    }
+
+
+def _refine_rsu_with_locked_iso(
+    profile: dict,
+    picks: List[LotPick],
+    iso_picks: List[LotPick],
+    specs: Sequence[LotSpec],
+    goal: GoalRequest,
+    sale_date: date,
+    exercise_date: date,
+    price: float,
+    fmv: float,
+    target: float,
+    ranked,
+) -> List[LotPick]:
+    """Like _refine_to_target but never changes iso_exercise_hold rows."""
+    from app.utils.shares import whole_shares
+
+    iso_ids = {(p.vest_event_id, p.action) for p in iso_picks}
+    rsu_picks = [p for p in picks if (p.vest_event_id, p.action) not in iso_ids]
+
+    def combine(rsu: List[LotPick]) -> List[LotPick]:
+        return list(iso_picks) + [p for p in rsu if p.shares > 0]
+
+    # Add RSU capacity until target met
+    for _ in range(12):
+        ev = _evaluate_picks_with_specs(
+            profile, combine(rsu_picks), specs, sale_date, exercise_date, price, fmv
+        )
+        if ev['net_cash'] >= target * 0.995:
+            break
+        used = {(p.vest_event_id, p.action): p.shares for p in rsu_picks}
+        added = False
+        for spec, action, max_sh, reason, is_lt, disp, score in ranked:
+            key = (spec.vest_event_id, action)
+            already = used.get(key, 0.0)
+            if already >= max_sh - 1e-6:
+                continue
+            room = float(whole_shares(max_sh - already))
+            if room < 1:
+                continue
+            add = max(1.0, min(room, float(whole_shares(max(room * 0.25, 1)))))
+            if already > 0:
+                for p in rsu_picks:
+                    if p.vest_event_id == spec.vest_event_id and p.action == action:
+                        p.shares = float(whole_shares(min(max_sh, p.shares + add)))
+                        break
+            else:
+                rsu_picks.append(
+                    LotPick(
+                        vest_event_id=spec.vest_event_id,
+                        grant_id=spec.grant_id,
+                        label=spec.label,
+                        share_type=spec.share_type,
+                        is_iso=False,
+                        action=action,
+                        shares=add,
+                        price=price,
+                        basis_or_strike=spec.cost_basis_per_share,
+                        estimated_gain=0,
+                        is_long_term=is_lt,
+                        iso_disposition=disp,
+                        rank_score=score,
+                        reason=reason,
+                    )
+                )
+            added = True
+            break
+        if not added:
+            break
+
+    # Binary trim last RSU lot (whole shares) if overshooting
+    for _ in range(24):
+        if not rsu_picks:
+            break
+        ev = _evaluate_picks_with_specs(
+            profile, combine(rsu_picks), specs, sale_date, exercise_date, price, fmv
+        )
+        if ev['net_cash'] < target:
+            break
+        last = rsu_picks[-1]
+        if last.shares <= 1:
+            # Try drop last lot only if still meeting without it
+            trial = rsu_picks[:-1]
+            e2 = _evaluate_picks_with_specs(
+                profile, combine(trial), specs, sale_date, exercise_date, price, fmv
+            )
+            if e2['net_cash'] >= target * 0.995:
+                rsu_picks.pop()
+                continue
+            break
+        lo, hi = 1, int(last.shares)
+        best_sh = int(last.shares)
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            last.shares = float(mid)
+            e2 = _evaluate_picks_with_specs(
+                profile, combine(rsu_picks), specs, sale_date, exercise_date, price, fmv
+            )
+            if e2['net_cash'] >= target * 0.995:
+                best_sh = mid
+                hi = mid - 1
+            else:
+                lo = mid + 1
+        last.shares = float(best_sh)
+        break
+
+    rsu_picks = [p for p in rsu_picks if p.shares >= 1]
+
+    # Close shortfalls one whole share at a time until pocket target fully met
+    for _ in range(800):
+        ev = _evaluate_picks_with_specs(
+            profile, combine(rsu_picks), specs, sale_date, exercise_date, price, fmv
+        )
+        if ev['net_cash'] >= target:
+            break
+        used = {(p.vest_event_id, p.action): p.shares for p in rsu_picks}
+        grew = False
+        for spec, action, max_sh, reason, is_lt, disp, score in ranked:
+            key = (spec.vest_event_id, action)
+            already = used.get(key, 0.0)
+            if already >= max_sh - 0.5:
+                continue
+            if already > 0:
+                for p in rsu_picks:
+                    if p.vest_event_id == spec.vest_event_id and p.action == action:
+                        p.shares = float(whole_shares(min(max_sh, p.shares + 1)))
+                        grew = True
+                        break
+            else:
+                rsu_picks.append(
+                    LotPick(
+                        vest_event_id=spec.vest_event_id,
+                        grant_id=spec.grant_id,
+                        label=spec.label,
+                        share_type=spec.share_type,
+                        is_iso=False,
+                        action=action,
+                        shares=1.0,
+                        price=price,
+                        basis_or_strike=spec.cost_basis_per_share,
+                        estimated_gain=0,
+                        is_long_term=is_lt,
+                        iso_disposition=disp,
+                        rank_score=score,
+                        reason=reason,
+                    )
+                )
+                grew = True
+            if grew:
+                break
+        if not grew:
+            break
+
+    rsu_picks = [p for p in rsu_picks if p.shares >= 1]
+    return combine(rsu_picks)
 
 
 def _fix_pick_metadata(
@@ -1044,6 +1459,21 @@ def _result_from_eval(
         'Eff. rate = incremental tax ÷ economic gain (proceeds − basis), not ÷ gross proceeds.',
         'This is SpecID planning — execute the same vest lots when selling.',
     ]
+    iso_hold_n = sum(1 for p in picks if p.action == 'iso_exercise_hold')
+    if iso_hold_n:
+        notes.insert(
+            0,
+            f'ISO exercise-and-hold included ({iso_hold_n} lot(s)): strike outlay '
+            f'${outlay:,.0f} is deducted from pocket net; AMT/tax is stacked with RSU sales '
+            f'in one engine run. Achieved net = proceeds − tax − strike.',
+        )
+        if iso_split and iso_split.get('mode') == 'exercise_all_hold_fund_rsu':
+            notes.insert(
+                1,
+                f"ISO-only baseline: tax ${float(iso_split.get('iso_only_tax') or 0):,.0f}, "
+                f"net ${float(iso_split.get('iso_only_net') or 0):,.0f}. "
+                f"RSU sales fund that cost plus your pocket target.",
+            )
     if analysis is not None:
         try:
             rates = getattr(analysis, 'rates_used', None) or {}
@@ -1159,5 +1589,30 @@ def parse_goal_heuristic(text: str, defaults: Optional[dict] = None) -> GoalRequ
     if 'only rsu' in t:
         g.allow_iso_cashless = False
         g.allow_iso_sell_held = False
+
+    # Exercise-all ISO (hold) + fund costs via RSU sales + optional pocket cash
+    wants_exercise_all = bool(
+        re.search(
+            r'exercise\s+(all|every|my\s+iso|all\s+my\s+iso|the\s+iso|isos?\b)',
+            t,
+        )
+        or re.search(r"don'?t\s+sell\s+just\s+exercise|do\s+not\s+sell.*exercise", t)
+        or re.search(r'exercise.*(?:hold|no\s+sell|without\s+sell)', t)
+    )
+    wants_fund = bool(
+        re.search(
+            r'cover\s+(the\s+)?(cost|strike|tax|amt|taxes)|'
+            r'fund\s+(the\s+)?(iso|exercise|strike|amt|tax)|'
+            r'via\s+selling\s+rsu|sell\s+rsus?\s+to\s+(cover|fund|pay)|'
+            r'pay\s+for\s+(the\s+)?(exercise|iso|strike)',
+            t,
+        )
+    )
+    if wants_exercise_all or (wants_fund and 'iso' in t):
+        g.exercise_all_iso = True
+        g.allow_iso_exercise_hold = True
+        g.allow_iso_cashless = False  # hold path — do not DD-sell ISOs
+        g.iso_prefer_hold_fraction = 1.0
+        g.allow_rsu = True
 
     return g

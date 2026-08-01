@@ -128,6 +128,7 @@ Return ONLY valid JSON (no markdown) with keys:
   "allow_iso_sell_held": boolean,
   "allow_iso_cashless": boolean,
   "allow_iso_exercise_hold": boolean,
+  "exercise_all_iso": boolean,
   "iso_prefer_hold_fraction": number or null,
   "iso_max_exercise": number or null,
   "max_tax": number or null,
@@ -136,10 +137,12 @@ Return ONLY valid JSON (no markdown) with keys:
 }
 
 Rules:
-- "net $500k" / "take home 500k" / "after tax 500000" → target_net_cash
+- "net $500k" / "take home 500k" / "after tax 500000" → target_net_cash (pocket after costs)
 - Prefer min_tax unless user says minimize shares sold
 - allow_iso_cashless true unless user forbids ordinary-income sales
 - allow_iso_exercise_hold true if they mention hold/AMT/QD path
+- exercise_all_iso true if they want to exercise all/every ISO without selling ISO stock
+- If fund/cover strike or AMT via RSU sales + exercise hold → exercise_all_iso true, allow_iso_cashless false, iso_prefer_hold_fraction 1.0
 """
     user_msg = f"""Profile: {profile_summary}
 

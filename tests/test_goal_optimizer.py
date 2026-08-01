@@ -188,6 +188,55 @@ def test_inventory_to_specs():
     assert len(specs) >= 2
 
 
+def test_parse_exercise_all_iso_and_fund():
+    g = parse_goal_heuristic(
+        'exercise all my ISO (dont sell just exercise) and cover cost and taxes '
+        'via selling RSU. also sell RSUs to get 300k cash. minimize losses'
+    )
+    assert g.target_net_cash == 300_000
+    assert g.exercise_all_iso is True
+    assert g.allow_iso_exercise_hold is True
+    assert g.allow_iso_cashless is False
+    assert g.iso_prefer_hold_fraction == 1.0
+
+
+def test_optimize_exercise_all_iso_funds_via_rsu_and_pocket():
+    """
+    Exercise all unexercised ISO (hold) + sell min-tax RSU so pocket net ≥ target.
+    Picks must include iso_exercise_hold and sell_rsu; strike outlay > 0.
+    """
+    inv = _inv()
+    # Ensure large enough RSU pool for $50k pocket + ISO costs
+    inv[0]['shares_available'] = 20_000
+    inv[1]['shares_available'] = 20_000
+    goal = GoalRequest(
+        target_net_cash=50_000,
+        objective='min_tax',
+        sale_price=100.0,
+        sale_date=date(2026, 7, 1),
+        exercise_date=date(2026, 7, 1),
+        exercise_fmv=100.0,
+        allow_rsu=True,
+        allow_iso_cashless=False,
+        allow_iso_sell_held=False,
+        exercise_all_iso=True,
+        allow_iso_exercise_hold=True,
+        iso_prefer_hold_fraction=1.0,
+    )
+    r = optimize_goal(_profile(), inv, goal)
+    assert any(p.action == 'iso_exercise_hold' for p in r.picks), r.picks
+    assert any(p.action == 'sell_rsu' for p in r.picks), r.picks
+    assert r.total_strike_outlay > 0
+    # 5000 ISO @ $5 strike = $25k outlay
+    assert abs(r.total_strike_outlay - 25_000) < 1
+    assert r.achieved_net_cash >= 50_000 * 0.99
+    assert r.success
+    # No ISO cashless when exercise-all hold
+    assert all(p.action != 'iso_cashless_dd' for p in r.picks)
+    iso_sh = sum(p.shares for p in r.picks if p.action == 'iso_exercise_hold')
+    assert abs(iso_sh - 5000) < 1
+
+
 if __name__ == '__main__':
     test_parse_heuristic_500k()
     test_parse_heuristic_k_suffix()

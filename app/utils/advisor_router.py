@@ -152,10 +152,20 @@ def route_and_compute(
     today = sale_date or date.today()
     price = float(live_price or 0)
     cash_target = extract_cash_target(text)
+    is_exercise_iso_plan = bool(
+        re.search(
+            r'exercise\s+(all|every|my\s+iso|all\s+my\s+iso|isos?\b)|'
+            r'fund\s+(iso|exercise)|cover\s+(strike|amt|iso)|'
+            r"don'?t\s+sell\s+just\s+exercise",
+            text,
+            re.I,
+        )
+    )
     is_sell_plan = bool(
         cash_target
         or _OPTIMIZE.search(text)
         or _NET_CASH.search(text)
+        or is_exercise_iso_plan
         or re.search(r'\b(sell|liquid|minimi[sz]e\s+tax)', text, re.I)
     )
     # Sell / cash / SpecID questions are pure engine — never force Grok just because of "should I sell"
@@ -221,10 +231,12 @@ def route_and_compute(
             sale_date=today,
             exercise_date=today,
             exercise_fmv=px,
-            allow_rsu=True,
-            allow_iso_sell_held=True,
-            allow_iso_cashless=True,
-            allow_iso_exercise_hold=False,
+            allow_rsu=heur.allow_rsu if heur.allow_rsu is not None else True,
+            allow_iso_sell_held=heur.allow_iso_sell_held,
+            allow_iso_cashless=heur.allow_iso_cashless,
+            allow_iso_exercise_hold=bool(heur.allow_iso_exercise_hold),
+            exercise_all_iso=bool(getattr(heur, 'exercise_all_iso', False)),
+            iso_prefer_hold_fraction=heur.iso_prefer_hold_fraction,
             raw_text=text,
         )
         try:
@@ -392,7 +404,7 @@ def _format_goal_reply(result, target) -> str:
         '',
     ]
     if target:
-        lines.append(f"Target net cash: **${target:,.0f}**")
+        lines.append(f"Target pocket net cash: **${target:,.0f}**")
     lines.append(
         f"Achieved net: **${result.achieved_net_cash:,.0f}** · "
         f"Tax: **${result.total_tax:,.0f}** · "
@@ -404,6 +416,23 @@ def _format_goal_reply(result, target) -> str:
         f"Strike outlay: ${result.total_strike_outlay:,.0f} · "
         f"Eff. rate: {result.effective_tax_rate*100:.1f}%"
     )
+    iso_holds = [p for p in (result.picks or []) if p.action == 'iso_exercise_hold']
+    rsu_sells = [p for p in (result.picks or []) if p.action == 'sell_rsu']
+    if iso_holds:
+        iso_sh = sum(p.shares for p in iso_holds)
+        lines.append(
+            f"ISO exercise-and-hold: **{iso_sh:,.0f}** sh across {len(iso_holds)} lot(s) "
+            f"(strike **${result.total_strike_outlay:,.0f}** funded from RSU sale proceeds; "
+            f"AMT/tax stacked in total tax above)."
+        )
+        lines.append(
+            f"Net formula: proceeds − tax − strike = pocket "
+            f"(${result.total_proceeds:,.0f} − ${result.total_tax:,.0f} − "
+            f"${result.total_strike_outlay:,.0f} = **${result.achieved_net_cash:,.0f}**)."
+        )
+    if rsu_sells:
+        rsu_sh = sum(p.shares for p in rsu_sells)
+        lines.append(f"RSU sales (min-tax order): **{rsu_sh:,.0f}** sh to fund ISO costs + pocket.")
     lines.append('')
     lines.append('**SpecID picks** (sell/exercise these lots):')
     if not result.picks:
@@ -415,6 +444,8 @@ def _format_goal_reply(result, target) -> str:
                 f"- **v{p.vest_event_id}** `{p.action}` **{p.shares:,.2f}** sh "
                 f"@ ${p.price:.2f} ({'LT' if p.is_long_term else 'ST'}) — {p.reason}"
             )
+    for n in (result.efficiency_notes or [])[:4]:
+        lines.append(f"- _{n}_")
     lines.append('')
     lines.append(
         '_Numbers from VestX tax/goal engines. '

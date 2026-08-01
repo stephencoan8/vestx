@@ -723,6 +723,7 @@ def _goal_from_payload(data: dict, live_price: float) -> GoalRequest:
         allow_iso_sell_held=data.get('allow_iso_sell_held', True) is not False,
         allow_iso_cashless=data.get('allow_iso_cashless', True) is not False,
         allow_iso_exercise_hold=bool(data.get('allow_iso_exercise_hold')),
+        exercise_all_iso=bool(data.get('exercise_all_iso')),
         iso_max_exercise=(
             float(data['iso_max_exercise'])
             if data.get('iso_max_exercise') not in (None, '')
@@ -779,6 +780,9 @@ def api_goal():
             goal.allow_iso_exercise_hold = (
                 goal.allow_iso_exercise_hold or heur.allow_iso_exercise_hold
             )
+            goal.exercise_all_iso = goal.exercise_all_iso or bool(heur.exercise_all_iso)
+            if heur.iso_prefer_hold_fraction is not None:
+                goal.iso_prefer_hold_fraction = heur.iso_prefer_hold_fraction
             parse_meta = {'source': 'heuristic', 'interpretation': None}
 
             # Grok parse only if still ambiguous AND user opted in
@@ -811,9 +815,17 @@ def api_goal():
                         'allow_iso_sell_held',
                         'allow_iso_cashless',
                         'allow_iso_exercise_hold',
+                        'exercise_all_iso',
                     ):
                         if flag in parsed and parsed[flag] is not None:
                             setattr(goal, flag, bool(parsed[flag]))
+                    if parsed.get('iso_prefer_hold_fraction') is not None:
+                        try:
+                            goal.iso_prefer_hold_fraction = float(
+                                parsed['iso_prefer_hold_fraction']
+                            )
+                        except (TypeError, ValueError):
+                            pass
                 except Exception as e:
                     logger.warning('Grok parse failed: %s', e)
                     parse_meta = {'source': 'heuristic_fallback', 'error': str(e)}
