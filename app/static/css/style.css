@@ -288,7 +288,7 @@ body.app-layout {
 
 /* ——— Right-side Advisor chat (async; never blocks left nav / main) ——— */
 :root {
-    --advisor-width: 34rem; /* ~544px; wider for tables + markdown */
+    --advisor-width: 44.2rem; /* ~30% wider than 34rem (~707px) for chat + tables */
 }
 
 /* Sidebar stays above advisor so page switches always work while chat loads */
