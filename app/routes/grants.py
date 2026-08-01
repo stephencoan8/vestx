@@ -368,14 +368,25 @@ def finance_deep_dive():
     for ve in all_vest_events:
         vests_by_grant.setdefault(ve.grant_id, []).append(ve)
 
-    tax_rates = current_user.get_tax_rates()
-    tax_rates['ltcg'] = 0.15
-
     # One decrypt pass for all as-of price lookups in this request
     from app.utils.price_utils import warm_user_price_history
+    from app.utils.tax_engine import resolve_engine_profile_for_year
+    from app.utils.sale_tax_estimate import (
+        estimate_lots_sale_tax,
+        lot_input_from_vest,
+    )
     warm_user_price_history(current_user.id)
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
+
+    # Cache year Tax Profiles — one engine surface for the whole page
+    profile_by_year = {}
+
+    def _profile(year: int):
+        year = int(year)
+        if year not in profile_by_year:
+            profile_by_year[year] = resolve_engine_profile_for_year(current_user, year)
+        return profile_by_year[year]
 
     total_shares_held_vested = 0.0
     total_shares_held_all = 0.0
@@ -385,9 +396,10 @@ def finance_deep_dive():
     total_current_value_all = 0.0
     total_unrealized_gain_vested = 0.0
     total_unrealized_gain_all = 0.0
-    total_estimated_tax = 0.0
 
     analysis_data = []
+    portfolio_lots_vested = []
+    portfolio_lots_all = []
 
     for grant in grants:
         vest_events = vests_by_grant.get(grant.id, [])
@@ -405,14 +417,23 @@ def finance_deep_dive():
 
         for ve in vest_events:
             has_vested = ve.vest_date <= today
+            # Sale-today estimates use *today's* tax year for stacking
+            sale_year = today.year
+            prof = _profile(sale_year)
+            vest_prof = _profile(ve.vest_date.year if ve.vest_date else sale_year)
 
-            tax_info = ve.estimate_tax_withholding(latest_stock_price, user=current_user)
-            tax_breakdown = ve.get_comprehensive_tax_breakdown(user=current_user)
+            tax_info = ve.estimate_tax_withholding(
+                latest_stock_price, user=current_user, _tax_profile=vest_prof
+            )
+            tax_breakdown = ve.get_comprehensive_tax_breakdown(
+                user=current_user, _tax_profile=vest_prof
+            )
             sale_tax_data = ve.get_estimated_sale_tax(
                 current_stock_price=latest_stock_price,
                 total_sold=0,
                 total_exercised=0,
                 user=current_user,
+                _tax_profile=prof,
             )
 
             shares_held = sale_tax_data['shares_held']
@@ -420,6 +441,21 @@ def finance_deep_dive():
             current_value = sale_tax_data['current_value']
             unrealized_gain = sale_tax_data['unrealized_gain']
             estimated_tax = sale_tax_data['estimated_tax']
+
+            # Portfolio stack lots (correct multi-lot tax) for summary totals
+            if shares_held > 0 and float(unrealized_gain or 0) > 0:
+                lot = lot_input_from_vest(
+                    ve,
+                    shares=shares_held,
+                    sale_price=latest_stock_price,
+                    sale_date=today,
+                    cost_basis_per_share=float(sale_tax_data.get('cost_basis_per_share') or 0),
+                    user_id=current_user.id,
+                )
+                if lot:
+                    portfolio_lots_all.append(lot)
+                    if has_vested:
+                        portfolio_lots_vested.append(lot)
 
             enriched_vest_events.append({
                 'vest_event': ve,
@@ -437,6 +473,10 @@ def finance_deep_dive():
                 'tax_rate': tax_info['tax_rate'],
                 'estimated_tax': estimated_tax,
                 'tax_breakdown': tax_breakdown,
+                'sale_method': sale_tax_data.get('method') or 'engine',
+                'sale_federal': sale_tax_data.get('federal_tax') or 0,
+                'sale_state': sale_tax_data.get('state_tax') or 0,
+                'sale_niit': sale_tax_data.get('niit_tax') or 0,
             })
 
             grant_estimated_tax_on_sale += estimated_tax
@@ -462,6 +502,7 @@ def finance_deep_dive():
             'current_value_all': grant_current_value_all,
             'unrealized_gain_vested': grant_unrealized_gain_vested,
             'unrealized_gain_all': grant_unrealized_gain_all,
+            # Per-grant sum is standalone-lot estimates (row display). Portfolio KPIs use stacked total.
             'estimated_tax': grant_estimated_tax_on_sale,
         })
 
@@ -473,7 +514,34 @@ def finance_deep_dive():
         total_current_value_all += grant_current_value_all
         total_unrealized_gain_vested += grant_unrealized_gain_vested
         total_unrealized_gain_all += grant_unrealized_gain_all
-        total_estimated_tax += grant_estimated_tax_on_sale
+
+    # Stacked portfolio tax (one analyze_sales) — the number that matches Sales & Tax
+    prof_today = _profile(today.year)
+    stacked_vested = estimate_lots_sale_tax(
+        current_user, portfolio_lots_vested, profile=prof_today, tax_year=today.year
+    )
+    stacked_all = estimate_lots_sale_tax(
+        current_user, portfolio_lots_all, profile=prof_today, tax_year=today.year
+    )
+    total_estimated_tax = float(stacked_vested.get('estimated_tax') or 0)
+    total_estimated_tax_all = float(stacked_all.get('estimated_tax') or 0)
+
+    # Display rates from engine (not legacy User flat rates)
+    rates_used = stacked_vested.get('rates_used') or {}
+    tax_rates = {
+        'federal': float(rates_used.get('ordinary_marginal') or 0),
+        'state': float(
+            rates_used.get('state_effective')
+            or rates_used.get('state_marginal')
+            or rates_used.get('state_ordinary')
+            or 0
+        ),
+        'ltcg': float(rates_used.get('ltcg') or 0),
+        'fica': 0.0,
+        'total': float(stacked_vested.get('effective_rate') or 0),
+        'method': 'engine',
+        'tax_year': today.year,
+    }
 
     return render_template(
         'grants/finance_deep_dive.html',
@@ -488,7 +556,9 @@ def finance_deep_dive():
         total_unrealized_gain_vested=total_unrealized_gain_vested,
         total_unrealized_gain_all=total_unrealized_gain_all,
         total_estimated_tax=total_estimated_tax,
+        total_estimated_tax_all=total_estimated_tax_all,
         tax_rates=tax_rates,
+        engine_note=True,
     )
 
 
@@ -677,89 +747,99 @@ def save_sale_plan():
 @grants_bp.route('/api/sale-planning/calculate-taxes', methods=['POST'])
 @login_required
 def calculate_sale_taxes():
-    """Calculate tax impact of selling specific vests in a given year"""
+    """Tax impact of selling specific vests — Tax Center engine only (one stack)."""
     try:
-        data = request.get_json()
-        year = int(data.get('year'))
+        from app.models.grant import Grant, ShareType
+        from app.utils.sale_tax_estimate import estimate_lots_sale_tax, lot_input_from_vest
+        from app.utils.tax_engine import resolve_engine_profile_for_year
+        from sqlalchemy.orm import joinedload
+
+        data = request.get_json() or {}
+        year = int(data.get('year') or date.today().year)
         vest_ids = data.get('vest_ids', [])
 
+        empty = {
+            'success': True,
+            'method': 'engine',
+            'total_proceeds': 0.0,
+            'total_ltcg': 0.0,
+            'total_stcg': 0.0,
+            'federal_tax_ltcg': 0.0,
+            'federal_tax_stcg': 0.0,
+            'state_tax': 0.0,
+            'niit': 0.0,
+            'total_tax': 0.0,
+            'net_proceeds': 0.0,
+            'ltcg_rate': 0.0,
+            'stcg_rate': 0.0,
+        }
         if not vest_ids:
-            return jsonify({
-                'success': True,
-                'total_proceeds': 0.0,
-                'total_ltcg': 0.0,
-                'total_stcg': 0.0,
-                'federal_tax_ltcg': 0.0,
-                'federal_tax_stcg': 0.0,
-                'state_tax': 0.0,
-                'niit': 0.0,
-                'total_tax': 0.0,
-                'net_proceeds': 0.0,
-                'ltcg_rate': 15.0,
-                'stcg_rate': 24.0
-            })
-        
-        # Get vests
-        vests = VestEvent.query.filter(VestEvent.id.in_(vest_ids)).all()
-        
+            return jsonify(empty)
+
+        vests = (
+            VestEvent.query.options(joinedload(VestEvent.grant))
+            .join(Grant)
+            .filter(VestEvent.id.in_(vest_ids), Grant.user_id == current_user.id)
+            .all()
+        )
         if not vests:
             return jsonify({'success': False, 'error': 'No vests found'}), 400
-        
-        # Get current stock price
-        current_price = get_latest_user_price(current_user.id) or 0
-        
-        # Aggregate vest data
-        total_shares = 0
-        total_cost_basis = 0
-        total_ltcg = 0
-        total_stcg = 0
-        
-        sale_date = date(year, 1, 1)
-        
+
+        current_price = float(
+            data.get('sale_price')
+            if data.get('sale_price') is not None
+            else (get_latest_user_price(current_user.id) or 0)
+        )
+        sale_date = date(year, 12, 31) if year < date.today().year else date.today()
+        if data.get('sale_date'):
+            try:
+                sale_date = datetime.strptime(str(data['sale_date'])[:10], '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        lots = []
         for vest in vests:
-            shares = vest.shares_received
-            cost_basis = vest.value_at_vest or 0
-            proceeds = shares * current_price
-            gain = proceeds - cost_basis
-            
-            # LTCG if held > 1 year
-            holding_period_days = (sale_date - vest.vest_date).days
-            if holding_period_days > 365:
-                total_ltcg += gain
+            if not vest.grant or vest.grant.share_type == ShareType.CASH.value:
+                continue
+            is_iso = vest.grant.share_type in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value)
+            shares = float(vest.shares_received or 0)
+            if shares <= 0:
+                continue
+            if is_iso:
+                basis = float(vest.grant.share_price_at_grant or 0)
             else:
-                total_stcg += gain
-            
-            total_shares += shares
-            total_cost_basis += cost_basis
-        
-        total_proceeds = total_shares * current_price
-        
-        # Simple tax rates (15% LTCG, 24% STCG, CA state ~9.3%, NIIT 3.8%)
-        ltcg_rate = 0.15
-        stcg_rate = 0.24
-        state_rate = 0.093  # California
-        
-        federal_tax_ltcg = max(0, total_ltcg * ltcg_rate)
-        federal_tax_stcg = max(0, total_stcg * stcg_rate)
-        state_tax = max(0, (total_ltcg + total_stcg) * state_rate)
-        niit = max(0, (total_ltcg + total_stcg) * 0.038)  # 3.8% NIIT
-        
-        total_tax = federal_tax_ltcg + federal_tax_stcg + state_tax + niit
-        net_proceeds = total_proceeds - total_tax
-        
+                basis = float(vest.share_price_at_vest or 0) if vest.has_vested else current_price
+            lot = lot_input_from_vest(
+                vest,
+                shares=shares,
+                sale_price=current_price,
+                sale_date=sale_date,
+                cost_basis_per_share=basis,
+                user_id=current_user.id,
+            )
+            if lot:
+                lots.append(lot)
+
+        profile = resolve_engine_profile_for_year(current_user, sale_date.year)
+        result = estimate_lots_sale_tax(
+            current_user, lots, profile=profile, tax_year=sale_date.year
+        )
+        rates = result.get('rates_used') or {}
         return jsonify({
             'success': True,
-            'total_proceeds': float(total_proceeds),
-            'total_ltcg': float(total_ltcg),
-            'total_stcg': float(total_stcg),
-            'federal_tax_ltcg': float(federal_tax_ltcg),
-            'federal_tax_stcg': float(federal_tax_stcg),
-            'state_tax': float(state_tax),
-            'niit': float(niit),
-            'total_tax': float(total_tax),
-            'net_proceeds': float(net_proceeds),
-            'ltcg_rate': ltcg_rate * 100,
-            'stcg_rate': stcg_rate * 100,
+            'method': 'engine',
+            'total_proceeds': float(result.get('total_proceeds') or 0),
+            'total_ltcg': float(result.get('ltcg') or 0),
+            'total_stcg': float(result.get('stcg') or 0),
+            'federal_tax_ltcg': float(result.get('federal_ltcg_tax') or 0),
+            'federal_tax_stcg': float(result.get('federal_ordinary_tax') or 0),
+            'state_tax': float(result.get('state_tax') or 0),
+            'niit': float(result.get('niit_tax') or 0),
+            'total_tax': float(result.get('estimated_tax') or 0),
+            'net_proceeds': float(result.get('after_tax_proceeds') or 0),
+            'ltcg_rate': float(rates.get('ltcg') or 0) * 100,
+            'stcg_rate': float(rates.get('ordinary_marginal') or 0) * 100,
+            'warnings': result.get('warnings') or [],
         })
 
     except Exception as e:

@@ -355,7 +355,12 @@
  {% endif %}
  <div style="margin-top: 0.5rem;">
  <small style="color: var(--text-secondary);">
- {{ proj.method == 'professional' and 'Professional-grade calculation using total annual income methodology.' or 'Simplified estimate - configure tax profile for professional calculation.' }}
+ {% if proj.method == 'engine' %}
+ Same engine as Sales &amp; Tax — incremental vs {{ proj.tax_year or 'year' }} Tax Profile
+ (progressive federal / CA / NIIT{% if proj.fica_tax %} / FICA{% endif %}).
+ {% else %}
+ Configure Tax profile for engine estimates.
+ {% endif %}
  </small>
  </div>
  </div>

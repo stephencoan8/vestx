@@ -9,13 +9,16 @@
  <p class="subtitle">Comprehensive tax and capital gains analysis</p>
  </header>
 
- <!-- Tax Rate Configuration -->
+ <!-- Tax engine banner — one engine with Sales & Tax -->
  <div class="tax-config-section">
- <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
- <h2 style="margin: 0;"> Tax Rate Configuration</h2>
- <div style="display: flex; gap: 1rem; align-items: center;">
+ <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+ <h2 style="margin: 0;">Tax engine</h2>
+ <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
  <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary" style="text-decoration: none;">
- Configure Tax Settings
+ Tax profile
+ </a>
+ <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary" style="text-decoration: none;">
+ Sales &amp; Tax
  </a>
  <div class="toggle-container">
  <label class="toggle-switch">
@@ -28,62 +31,18 @@
  </div>
  </div>
  </div>
- <p class="text-muted">
- <strong> Tax Estimates:</strong> Based on your profile settings.
- <a href="{{ url_for('tax_center.tax_profile') }}">Update your tax profile</a> to change rates.
- </p>
  <div class="tax-summary" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
- <h4>Your Current Tax Rates:</h4>
- <ul style="list-style: none; padding: 0; margin: 0;">
- <li>Federal: {{ (tax_rates.federal * 100)|round(2) }}%</li>
- <li>State: {{ (tax_rates.state * 100)|round(2) }}%</li>
- <li>FICA: {{ (tax_rates.fica * 100)|round(2) }}%</li>
- <li><strong>Total: {{ (tax_rates.total * 100)|round(2) }}%</strong></li>
- </ul>
- </div>
- {# Old manual mode section removed - now uses simple profile settings #}
- <p class="text-muted" style="margin-top: 1rem;">
- <strong> Tax Estimates:</strong> 
- Tax rates based on your profile settings.
- <a href="{{ url_for('tax_center.tax_profile') }}">Update tax profile</a> to change rates.
+ <p style="margin: 0 0 0.5rem;">
+ <strong>Same engine as Sales &amp; Tax</strong> — progressive federal + CA + NIIT + FICA,
+ stacked on your <span class="year-label">{{ tax_rates.tax_year or '' }}</span> Tax Profile wages.
+ Portfolio totals use one multi-lot stack (not flat 15% LTCG).
  </p>
- 
- {# Optional: Sliders for temporary scenario exploration (not saved) #}
- <div class="tax-sliders" id="taxSliders" style="display: none;">
- <small class="slider-help" style="display: block; margin-bottom: 1rem; opacity: 0.8;">
- 💭 Adjust sliders to explore different tax scenarios. These are temporary changes and won't be saved.
- </small>
- <div class="tax-slider-item">
- <label for="federalTaxRate">
- Federal Tax Rate: <strong><span id="federalTaxValue">{{ "%.1f"|format(tax_rates.federal * 100) }}</span>%</strong>
- </label>
- <input type="range" id="federalTaxRate" min="0" max="37" step="1" value="{{ tax_rates.federal * 100 }}" class="tax-slider">
- <small class="slider-help">Federal income tax bracket (0-37%)</small>
- </div>
- 
- <div class="tax-slider-item">
- <label for="stateTaxRate">
- State Tax Rate: <strong><span id="stateTaxValue">{{ "%.1f"|format(tax_rates.state * 100) }}</span>%</strong>
- </label>
- <input type="range" id="stateTaxRate" min="0" max="13.3" step="0.1" value="{{ tax_rates.state * 100 }}" class="tax-slider">
- <small class="slider-help">State income tax (CA: 0-13.3%)</small>
- </div>
- 
- <div class="tax-slider-item">
- <label for="capitalGainsTaxRate">
- Long-Term Capital Gains: <strong><span id="capitalGainsValue">{{ "%.1f"|format(tax_rates.ltcg * 100) }}</span>%</strong>
- </label>
- <input type="range" id="capitalGainsTaxRate" min="0" max="20" step="1" value="{{ tax_rates.ltcg * 100 }}" class="tax-slider">
- <small class="slider-help">Federal long-term cap gains (0, 15, or 20%)</small>
- </div>
- 
- <div class="tax-slider-item">
- <label for="ficaTaxRate">
- FICA (Social Security + Medicare): <strong><span id="ficaValue">7.65</span>%</strong>
- </label>
- <input type="range" id="ficaTaxRate" min="0" max="7.65" step="0.01" value="7.65" class="tax-slider">
- <small class="slider-help">Payroll taxes (set to 0 if above Social Security wage cap or exempt)</small>
- </div>
+ <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9rem; color: var(--text-secondary);">
+ <li>Next-dollar federal marginal (display): {{ (tax_rates.federal * 100)|round(1) }}%</li>
+ <li>LTCG band (display): {{ (tax_rates.ltcg * 100)|round(1) }}%</li>
+ <li>State (eff. on gain display): {{ (tax_rates.state * 100)|round(1) }}%</li>
+ <li><strong>Eff. rate on portfolio gain: {{ (tax_rates.total * 100)|round(1) }}%</strong> · method {{ tax_rates.method or 'engine' }}</li>
+ </ul>
  </div>
  </div>
 
@@ -130,7 +89,8 @@
  <div class="stat-content">
  <div class="stat-label">Est. Tax on Sale</div>
  <div class="stat-value" id="totalTaxLiability">${{ "{:,.2f}".format(total_estimated_tax) }}</div>
- <small id="netAfterTax">Net: ${{ "{:,.2f}".format(total_current_value_all - total_estimated_tax) }}</small>
+ <small id="netAfterTax">Net: ${{ "{:,.2f}".format(total_current_value_vested - total_estimated_tax) }}</small>
+ <small style="display:block;opacity:0.75;">Engine stack · Tax Profile {{ tax_rates.tax_year }}</small>
  </div>
  </div>
  </div>
@@ -1058,209 +1018,62 @@
 </style>
 
 <script>
-// Server-side total estimated tax exposed to client JS (JSON-safe)
+// Server engine totals (stacked multi-lot analyze_sales) — do not recompute flat client rates
 const serverTotalEstimatedTax = {{ total_estimated_tax | default(0) | tojson }};
+const serverTotalEstimatedTaxAll = {{ total_estimated_tax_all | default(total_estimated_tax) | default(0) | tojson }};
+const serverValueVested = {{ total_current_value_vested | default(0) | tojson }};
+const serverValueAll = {{ total_current_value_all | default(0) | tojson }};
 </script>
 
-<!-- Tax calculation scripts continue below (DOMContentLoaded handler) -->
 <script>
-// Toggle tax breakdown visibility
 function toggleTaxBreakdown(element) {
  const row = element.closest('tr');
  const breakdownRow = row.nextElementSibling;
- 
  if (breakdownRow && breakdownRow.classList.contains('tax-breakdown-row')) {
- if (breakdownRow.style.display === 'none' || breakdownRow.style.display === '') {
- breakdownRow.style.display = 'table-row';
- breakdownRow.style.width = '100%';
- } else {
- breakdownRow.style.display = 'none';
- }
+ const open = breakdownRow.style.display === 'none' || breakdownRow.style.display === '';
+ breakdownRow.style.display = open ? 'table-row' : 'none';
+ if (open) breakdownRow.style.width = '100%';
  }
 }
 
-// Wait for DOM to be fully loaded before running scripts
 document.addEventListener('DOMContentLoaded', function() {
+ const showAllToggle = document.getElementById('showAllToggle');
+ const toggleLabel = document.getElementById('toggleLabel');
 
-// Tax calculation logic
-const federalSlider = document.getElementById('federalTaxRate');
-const stateSlider = document.getElementById('stateTaxRate');
-const capitalGainsSlider = document.getElementById('capitalGainsTaxRate');
-const ficaSlider = document.getElementById('ficaTaxRate');
-const showAllToggle = document.getElementById('showAllToggle');
-const toggleLabel = document.getElementById('toggleLabel');
-
-const federalValue = document.getElementById('federalTaxValue');
-const stateValue = document.getElementById('stateTaxValue');
-const capitalGainsValue = document.getElementById('capitalGainsValue');
-const ficaValue = document.getElementById('ficaValue');
-
-// Toggle between vested and all shares
-showAllToggle.addEventListener('change', (e) => {
- const showAll = e.target.checked;
- toggleLabel.textContent = showAll ? 'All Shares (Including Future)' : 'Vested Only';
- document.querySelectorAll('.data-unvested').forEach(el => {
- if (showAll) {
- el.style.display = 'table-row';
- } else {
- el.style.display = 'none';
- }
- });
- 
- // Recalculate taxes
- calculateTaxes();
-});
-
-// Update slider display values
-federalSlider.addEventListener('input', (e) => {
- federalValue.textContent = e.target.value;
- calculateTaxes();
-});
-
-stateSlider.addEventListener('input', (e) => {
- stateValue.textContent = e.target.value;
- calculateTaxes();
-});
-
-capitalGainsSlider.addEventListener('input', (e) => {
- capitalGainsValue.textContent = e.target.value;
- calculateTaxes();
-});
-
-if (ficaSlider && ficaValue) {
- ficaSlider.addEventListener('input', (e) => {
- ficaValue.textContent = parseFloat(e.target.value).toFixed(2);
- calculateTaxes();
- });
-}
-
-function calculateTaxes() {
- const federalRate = parseFloat(federalSlider.value) / 100;
- const stateRate = parseFloat(stateSlider.value) / 100;
- const capitalGainsRate = parseFloat(capitalGainsSlider.value) / 100;
- const showAll = showAllToggle.checked;
- const ficaRate = ficaSlider ? parseFloat(ficaSlider.value) / 100 : 0.0765;
-
- let totalTax = 0;
- let totalCurrentValue = 0;
-
- console.debug('calculateTaxes invoked', { federalRate, stateRate, capitalGainsRate, ficaRate, showAll });
-
- document.querySelectorAll('.grant-analysis-card').forEach(card => {
- const sharesHeldVested = parseFloat(card.dataset.sharesHeldVested) || 0;
- const sharesHeldAll = parseFloat(card.dataset.sharesHeldAll) || 0;
- const costBasisVested = parseFloat(card.dataset.costBasisVested) || 0;
- const costBasisAll = parseFloat(card.dataset.costBasisAll) || 0;
- const currentValueVested = parseFloat(card.dataset.currentValueVested) || 0;
- const currentValueAll = parseFloat(card.dataset.currentValueAll) || 0;
- const unrealizedGainVested = parseFloat(card.dataset.unrealizedGainVested) || 0;
- const unrealizedGainAll = parseFloat(card.dataset.unrealizedGainAll) || 0;
-
- // Use vested or all depending on toggle
- const currentValue = showAll ? currentValueAll : currentValueVested;
- const unrealizedGain = showAll ? unrealizedGainAll : unrealizedGainVested;
-
- let grantTax = 0;
-
- // Iterate vest events
- card.querySelectorAll('.vest-event-row').forEach(row => {
- const hasVested = row.dataset.hasVested === 'true';
- if (!showAll && !hasVested) return; // skip if filtering
-
- const eventUnrealizedGain = parseFloat(row.dataset.unrealizedGain) || 0;
- const sharesHeld = parseFloat(row.dataset.sharesHeld) || 0;
- const isLongTerm = row.dataset.isLongTerm === 'true';
- const taxIsEstimated = row.dataset.taxIsEstimated === 'true';
-
- console.debug('event', { eventUnrealizedGain, sharesHeld, isLongTerm, taxIsEstimated });
-
- // Update estimated 'Tax Paid at Vest' for future/estimated rows (if present)
- if (taxIsEstimated && !hasVested) {
- const sharesVested = parseFloat(row.dataset.sharesVested) || 0;
- const currentPrice = parseFloat(row.dataset.currentPrice) || 0;
-
- // Determine vestValue per grant/row
- let vestValue = sharesVested * currentPrice;
- // Update withholding cell if present
- const taxPaidSpan = row.querySelector('.event-tax-paid .estimated-tax');
- if (taxPaidSpan) {
- const estimatedVestTax = vestValue * (federalRate + stateRate + ficaRate);
- taxPaidSpan.textContent = '$' + estimatedVestTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '*';
- }
- }
-
- // Calculate tax on unrealized gain (if positive)
- let eventTax = 0;
- if (eventUnrealizedGain > 0) {
- if (isLongTerm) {
- eventTax = eventUnrealizedGain * (capitalGainsRate + stateRate);
- } else {
- eventTax = eventUnrealizedGain * (federalRate + stateRate);
- }
- }
-
- console.debug('eventTax computed', { eventTax });
-
- // Update the event-level Est. Tax cell (data-column="est-tax")
- const estTaxCell = row.querySelector('td[data-column="est-tax"]');
- if (estTaxCell) {
- estTaxCell.textContent = '$' + eventTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
- }
-
- grantTax += (eventTax > 0 ? eventTax : 0);
- });
-
- // Update grant-level displays
- const taxEstimateEl = card.querySelector('.grant-tax-estimate');
- const netValueEl = card.querySelector('.grant-net-value');
- if (taxEstimateEl && netValueEl) {
- // Preserve server-rendered value if client-side grantTax is zero or NaN
- const existingTaxText = taxEstimateEl.textContent.trim();
- if (grantTax > 0) {
- taxEstimateEl.textContent = '$' + grantTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
- } else if (existingTaxText && existingTaxText !== '$0.00') {
- // leave the server-rendered value as-is
- } else {
- taxEstimateEl.textContent = '$0.00';
- }
-
- // For net value, prefer client calc if meaningful, otherwise keep server-rendered
- const existingNetText = netValueEl.textContent.trim();
- const computedNet = currentValue - grantTax;
- if (!isNaN(computedNet) && (grantTax > 0 || existingNetText === '' || existingNetText === '$0.00')) {
- netValueEl.textContent = '$' + computedNet.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
- }
-
- if ((currentValue - grantTax) >= 0) {
- netValueEl.classList.add('positive');
- netValueEl.classList.remove('negative');
- } else {
- netValueEl.classList.add('negative');
- netValueEl.classList.remove('positive');
- }
- }
-
- totalTax += grantTax;
- totalCurrentValue += currentValue;
- });
-
- // Prefer server-side total if client-side calculation yields zero or NaN
- const clientTotalTax = totalTax;
- const finalTotalTax = (clientTotalTax && clientTotalTax > 0) ? clientTotalTax : (typeof serverTotalEstimatedTax !== 'undefined' ? serverTotalEstimatedTax : 0);
- const netAfterTax = totalCurrentValue - finalTotalTax;
+ function applyEngineTotals(showAll) {
+ const tax = showAll ? serverTotalEstimatedTaxAll : serverTotalEstimatedTax;
+ const value = showAll ? serverValueAll : serverValueVested;
  const totalTaxEl = document.getElementById('totalTaxLiability');
  const netAfterTaxEl = document.getElementById('netAfterTax');
- if (totalTaxEl) totalTaxEl.textContent = '$' + finalTotalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
- if (netAfterTaxEl) netAfterTaxEl.textContent = 'Net: $' + netAfterTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
+ const fmt = function (n) {
+  return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+ };
+ if (totalTaxEl) totalTaxEl.textContent = fmt(tax);
+ if (netAfterTaxEl) netAfterTaxEl.textContent = 'Net: ' + fmt(value - tax);
+ document.querySelectorAll('.data-vested').forEach(function (el) {
+  el.style.display = showAll ? 'none' : '';
+ });
+ document.querySelectorAll('.data-all').forEach(function (el) {
+  el.style.display = showAll ? '' : 'none';
+ });
+ }
 
-// Calculate on page load
-calculateTaxes();
+ if (showAllToggle) {
+  showAllToggle.addEventListener('change', function (e) {
+   const showAll = e.target.checked;
+   if (toggleLabel) toggleLabel.textContent = showAll ? 'All Shares (Including Future)' : 'Vested Only';
+   document.querySelectorAll('.data-unvested').forEach(function (el) {
+    el.style.display = showAll ? 'table-row' : 'none';
+   });
+   applyEngineTotals(showAll);
+  });
+ }
 
-// Hide unvested rows initially
-document.querySelectorAll('.data-unvested').forEach(el => {
- el.style.display = 'none';
-});
+ // Hide unvested rows initially; show engine vested totals
+ document.querySelectorAll('.data-unvested').forEach(function (el) {
+  el.style.display = 'none';
+ });
+ applyEngineTotals(false);
 
 // ==================== Column Customizer ====================
 

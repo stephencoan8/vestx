@@ -352,128 +352,21 @@ class VestEvent(db.Model):
                                _tax_profile=None,
                                _annual_incomes=None) -> dict:
         """
-        Calculate estimated capital gains tax on remaining shares if sold today.
+        Estimated tax if remaining shares sold today — Tax Center engine only.
 
-        Args:
-            current_stock_price: Current stock price (defaults to latest user price)
-            total_sold: Total shares already sold from this vest
-            total_exercised: Total shares already exercised (for ISOs)
-            user: Optional User instance to avoid per-call DB lookups
+        Uses year-scoped Tax Profile + analyze_sales (progressive federal/CA/NIIT/FICA).
         """
-        from app.models.grant import ShareType
-
-        if current_stock_price is None:
-            current_stock_price = get_latest_user_price(self.grant.user_id) or 0.0
-
-        shares_held = self.shares_received - total_sold - total_exercised
-
-        if self.grant.share_type == ShareType.CASH.value:
-            return {
-                'shares_held': shares_held,
-                'cost_basis_per_share': 1.0,
-                'cost_basis': shares_held,
-                'current_value': shares_held,
-                'unrealized_gain': 0.0,
-                'days_held': 0,
-                'is_long_term': False,
-                'holding_period': '—',
-                'estimated_tax': 0.0,
-                'federal_tax': 0.0,
-                'niit_tax': 0.0,
-                'state_tax': 0.0,
-                'federal_rate': 0.0,
-                'state_rate': 0.0,
-                'method': 'n/a'
-            }
-
-        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            cost_basis_per_share = self.grant.share_price_at_grant
-        else:
-            cost_basis_per_share = self.share_price_at_vest if self.has_vested else current_stock_price
-
-        cost_basis = shares_held * cost_basis_per_share
-        current_value = shares_held * current_stock_price
-        unrealized_gain = current_value - cost_basis
-
-        today = date.today()
-        days_held = (today - self.vest_date).days if self.has_vested else 0
-        is_long_term = days_held >= 365
-
-        if self.has_vested:
-            if days_held >= 365:
-                years = days_held // 365
-                holding_period = f"{years}y {days_held % 365}d"
-            else:
-                holding_period = f"{days_held}d"
-        else:
-            holding_period = "—"
-
         if user is None:
             user = self.grant.user if self.grant else None
-
-        if not user or unrealized_gain <= 0:
-            # No user or no gain = no tax
-            return {
-                'shares_held': shares_held,
-                'cost_basis_per_share': cost_basis_per_share,
-                'cost_basis': cost_basis,
-                'current_value': current_value,
-                'unrealized_gain': unrealized_gain,
-                'days_held': days_held,
-                'is_long_term': is_long_term,
-                'holding_period': holding_period,
-                'estimated_tax': 0.0,
-                'federal_tax': 0.0,
-                'niit_tax': 0.0,
-                'state_tax': 0.0,
-                'federal_rate': 0.0,
-                'state_rate': 0.0,
-                'method': 'none'
-            }
-        
-        # Use simplified capital gains rates based on holding period
-        if is_long_term:
-            # Long-term capital gains: typically 0%, 15%, or 20%
-            # Use 15% as reasonable default for most users
-            federal_rate = 0.15
-        else:
-            # Short-term capital gains: taxed as ordinary income
-            # Use user's federal tax rate
-            federal_rate = user.get_federal_tax_rate()
-        
-        state_rate = user.get_state_tax_rate()
-        
-        # Calculate taxes
-        federal_tax = unrealized_gain * federal_rate
-        state_tax = unrealized_gain * state_rate
-        
-        # NIIT (Net Investment Income Tax): 3.8% on investment income for high earners
-        # Applies to single filers with MAGI > $200k, married > $250k
-        # Simplified: apply if federal rate is high (proxy for high earner)
-        if user.get_federal_tax_rate() >= 0.32:  # Likely high earner
-            niit_tax = unrealized_gain * 0.038
-        else:
-            niit_tax = 0.0
-        
-        estimated_tax = federal_tax + state_tax + niit_tax
-        
-        return {
-            'shares_held': shares_held,
-            'cost_basis_per_share': cost_basis_per_share,
-            'cost_basis': cost_basis,
-            'current_value': current_value,
-            'unrealized_gain': unrealized_gain,
-            'days_held': days_held,
-            'is_long_term': is_long_term,
-            'holding_period': holding_period,
-            'estimated_tax': estimated_tax,
-            'federal_tax': federal_tax,
-            'niit_tax': niit_tax,
-            'state_tax': state_tax,
-            'federal_rate': federal_rate,
-            'state_rate': state_rate,
-            'method': 'simplified'
-        }
+        from app.utils.sale_tax_estimate import estimate_vest_sale_tax
+        return estimate_vest_sale_tax(
+            self,
+            user,
+            current_stock_price=current_stock_price,
+            total_sold=total_sold,
+            total_exercised=total_exercised,
+            profile=_tax_profile if isinstance(_tax_profile, dict) else None,
+        )
     
     def get_complete_data(self, user_key: bytes, current_price: float = None,
                          sales_data=None, exercises_data=None, user=None,
@@ -562,7 +455,9 @@ class VestEvent(db.Model):
             tax_breakdown = None
             if not is_cash:
                 try:
-                    tax_breakdown = self.get_comprehensive_tax_breakdown(user=user)
+                    tax_breakdown = self.get_comprehensive_tax_breakdown(
+                        user=user, _tax_profile=tax_profile
+                    )
                 except Exception as e:
                     logger.error("Error getting tax breakdown: %s", e)
 
@@ -574,6 +469,7 @@ class VestEvent(db.Model):
                         total_sold=total_sold,
                         total_exercised=total_exercised,
                         user=user,
+                        _tax_profile=tax_profile if isinstance(tax_profile, dict) else None,
                     )
                 except Exception as e:
                     logger.error("Error getting sale tax projection: %s", e)

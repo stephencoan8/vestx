@@ -86,74 +86,14 @@ class StockSale(db.Model):
     
     def get_estimated_tax(self, user=None) -> dict:
         """
-        Calculate estimated capital gains tax using simplified user tax preferences.
-
-        Args:
-            user: Optional User instance to avoid a DB lookup when already loaded.
+        Estimated tax on this recorded sale via Tax Center engine (year Tax Profile).
         """
         from app.models.user import User
+        from app.utils.sale_tax_estimate import estimate_recorded_stock_sale
 
         if user is None:
             user = User.query.get(self.user_id)
-        if not user:
-            # Fallback to simplified estimation if no user
-            if self.is_long_term:
-                est_rate = 0.15  # Assume 15% LTCG
-            else:
-                est_rate = 0.22  # Assume 22% marginal rate
-            
-            return {
-                'estimated_federal': self.capital_gain * est_rate if self.capital_gain > 0 else 0,
-                'estimated_niit': 0,
-                'estimated_state': 0,
-                'estimated_total': self.capital_gain * est_rate if self.capital_gain > 0 else 0,
-                'method': 'simplified'
-            }
-        
-        # Use simplified capital gains rates based on holding period
-        if self.is_long_term:
-            # Long-term capital gains: typically 0%, 15%, or 20%
-            # Use 15% as reasonable default for most users
-            federal_rate = 0.15
-        else:
-            # Short-term capital gains: taxed as ordinary income
-            # Use user's federal tax rate
-            federal_rate = user.get_federal_tax_rate()
-        
-        state_rate = user.get_state_tax_rate()
-        
-        # Calculate taxes
-        estimated_federal = self.capital_gain * federal_rate if self.capital_gain > 0 else 0
-        estimated_state = self.capital_gain * state_rate if self.capital_gain > 0 else 0
-        
-        # NIIT (Net Investment Income Tax): 3.8% on investment income for high earners
-        # Simplified: apply if federal rate is high (proxy for high earner)
-        if user.get_federal_tax_rate() >= 0.32:  # Likely high earner
-            estimated_niit = self.capital_gain * 0.038 if self.capital_gain > 0 else 0
-        else:
-            estimated_niit = 0.0
-        
-        estimated_total = estimated_federal + estimated_niit + estimated_state
-        
-        # Calculate holding period
-        if self.vest_event:
-            holding_days = (self.sale_date - self.vest_event.vest_date).days
-        else:
-            holding_days = 0
-        
-        return {
-            'estimated_federal': estimated_federal,
-            'estimated_niit': estimated_niit,
-            'estimated_state': estimated_state,
-            'estimated_total': estimated_total,
-            'federal_rate': federal_rate,
-            'niit_rate': 0.038 if user.get_federal_tax_rate() >= 0.32 else 0.0,
-            'state_rate': state_rate,
-            'effective_rate': estimated_total / self.capital_gain if self.capital_gain > 0 else 0,
-            'is_long_term': self.is_long_term,
-            'holding_days': holding_days,
-            'method': 'simplified'
-        }
+        return estimate_recorded_stock_sale(self, user)
 
 
 

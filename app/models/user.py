@@ -233,8 +233,10 @@ class User(UserMixin, db.Model):
     
     def get_tax_rates(self) -> dict:
         """
-        Get user's tax rate preferences.
-        Returns dict with federal, state, and fica rates.
+        Legacy flat rate display helpers only.
+
+        Money estimates must use tax_engine / sale_tax_estimate / wage_year_tax
+        with TaxYearProfile — not these flat User fields.
         """
         if not self.include_fica:
             fica_rate = 0.0
@@ -247,7 +249,8 @@ class User(UserMixin, db.Model):
             'federal': self.get_federal_tax_rate(),
             'state': self.get_state_tax_rate(),
             'fica': fica_rate,
-            'total': self.get_federal_tax_rate() + self.get_state_tax_rate() + fica_rate
+            'total': self.get_federal_tax_rate() + self.get_state_tax_rate() + fica_rate,
+            'legacy_flat': True,
         }
     
     def get_total_tax_rate(self) -> float:
