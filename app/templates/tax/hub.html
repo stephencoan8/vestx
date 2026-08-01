@@ -219,59 +219,70 @@
       </div>
     </div>
 
+    <div class="tax-lots-toolbar" id="lotsToolbar">
+      <div class="tax-lots-filter" role="group" aria-label="Share type filter">
+        <span class="tax-lots-filter-label">Show</span>
+        <button type="button" class="tax-chip tax-lot-filter is-active" data-lot-filter="all">All</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="rsu">RSU</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso">ISO</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_held">ISO held</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_unex">ISO unexercised</button>
+      </div>
+      <span class="tax-muted-sm" id="lotsFilterCount"></span>
+    </div>
+
     <div class="table-container tax-table-wrap">
-      <table class="data-table" id="lotsTable">
+      <table class="data-table sortable-table" id="lotsTable">
         <thead>
           <tr>
-            <th></th>
-            <th>Lot</th>
-            <th>Type</th>
-            <th>Held / unex</th>
-            <th>Basis / strike</th>
-            <th>Ex date</th>
-            <th>Hold</th>
-            <th>Qty</th>
+            <th class="tax-th-check" title="Select"></th>
+            <th data-sort="text">Lot</th>
+            <th data-sort="text">Type</th>
+            <th data-sort="number">Held</th>
+            <th data-sort="number">Unex</th>
+            <th data-sort="number">Basis / strike</th>
+            <th data-sort="date">Ex date</th>
+            <th data-sort="text">Hold</th>
+            <th data-sort="number">Qty</th>
           </tr>
         </thead>
         <tbody>
           {% for lot in lots %}
+          {% set kind = 'iso' if lot.is_iso else ('cash' if lot.share_type == 'cash' else 'rsu') %}
+          {% set held = lot.shares_available or 0 %}
+          {% set unex = lot.shares_unexercised or 0 %}
+          {% set basis = (lot.strike_price or lot.cost_basis_per_share) if lot.is_iso else lot.cost_basis_per_share %}
+          {% set max_q = held if held > 0 else unex %}
           <tr
+            class="tax-lot-row"
             data-vest="{{ lot.vest_event_id }}"
-            data-available="{{ lot.shares_available }}"
-            data-unexercised="{{ lot.shares_unexercised }}"
+            data-available="{{ held }}"
+            data-unexercised="{{ unex }}"
             data-iso="{{ lot.is_iso|tojson }}"
+            data-kind="{{ kind }}"
             data-exercised="{{ 'true' if lot.exercise_date else 'false' }}"
+            data-has-held="{{ '1' if held > 0 else '0' }}"
+            data-has-unex="{{ '1' if unex > 0 else '0' }}"
           >
-            <td><input type="checkbox" class="lot-check" {% if lot.shares_available <= 0 and lot.shares_unexercised <= 0 %}disabled{% endif %}></td>
-            <td>
+            <td><input type="checkbox" class="lot-check" {% if max_q <= 0 %}disabled{% endif %}></td>
+            <td data-value="{{ lot.label }} #{{ lot.vest_event_id }}">
               <span class="tax-lot-label">{{ lot.label }}</span>
               <span class="tax-lot-id">#{{ lot.vest_event_id }}</span>
             </td>
-            <td>{{ lot.share_type }}</td>
-            <td>
-              {% if lot.is_iso %}
-                {{ "{:,.2f}".format(lot.shares_available) }} held
-                <div class="tax-muted-sm">{{ "{:,.2f}".format(lot.shares_unexercised) }} unex</div>
-              {% else %}
-                {{ "{:,.2f}".format(lot.shares_available) }}
-              {% endif %}
-            </td>
-            <td>
-              {% if lot.is_iso %}${{ "{:,.2f}".format(lot.strike_price or lot.cost_basis_per_share) }}
-              {% else %}${{ "{:,.2f}".format(lot.cost_basis_per_share) }}
-              {% endif %}
-            </td>
-            <td class="tax-muted-sm">{{ lot.exercise_date or '—' }}</td>
-            <td>{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
-            <td>
-              {% set max_q = lot.shares_available if lot.shares_available > 0 else lot.shares_unexercised %}
+            <td data-value="{{ lot.share_type }}">{{ lot.share_type }}</td>
+            <td data-value="{{ held }}">{{ "{:,.2f}".format(held) }}</td>
+            <td data-value="{{ unex }}">{% if lot.is_iso %}{{ "{:,.2f}".format(unex) }}{% else %}—{% endif %}</td>
+            <td data-value="{{ basis or 0 }}">${{ "{:,.2f}".format(basis or 0) }}</td>
+            <td class="tax-muted-sm" data-value="{{ lot.exercise_date or '' }}">{{ lot.exercise_date or '—' }}</td>
+            <td data-value="{{ 'LT' if lot.is_long_term else 'ST' }}">{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
+            <td data-value="0">
               <input type="number" class="lot-qty form-control" step="0.01" min="0"
                      max="{{ max_q }}" value="0"
                      {% if max_q <= 0 %}disabled{% endif %}>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="8" class="empty-state">No lots yet — add grants first.</td></tr>
+          <tr class="tax-lot-empty"><td colspan="9" class="empty-state">No lots yet — add grants first.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -927,9 +938,62 @@
   updateStrategyHint();
   updatePlanFieldVisibility();
 
+  // Lot table: share-type filter + count (sorting via sortable-tables.js)
+  (function initLotsFilter() {
+    const table = document.getElementById('lotsTable');
+    const countEl = document.getElementById('lotsFilterCount');
+    const chips = document.querySelectorAll('.tax-lot-filter');
+    if (!table || !chips.length) return;
+
+    function matchesFilter(tr, filter) {
+      if (tr.classList.contains('tax-lot-empty')) return true;
+      const kind = tr.getAttribute('data-kind') || (tr.dataset.iso === 'true' ? 'iso' : 'rsu');
+      const held = parseFloat(tr.dataset.available || 0) > 0;
+      const unex = parseFloat(tr.dataset.unexercised || 0) > 0;
+      if (filter === 'all') return true;
+      if (filter === 'rsu') return kind === 'rsu';
+      if (filter === 'iso') return kind === 'iso';
+      if (filter === 'iso_held') return kind === 'iso' && held;
+      if (filter === 'iso_unex') return kind === 'iso' && unex;
+      return true;
+    }
+
+    function applyFilter(filter) {
+      let visible = 0;
+      let total = 0;
+      table.querySelectorAll('tbody tr.tax-lot-row').forEach(function (tr) {
+        total += 1;
+        const show = matchesFilter(tr, filter);
+        tr.style.display = show ? '' : 'none';
+        // Uncheck/hide qty on filtered-out rows so scenarios don't use invisible lots
+        if (!show) {
+          const check = tr.querySelector('.lot-check');
+          const qty = tr.querySelector('.lot-qty');
+          if (check) check.checked = false;
+          if (qty && !qty.disabled) qty.value = 0;
+        } else {
+          visible += 1;
+        }
+      });
+      if (countEl) {
+        countEl.textContent = total ? (visible + ' of ' + total + ' lots') : '';
+      }
+    }
+
+    chips.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        chips.forEach(function (c) { c.classList.remove('is-active'); });
+        btn.classList.add('is-active');
+        applyFilter(btn.getAttribute('data-lot-filter') || 'all');
+      });
+    });
+    applyFilter('all');
+  })();
+
   document.getElementById('btnSellMax').addEventListener('click', function () {
     const strategy = document.getElementById('planStrategy').value;
-    document.querySelectorAll('#lotsTable tbody tr').forEach(function (tr) {
+    document.querySelectorAll('#lotsTable tbody tr.tax-lot-row').forEach(function (tr) {
+      if (tr.style.display === 'none') return;
       const check = tr.querySelector('.lot-check');
       const qty = tr.querySelector('.lot-qty');
       if (!check || !check.checked || !qty) return;
@@ -946,7 +1010,8 @@
 
   function collectLots() {
     const lots = [];
-    document.querySelectorAll('#lotsTable tbody tr').forEach(function (tr) {
+    document.querySelectorAll('#lotsTable tbody tr.tax-lot-row').forEach(function (tr) {
+      if (tr.style.display === 'none') return;
       const check = tr.querySelector('.lot-check');
       const qty = tr.querySelector('.lot-qty');
       if (!check || !check.checked || !qty) return;

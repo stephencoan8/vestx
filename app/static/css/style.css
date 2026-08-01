@@ -2411,6 +2411,45 @@ body.advisor-open .app-main {
 .tax-inline-result { margin-top: 0.75rem; }
 .tax-strategy-group select { max-width: 36rem; width: 100%; }
 
+/* Advanced lots table: type filter + sortable headers */
+.tax-lots-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem 1rem;
+    margin: 0.85rem 0 0.55rem;
+}
+.tax-lots-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+.tax-lots-filter-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-right: 0.25rem;
+}
+.tax-lot-filter.is-active {
+    border-color: var(--copper-border, var(--accent));
+    background: var(--accent-soft, var(--bg-hover));
+    color: var(--text-primary);
+    font-weight: 600;
+}
+#lotsTable th[data-sort] {
+    white-space: nowrap;
+}
+#lotsTable th[data-sort]:hover {
+    color: var(--text-primary);
+}
+#lotsTable .tax-th-check {
+    width: 2rem;
+}
+
 @media (max-width: 900px) {
     .tax-situation {
         grid-template-columns: 1fr 1fr;
