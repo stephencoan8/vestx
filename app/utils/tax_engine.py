@@ -654,73 +654,36 @@ def compute_vest_ordinary_tax(
     base_profile['other_ordinary_income'] = base_ord
     base_profile['ytd_wages'] = base_ord
 
-    # Apply federal + CA standard deductions to BOTH stacks so incremental tax
-    # respects remaining std ded (fixes false 32% cliff just above $191,950 gross).
+    # Pass gross ordinary — _federal_state_layer applies federal/CA standard deductions
+    # on both base and full stacks so remaining std ded is absorbed correctly.
     from app.utils.wage_year_tax import FED_STD_DEDUCTION, CA_STD_DEDUCTION, _std_for
     fed_std = _std_for(FED_STD_DEDUCTION, year, filing)
     ca_std = _std_for(CA_STD_DEDUCTION, year, filing)
-
-    def _taxable(ord_amt: float, std: float) -> float:
-        return max(0.0, float(ord_amt) - float(std))
 
     base_layer = _federal_state_layer(
         base_profile,
         year=year,
         filing=filing,
-        other_ord=_taxable(base_ord, fed_std),
+        other_ord=base_ord,
         equity_ordinary=0.0,
         stcg_pos=0.0,
         ltcg_pos=0.0,
         amt_bargain=0.0,
     )
-    # CA uses separate ordinary input — feed CA-taxable via state by adjusting other_ord
-    # for federal stack uses fed std; for state, recompute with ca std on ordinary only.
     full_layer = _federal_state_layer(
         base_profile,
         year=year,
         filing=filing,
-        other_ord=_taxable(base_ord, fed_std),
-        equity_ordinary=vest,  # vest is incremental; std already removed from base
+        other_ord=base_ord,
+        equity_ordinary=vest,
         stcg_pos=0.0,
         ltcg_pos=0.0,
         amt_bargain=0.0,
     )
-    # When base is below fed std, part of vest fills the remaining std — subtract that
-    # from equity taxed at federal by re-running with combined taxable.
-    base_taxable_fed = _taxable(base_ord, fed_std)
-    full_taxable_fed = _taxable(base_ord + vest, fed_std)
-    # Correct federal ordinary delta using taxable incomes (not gross)
-    if abs(full_taxable_fed - base_taxable_fed - vest) > 0.01:
-        base_layer = _federal_state_layer(
-            base_profile, year=year, filing=filing,
-            other_ord=base_taxable_fed, equity_ordinary=0.0,
-            stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
-        )
-        full_layer = _federal_state_layer(
-            base_profile, year=year, filing=filing,
-            other_ord=base_taxable_fed, equity_ordinary=max(0.0, full_taxable_fed - base_taxable_fed),
-            stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
-        )
-
-    # State: CA std on ordinary stack (no federal-style LTCG preference)
-    base_ca = _taxable(base_ord, ca_std)
-    full_ca_ord = _taxable(base_ord + vest, ca_std)
-    ca_equity = max(0.0, full_ca_ord - base_ca)
-    base_state = _federal_state_layer(
-        base_profile, year=year, filing=filing,
-        other_ord=base_ca, equity_ordinary=0.0,
-        stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
-    )
-    full_state = _federal_state_layer(
-        base_profile, year=year, filing=filing,
-        other_ord=base_ca, equity_ordinary=ca_equity,
-        stcg_pos=0.0, ltcg_pos=0.0, amt_bargain=0.0,
-    )
 
     federal_tax = max(0.0, float(full_layer['federal_ordinary_tax']) - float(base_layer['federal_ordinary_tax']))
     federal_tax += max(0.0, float(full_layer['niit']) - float(base_layer['niit']))
-    # State delta uses CA-std-adjusted stacks (not federal std)
-    state_tax = max(0.0, float(full_state['state_tax']) - float(base_state['state_tax']))
+    state_tax = max(0.0, float(full_layer['state_tax']) - float(base_layer['state_tax']))
 
     # FICA: YTD = wages before this vest (do NOT re-peel via compute_fica_components)
     include_fica = bool(profile.get('include_fica', True))
@@ -796,7 +759,7 @@ def compute_vest_ordinary_tax(
         'additional_medicare_rate': add_rate,
         'effective_rate': eff,
         'ordinary_marginal': float(full_layer.get('ord_marginal') or 0),
-        'state_marginal': float(getattr(full_state.get('state_result'), 'marginal_rate', 0) or 0),
+        'state_marginal': float(getattr(full_layer.get('state_result'), 'marginal_rate', 0) or 0),
         'federal_std_deduction': fed_std,
         'ca_std_deduction': ca_std,
         'ss_wage_base': ss_base,
@@ -843,39 +806,61 @@ def _federal_state_layer(
     """
     Compute federal + state tax for one income stack (full dollars, not incremental).
     FICA is omitted here — it is equity-only and applied once on the delta path.
+
+    Inputs are **gross** dollars (pre standard deduction). Federal progressive tax
+    and preferential LTCG stack on taxable ordinary after the federal standard
+    deduction; CA PIT uses the CA standard deduction (when state is CA). AMTI is
+    built from gross income + ISO bargain (no std ded). Regular tax compared to
+    TMT is the post-std-ded regular federal/CA tax — Form 6251-style.
     """
     from app.utils.state_tax import compute_state_tax
+    from app.utils.wage_year_tax import FED_STD_DEDUCTION, CA_STD_DEDUCTION, _std_for
 
-    total_ordinary = other_ord + equity_ordinary + stcg_pos
+    other_ord = max(0.0, float(other_ord or 0.0))
+    equity_ordinary = max(0.0, float(equity_ordinary or 0.0))
+    stcg_pos = max(0.0, float(stcg_pos or 0.0))
+    ltcg_pos = max(0.0, float(ltcg_pos or 0.0))
+    amt_bargain = max(0.0, float(amt_bargain or 0.0))
+
+    # Gross stacks (pre standard deduction) — NIIT / AMTI / reporting
+    wages_equity = other_ord + equity_ordinary
+    total_ordinary = wages_equity + stcg_pos  # STCG is ordinary character
+    fed_std = _std_for(FED_STD_DEDUCTION, year, filing)
+    ca_std = _std_for(CA_STD_DEDUCTION, year, filing)
+
+    # Federal taxable ordinary after standard deduction
+    taxable_ordinary = max(0.0, total_ordinary - fed_std)
+
     ordinary_brackets = _year_table(ORDINARY_BRACKETS, year)[filing]
     # Bracket engine wins when enabled — legacy User.federal_tax_rate often seeds
     # federal_ordinary_rate (e.g. 35%) and must not force a flat rate on top.
     use_brackets = bool(profile.get('use_bracket_engine', True))
 
     if use_brackets:
-        federal_ordinary_tax = progressive_tax(total_ordinary, ordinary_brackets)
-        ord_marginal = marginal_rate(total_ordinary, ordinary_brackets)
+        federal_ordinary_tax = progressive_tax(taxable_ordinary, ordinary_brackets)
+        ord_marginal = marginal_rate(taxable_ordinary, ordinary_brackets)
     else:
         ord_rate = float(profile.get('federal_ordinary_rate') or 0.24)
-        federal_ordinary_tax = total_ordinary * ord_rate
+        federal_ordinary_tax = taxable_ordinary * ord_rate
         ord_marginal = ord_rate
 
-    taxable_for_ltcg = total_ordinary + ltcg_pos
     if profile.get('federal_ltcg_rate') is not None:
         # Manual override: flat rate on all LTCG (power-user / stress test)
         ltcg_rate = float(profile['federal_ltcg_rate'])
         federal_ltcg_tax = ltcg_pos * ltcg_rate
     else:
-        # Stack LTCG on ordinary and fill 0% / 15% / 20% bands (not one flat rate)
+        # Stack LTCG on *taxable* ordinary (after std ded) — same as W-2 full-year path
         federal_ltcg_tax, ltcg_rate = preferential_ltcg_tax(
-            ltcg_pos, total_ordinary, filing, year
+            ltcg_pos, taxable_ordinary, filing, year
         )
-    federal_stcg_tax = stcg_pos * ord_marginal  # STCG already in ordinary progressive
+    federal_stcg_tax = stcg_pos * ord_marginal  # attribution only; STCG already in ordinary tax
 
+    # Regular tax for AMT comparison = post-std-ded ordinary + preferential LTCG (not NIIT)
     regular_federal = federal_ordinary_tax + federal_ltcg_tax
 
     niit = 0.0
     if profile.get('include_niit', True):
+        # NIIT uses MAGI-ish base (pre standard deduction)
         magi = total_ordinary + ltcg_pos
         thr = NIIT_THRESHOLD.get(filing, 200000)
         investment = stcg_pos + ltcg_pos
@@ -886,19 +871,29 @@ def _federal_state_layer(
     state_cg_rate = float(
         profile.get('state_cg_rate') if profile.get('state_cg_rate') is not None else state_ord_rate
     )
+    state_code = (profile.get('state_code') or '').upper()
+    # CA: apply CA standard deduction to ordinary first; leftover reduces gains (rare)
+    if state_code == 'CA':
+        ca_taxable_ordinary = max(0.0, wages_equity - ca_std)
+        leftover_ca_std = max(0.0, ca_std - wages_equity)
+        ca_gains_taxable = max(0.0, (stcg_pos + ltcg_pos) - leftover_ca_std)
+    else:
+        ca_taxable_ordinary = wages_equity
+        ca_gains_taxable = stcg_pos + ltcg_pos
+
     state_result = compute_state_tax(
         state_code=profile.get('state_code'),
         filing_status=filing,
         tax_year=year,
-        ordinary_income=other_ord + equity_ordinary,
-        capital_gains=stcg_pos + ltcg_pos,
+        ordinary_income=ca_taxable_ordinary,
+        capital_gains=ca_gains_taxable,
         use_state_engine=bool(profile.get('use_state_engine', True)),
         state_ordinary_rate=state_ord_rate,
         state_cg_rate=state_cg_rate,
     )
 
-    # Federal + CA AMT with minimum-tax credit rollforward
-    amti_base = other_ord + equity_ordinary + stcg_pos + ltcg_pos
+    # AMTI ≈ gross ordinary + CG + ISO bargain (no std ded; exemption applied in TMT)
+    amti_base = total_ordinary + ltcg_pos
     amt_stack = compute_amt_stack(
         filing=filing,
         year=year,
@@ -910,6 +905,7 @@ def _federal_state_layer(
         ca_credit_opening=float(profile.get('ca_amt_credit_carryforward') or 0.0),
         state_code=profile.get('state_code'),
         compute_ca=bool(profile.get('use_state_engine', True)),
+        long_term_gains=ltcg_pos,
     )
     fed_amt = amt_stack.federal
     amt_tax = fed_amt.tentative_minimum_tax
@@ -930,6 +926,9 @@ def _federal_state_layer(
 
     return {
         'total_ordinary': total_ordinary,
+        'taxable_ordinary': taxable_ordinary,
+        'federal_std_deduction': fed_std,
+        'ca_std_deduction': ca_std if state_code == 'CA' else 0.0,
         'federal_ordinary_tax': federal_ordinary_tax,
         'federal_ltcg_tax': federal_ltcg_tax,
         'federal_stcg_tax': federal_stcg_tax,
@@ -1155,8 +1154,12 @@ def analyze_sales(
             floor_20 = float(_year_table(LTCG_BRACKETS, year)[filing][2][0])
         except Exception:
             floor_20 = 545500.0
-        # Ordinary + STCG sit under LTCG for preferential stacking
-        ordinary_for_ltcg = other_ord + equity_ordinary + full_st
+        # Preferential LTCG stacks on taxable ordinary (after federal std ded)
+        from app.utils.wage_year_tax import FED_STD_DEDUCTION, _std_for as _std_for_warn
+        _fed_std_w = _std_for_warn(FED_STD_DEDUCTION, year, filing)
+        ordinary_for_ltcg = max(
+            0.0, other_ord + equity_ordinary + full_st - _fed_std_w
+        )
         room_in_15 = max(0.0, floor_20 - ordinary_for_ltcg)
         in_15 = min(ltcg_pos, room_in_15) if ordinary_for_ltcg < floor_20 else 0.0
         in_20 = max(0.0, ltcg_pos - in_15)
@@ -1164,15 +1167,16 @@ def analyze_sales(
         if in_20 > 1 and in_15 > 1:
             warnings.append(
                 f'Federal LTCG split: ${in_15:,.0f} @ 15% + ${in_20:,.0f} @ 20% '
-                f'(wages/ordinary base ${ordinary_for_ltcg:,.0f}; 20% starts at ${floor_20:,.0f} TI).'
+                f'(taxable ordinary base ${ordinary_for_ltcg:,.0f}; 20% starts at ${floor_20:,.0f} TI).'
             )
         elif in_20 > 1:
             warnings.append(
-                f'Federal LTCG all @ 20% (TI through gains ≈ ${ti_top:,.0f}; ordinary base ${ordinary_for_ltcg:,.0f}).'
+                f'Federal LTCG all @ 20% (TI through gains ≈ ${ti_top:,.0f}; '
+                f'taxable ordinary base ${ordinary_for_ltcg:,.0f}).'
             )
         else:
             warnings.append(
-                f'Federal LTCG @ 15% (ordinary base ${ordinary_for_ltcg:,.0f}; '
+                f'Federal LTCG @ 15% (taxable ordinary base ${ordinary_for_ltcg:,.0f}; '
                 f'only ${room_in_15:,.0f} of room left before 20% band at ${floor_20:,.0f}).'
             )
 

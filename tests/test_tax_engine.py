@@ -238,6 +238,136 @@ def test_ytd_wages_stack_into_ordinary_for_ltcg_band():
     assert a.state_tax > 9_000
 
 
+def test_sale_incremental_matches_full_year_cg_delta():
+    """
+    Regression (validation Case 10): large LTCG + modest wages.
+    Sale incremental via analyze_sales must track full-year (wages+CG − wages)
+    within a decision-grade band — std ded must apply on both paths.
+    """
+    from app.utils.wage_year_tax import compute_w2_year_tax
+
+    wages = 60_000
+    ltcg = 400_000
+    year = 2025
+    profile = {
+        'filing_status': 'single',
+        'tax_year': year,
+        'state_code': 'CA',
+        'use_bracket_engine': True,
+        'use_state_engine': True,
+        'federal_ordinary_rate': None,
+        'federal_ltcg_rate': None,
+        'state_ordinary_rate': 0.0,
+        'state_cg_rate': 0.0,
+        'other_ordinary_income': wages,
+        'ytd_wages': wages,
+        'other_long_term_gains': 0,
+        'other_short_term_gains': 0,
+        'include_fica': True,
+        'include_niit': True,
+        'ss_wage_base_maxed': False,
+        'amt_credit_carryforward': 0,
+        'ca_amt_credit_carryforward': 0,
+    }
+    lot = LotSaleInput(
+        vest_event_id=10,
+        grant_id=1,
+        share_type='rsu',
+        grant_type='new_hire',
+        shares=1000,
+        sale_price=410.0,  # $400k gain + $10 basis
+        sale_date=date(year, 6, 15),
+        vest_date=date(year - 2, 1, 15),
+        grant_date=date(year - 3, 1, 15),
+        cost_basis_per_share=10.0,
+        is_iso=False,
+    )
+    sale = analyze_sales(profile, [lot])
+    full = compute_w2_year_tax(
+        tax_year=year,
+        filing_status='single',
+        state_code='CA',
+        wages=wages,
+        ltcg=ltcg,
+        include_fica=True,
+        use_state_engine=True,
+    )
+    base = compute_w2_year_tax(
+        tax_year=year,
+        filing_status='single',
+        state_code='CA',
+        wages=wages,
+        include_fica=True,
+        use_state_engine=True,
+    )
+    full_year_delta = full.total_tax - base.total_tax
+    # Decision-grade: was ~$32k off before std-ded fix; must stay within $5k
+    assert abs(sale.total_tax - full_year_delta) < 5_000, (
+        f'sale incremental ${sale.total_tax:,.0f} vs full-year CG delta '
+        f'${full_year_delta:,.0f}'
+    )
+    assert abs(sale.ltcg - ltcg) < 1
+
+
+def test_amt_regular_tax_uses_standard_deduction():
+    """
+    Regression (validation Cases 12–13): AMT due = TMT − regular tax.
+    Regular tax must be computed after federal standard deduction, or AMT
+    due is understated (looks cheaper to exercise than it is).
+    """
+    from app.utils.amt import compute_federal_tmt
+    from app.utils.tax_engine import ExerciseInput, ORDINARY_BRACKETS
+    from app.utils.wage_year_tax import FED_STD_DEDUCTION, _std_for
+
+    wages = 200_000
+    bargain = 180_000  # classic ISO hit
+    year = 2025
+    filing = 'single'
+    fed_std = _std_for(FED_STD_DEDUCTION, year, filing)
+    regular_correct = progressive_tax(
+        max(0.0, wages - fed_std),
+        ORDINARY_BRACKETS[year][filing],
+    )
+    amti = wages + bargain
+    tmt, _ = compute_federal_tmt(amti, filing, year)
+    expected_amt_due = max(0.0, tmt - regular_correct)
+
+    ex = ExerciseInput(
+        vest_event_id=12,
+        shares=10_000,
+        exercise_date=date(year, 3, 1),
+        strike_price=2.0,
+        fmv_at_exercise=20.0,
+        grant_date=date(year - 2, 1, 1),
+        is_iso=True,
+    )
+    profile = {
+        'filing_status': filing,
+        'tax_year': year,
+        'state_code': 'CA',
+        'use_bracket_engine': True,
+        'use_state_engine': True,
+        'federal_ordinary_rate': None,
+        'federal_ltcg_rate': None,
+        'state_ordinary_rate': 0.0,
+        'state_cg_rate': 0.0,
+        'other_ordinary_income': wages,
+        'ytd_wages': wages,
+        'other_long_term_gains': 0,
+        'other_short_term_gains': 0,
+        'include_fica': False,
+        'include_niit': True,
+        'ss_wage_base_maxed': True,
+        'amt_credit_carryforward': 0,
+        'ca_amt_credit_carryforward': 0,
+    }
+    a = analyze_sales(profile, lots=[], exercises=[ex])
+    # Federal AMT due should match Form 6251-style within $500
+    assert abs(a.amt_due - expected_amt_due) < 500, (
+        f'VestX AMT due ${a.amt_due:,.0f} vs expected ${expected_amt_due:,.0f}'
+    )
+
+
 if __name__ == '__main__':
     test_progressive_tax_basic()
     test_iso_qualifying_vs_disqualifying()
@@ -248,4 +378,6 @@ if __name__ == '__main__':
     test_amt_positive_with_large_bargain()
     test_ltcg_rate_brackets()
     test_ytd_wages_stack_into_ordinary_for_ltcg_band()
+    test_sale_incremental_matches_full_year_cg_delta()
+    test_amt_regular_tax_uses_standard_deduction()
     print('ALL TAX ENGINE TESTS PASSED')

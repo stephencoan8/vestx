@@ -160,8 +160,9 @@ def test_analyze_sales_uses_ca_engine():
     assert a.state_engine == 'CA'
     assert a.state_tax > 0
     assert a.state_regular_tax > 0
-    # taxable state base includes other ordinary + CG
-    assert a.state_taxable_income >= 250_000 + 100_000 - 1
+    # CA taxable = wages + CG after CA standard deduction (~$5.7k single 2025)
+    assert a.state_taxable_income >= 250_000 + 100_000 - 10_000
+    assert a.state_taxable_income < 250_000 + 100_000  # std ded applied
     assert a.rates_used.get('state_marginal', 0) > 0
     assert a.state_breakdown.get('cg_preferential') is False
 

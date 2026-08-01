@@ -99,8 +99,21 @@ class CombinedAmtResult:
         }
 
 
-def compute_federal_tmt(amti: float, filing: str, year: int) -> Tuple[float, float]:
-    """Return (TMT, exemption_used)."""
+def compute_federal_tmt(
+    amti: float,
+    filing: str,
+    year: int,
+    *,
+    ltcg: float = 0.0,
+) -> Tuple[float, float]:
+    """
+    Return (TMT, exemption_used).
+
+    Planning Form 6251-style: after exemption, the long-term capital gain
+    slice of taxable AMTI is taxed at preferential 0/15/20% rates (not 26/28%).
+    ISO bargain and other ordinary AMTI remain at 26/28%. Without this split,
+    pure large LTCG stacks falsely create ~$30k+ phantom AMT vs regular tax.
+    """
     if amti <= 0:
         return 0.0, 0.0
     filing = filing if filing in ('single', 'mfj', 'mfs', 'hoh') else 'single'
@@ -115,12 +128,29 @@ def compute_federal_tmt(amti: float, filing: str, year: int) -> Tuple[float, flo
     if amti > phase_start:
         exempt = max(0.0, exempt - phase_rate * (amti - phase_start))
     taxable = max(0.0, amti - exempt)
+    if taxable <= 0:
+        return 0.0, exempt
+
+    # Preferential LTCG under AMT (top of taxable AMTI; exemption hits ordinary first)
+    ltcg_pref = max(0.0, min(float(ltcg or 0.0), taxable))
+    ordinary_taxable_amt = max(0.0, taxable - ltcg_pref)
+
     thr = FED_AMT_28_THRESHOLD.get(filing, 220700)
-    if taxable <= thr:
-        tmt = taxable * FED_AMT_RATE_LOW
+    if ordinary_taxable_amt <= thr:
+        tmt_ord = ordinary_taxable_amt * FED_AMT_RATE_LOW
     else:
-        tmt = thr * FED_AMT_RATE_LOW + (taxable - thr) * FED_AMT_RATE_HIGH
-    return tmt, exempt
+        tmt_ord = (
+            thr * FED_AMT_RATE_LOW
+            + (ordinary_taxable_amt - thr) * FED_AMT_RATE_HIGH
+        )
+
+    tmt_cg = 0.0
+    if ltcg_pref > 0:
+        # Lazy import avoids circular import with tax_engine at module load
+        from app.utils.tax_engine import preferential_ltcg_tax
+        tmt_cg, _ = preferential_ltcg_tax(ltcg_pref, ordinary_taxable_amt, filing, year)
+
+    return tmt_ord + tmt_cg, exempt
 
 
 def compute_ca_tmt(amti: float, filing: str, year: int) -> Tuple[float, float]:
@@ -213,14 +243,19 @@ def compute_amt_stack(
     ca_credit_opening: float = 0.0,
     state_code: Optional[str] = None,
     compute_ca: bool = True,
+    # LTCG included in ordinary_and_cg_base — taxed at pref rates under federal TMT
+    long_term_gains: float = 0.0,
 ) -> CombinedAmtResult:
     """
     Full federal (+ optional CA) AMT with credit rollforward.
 
     AMTI ≈ ordinary + ST/LT gains + ISO bargain preference (simplified).
+    Federal TMT applies preferential rates to the LTCG slice (Form 6251-style);
+    ISO bargain stays in the 26/28% ordinary AMT slice.
     """
     amti = max(0.0, ordinary_and_cg_base) + max(0.0, iso_bargain_preference)
-    fed_tmt, fed_ex = compute_federal_tmt(amti, filing, year)
+    ltcg = max(0.0, float(long_term_gains or 0.0))
+    fed_tmt, fed_ex = compute_federal_tmt(amti, filing, year, ltcg=ltcg)
     federal = apply_amt_and_credit(
         jurisdiction='federal',
         amti=amti,
