@@ -15,6 +15,7 @@ from app.utils.tax_engine import (
     analyze_sales,
     resolve_engine_profile_for_year,
 )
+from app.utils.shares import whole_shares, clamp_whole_shares
 
 
 def _empty_sale_dict(
@@ -92,7 +93,8 @@ def lot_input_from_vest(
     """Build LotSaleInput for one vest disposition. Returns None if not sellable."""
     from app.models.grant import ShareType
 
-    if not vest or not vest.grant or shares <= 0:
+    sh = whole_shares(shares)
+    if not vest or not vest.grant or sh <= 0:
         return None
     grant = vest.grant
     st = grant.share_type
@@ -111,7 +113,7 @@ def lot_input_from_vest(
         grant_id=grant.id,
         share_type=st or 'rsu',
         grant_type=grant.grant_type or 'rsu',
-        shares=float(shares),
+        shares=float(sh),
         sale_price=float(sale_price),
         sale_date=sale_date,
         vest_date=vest.vest_date,
@@ -221,7 +223,7 @@ def estimate_vest_sale_tax(
 
     grant = vest.grant
     if grant.share_type == ShareType.CASH.value:
-        held = float(vest.shares_received or 0) - float(total_sold or 0)
+        held = whole_shares(float(vest.shares_received or 0) - float(total_sold or 0))
         return _empty_sale_dict(
             shares_held=held,
             cost_basis_per_share=1.0,
@@ -234,7 +236,9 @@ def estimate_vest_sale_tax(
         current_stock_price = get_latest_user_price(grant.user_id) or 0.0
     sale_date = sale_date or date.today()
 
-    shares_held = float(vest.shares_received or 0) - float(total_sold or 0) - float(total_exercised or 0)
+    shares_held = whole_shares(
+        float(vest.shares_received or 0) - float(total_sold or 0) - float(total_exercised or 0)
+    )
     if shares_held <= 0:
         return _empty_sale_dict(method='none')
 
@@ -316,7 +320,34 @@ def estimate_lots_sale_tax(
     """
     Portfolio-level estimate: one analyze_sales over many lots (correct stacking).
     """
-    lot_list = [x for x in lots if x and float(x.shares or 0) > 0]
+    lot_list = []
+    for x in lots:
+        if not x:
+            continue
+        sh = whole_shares(x.shares)
+        if sh <= 0:
+            continue
+        if sh != x.shares:
+            # Normalize to whole shares on a copy
+            x = LotSaleInput(
+                vest_event_id=x.vest_event_id,
+                grant_id=x.grant_id,
+                share_type=x.share_type,
+                grant_type=x.grant_type,
+                shares=float(sh),
+                sale_price=x.sale_price,
+                sale_date=x.sale_date,
+                vest_date=x.vest_date,
+                grant_date=x.grant_date,
+                cost_basis_per_share=x.cost_basis_per_share,
+                is_iso=x.is_iso,
+                strike_price=x.strike_price,
+                exercise_date=x.exercise_date,
+                fmv_at_exercise=x.fmv_at_exercise,
+                commission=x.commission,
+                label=x.label,
+            )
+        lot_list.append(x)
     if not user or not lot_list:
         return {
             'estimated_tax': 0.0,
@@ -422,7 +453,7 @@ def estimate_recorded_stock_sale(sale, user, *, profile: Optional[dict] = None) 
 
     lot = lot_input_from_vest(
         vest,
-        shares=float(sale.shares_sold or 0),
+        shares=whole_shares(sale.shares_sold),
         sale_price=float(sale.sale_price or 0),
         sale_date=sale.sale_date,
         cost_basis_per_share=basis,

@@ -49,8 +49,8 @@
  <div class="form-group">
  <label for="share_quantity">Share Quantity</label>
  <input type="number" id="share_quantity" name="share_quantity" 
- value="{{ grant.share_quantity }}" 
- step="0.01" min="0" required>
+ value="{{ grant.share_quantity|int }}" 
+ step="1" min="1" inputmode="numeric" required>
  <small class="form-help">Enter the exact number of shares (no auto-multiplication)</small>
  </div>
 

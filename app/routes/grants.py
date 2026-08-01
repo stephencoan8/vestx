@@ -36,7 +36,8 @@ def add_grant():
             grant_date = datetime.strptime(request.form.get('grant_date'), '%Y-%m-%d').date()
             grant_type = request.form.get('grant_type')
             share_type = request.form.get('share_type')
-            share_quantity = float(request.form.get('share_quantity'))
+            from app.utils.shares import whole_shares
+            share_quantity = float(whole_shares(request.form.get('share_quantity')))
             bonus_type = request.form.get('bonus_type')
             vest_years = request.form.get('vest_years')
             notes = request.form.get('notes', '')
@@ -149,7 +150,8 @@ def edit_grant(grant_id):
             grant_date = datetime.strptime(request.form.get('grant_date'), '%Y-%m-%d').date()
             grant_type = request.form.get('grant_type')
             share_type = request.form.get('share_type') or grant.share_type  # Keep existing if disabled
-            share_quantity = float(request.form.get('share_quantity'))
+            from app.utils.shares import whole_shares
+            share_quantity = float(whole_shares(request.form.get('share_quantity')))
             bonus_type = request.form.get('bonus_type') or None
             vest_years = request.form.get('vest_years') or None
             notes = request.form.get('notes', '')
@@ -802,7 +804,8 @@ def calculate_sale_taxes():
             if not vest.grant or vest.grant.share_type == ShareType.CASH.value:
                 continue
             is_iso = vest.grant.share_type in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value)
-            shares = float(vest.shares_received or 0)
+            from app.utils.shares import whole_shares
+            shares = float(whole_shares(vest.shares_received or 0))
             if shares <= 0:
                 continue
             if is_iso:

@@ -1002,6 +1002,35 @@ def analyze_sales(
     if profile.get('state_ordinary_rate') is None and profile.get('state_cg_rate') is None:
         missing.append('state tax rates')
 
+    # Whole shares only — normalize lots before analysis
+    from app.utils.shares import whole_shares
+    norm_lots: List[LotSaleInput] = []
+    for lot in lots:
+        sh = whole_shares(lot.shares)
+        if sh <= 0:
+            continue
+        if sh != lot.shares:
+            lot = LotSaleInput(
+                vest_event_id=lot.vest_event_id,
+                grant_id=lot.grant_id,
+                share_type=lot.share_type,
+                grant_type=lot.grant_type,
+                shares=float(sh),
+                sale_price=lot.sale_price,
+                sale_date=lot.sale_date,
+                vest_date=lot.vest_date,
+                grant_date=lot.grant_date,
+                cost_basis_per_share=lot.cost_basis_per_share,
+                is_iso=lot.is_iso,
+                strike_price=lot.strike_price,
+                exercise_date=lot.exercise_date,
+                fmv_at_exercise=lot.fmv_at_exercise,
+                commission=lot.commission,
+                label=lot.label,
+            )
+        norm_lots.append(lot)
+    lots = norm_lots
+
     lot_results = [analyze_lot(lot) for lot in lots]
 
     equity_ordinary = sum(r.ordinary_income for r in lot_results)

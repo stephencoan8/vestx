@@ -11,6 +11,7 @@ from app.models.grant import Grant, ShareType
 from app.models.vest_event import VestEvent
 from app.models.stock_sale import StockSale, ISOExercise
 from app.utils.price_utils import get_latest_user_price
+from app.utils.shares import whole_shares
 
 
 def _iso_types():
@@ -20,6 +21,8 @@ def _iso_types():
 def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict]:
     """
     Return list of lot dicts with available shares and tax metadata.
+
+    Share counts are whole shares only (floor) — no fractional lots.
     """
     as_of = as_of or date.today()
     current_price = get_latest_user_price(user_id) or 0.0
@@ -39,13 +42,15 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
     sold_by_vest: Dict[int, float] = {}
     for s in sales:
         if s.vest_event_id:
-            sold_by_vest[s.vest_event_id] = sold_by_vest.get(s.vest_event_id, 0.0) + (s.shares_sold or 0)
+            sold_by_vest[s.vest_event_id] = sold_by_vest.get(s.vest_event_id, 0.0) + float(
+                s.shares_sold or 0
+            )
 
     exercises = ISOExercise.query.filter_by(user_id=user_id).all()
     exercised_by_vest: Dict[int, float] = {}
     exercise_meta: Dict[int, list] = {}
     for e in exercises:
-        exercised_by_vest[e.vest_event_id] = exercised_by_vest.get(e.vest_event_id, 0.0) + (
+        exercised_by_vest[e.vest_event_id] = exercised_by_vest.get(e.vest_event_id, 0.0) + float(
             e.shares_exercised or 0
         )
         exercise_meta.setdefault(e.vest_event_id, []).append(e)
@@ -57,30 +62,32 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             continue
 
         is_iso = grant.share_type in _iso_types()
-        received = vest.shares_received  # after tax withholding
-        sold = sold_by_vest.get(vest.id, 0.0)
-        exercised = exercised_by_vest.get(vest.id, 0.0)
+        received = whole_shares(vest.shares_received)  # after tax withholding
+        sold = whole_shares(sold_by_vest.get(vest.id, 0.0))
+        exercised = whole_shares(exercised_by_vest.get(vest.id, 0.0))
+        vested = whole_shares(vest.shares_vested)
 
         if is_iso:
             # Available to sell = exercised still held - sold (approx)
             # Unexercised vested options shown separately
-            still_held_exercised = 0.0
+            still_held_exercised = 0
             latest_ex = None
             for e in exercise_meta.get(vest.id, []):
-                still_held_exercised += e.shares_still_held if e.shares_still_held is not None else (
-                    (e.shares_exercised or 0) - 0
-                )
+                if e.shares_still_held is not None:
+                    still_held_exercised += whole_shares(e.shares_still_held)
+                else:
+                    still_held_exercised += whole_shares(e.shares_exercised)
                 latest_ex = e
             # Fallback if shares_still_held not maintained
             if not exercise_meta.get(vest.id):
-                available_to_sell = 0.0
-                unexercised = max(0.0, received - sold)
+                available_to_sell = 0
+                unexercised = max(0, received - sold)
             else:
-                available_to_sell = max(0.0, still_held_exercised)
-                unexercised = max(0.0, received - exercised)
+                available_to_sell = max(0, still_held_exercised)
+                unexercised = max(0, received - exercised)
         else:
-            available_to_sell = max(0.0, received - sold)
-            unexercised = 0.0
+            available_to_sell = max(0, received - sold)
+            unexercised = 0
             latest_ex = None
 
         fmv_vest = vest.share_price_at_vest or 0.0
@@ -101,12 +108,12 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             'is_iso': is_iso,
             'vest_date': vest.vest_date.isoformat(),
             'grant_date': grant.grant_date.isoformat(),
-            'shares_vested': vest.shares_vested,
+            'shares_vested': vested,
             'shares_received': received,
             'shares_sold': sold,
             'shares_exercised': exercised,
-            'shares_available': available_to_sell,
-            'shares_unexercised': unexercised,
+            'shares_available': int(available_to_sell),
+            'shares_unexercised': int(unexercised),
             'cost_basis_per_share': basis,
             'strike_price': strike if is_iso else None,
             'fmv_at_vest': fmv_vest,

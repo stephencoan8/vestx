@@ -131,12 +131,14 @@ class GoalPlanResult:
 
 def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
     """Convert lot_inventory dicts to LotSpec with max available shares for planning."""
+    from app.utils.shares import whole_shares
+
     specs: List[LotSpec] = []
     for lot in lots:
         try:
             is_iso = bool(lot.get('is_iso'))
-            held = float(lot.get('shares_available') or 0)
-            unex = float(lot.get('shares_unexercised') or 0)
+            held = float(whole_shares(lot.get('shares_available') or 0))
+            unex = float(whole_shares(lot.get('shares_unexercised') or 0))
             if held <= 0 and unex <= 0:
                 continue
             ex_raw = lot.get('exercise_date')
@@ -186,8 +188,10 @@ def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
 
 
 def _clone_spec(s: LotSpec, shares: float) -> LotSpec:
+    from app.utils.shares import whole_shares
+
     n = deepcopy(s)
-    n.shares = shares
+    n.shares = float(whole_shares(shares))
     return n
 
 

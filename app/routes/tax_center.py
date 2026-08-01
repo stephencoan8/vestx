@@ -563,11 +563,13 @@ def api_lots():
 
 def _lot_specs_from_request(data: dict, user_id: int) -> list:
     """Build LotSpec list from API lots[] payload + DB grant/vest/exercise truth."""
+    from app.utils.shares import whole_shares
+
     items = data.get('lots') or []
     specs = []
     for item in items:
         vest_id = int(item['vest_event_id'])
-        shares = float(item.get('shares') or 0)
+        shares = float(whole_shares(item.get('shares') or 0))
         if shares <= 0:
             continue
         vest = VestEvent.query.join(Grant).filter(
@@ -1061,9 +1063,11 @@ def api_context():
 def api_record_sale():
     """Record a real stock sale against a vest lot + return tax analysis for that sale."""
     try:
+        from app.utils.shares import whole_shares
+
         data = request.get_json() or {}
         vest_id = int(data['vest_event_id'])
-        shares = float(data['shares_sold'])
+        shares = float(whole_shares(data['shares_sold']))
         sale_price = float(data['sale_price'])
         sale_date = datetime.fromisoformat(data['sale_date']).date()
         commission = float(data.get('commission_fees', 0) or 0)
@@ -1079,9 +1083,11 @@ def api_record_sale():
         lot = lots.get(vest_id)
         if not lot:
             return jsonify({'error': 'Lot not found or not sellable'}), 400
-        if shares > lot['shares_available'] + 1e-6:
+        if shares <= 0:
+            return jsonify({'error': 'Shares must be a whole number ≥ 1'}), 400
+        if shares > lot['shares_available']:
             return jsonify({
-                'error': f'Only {lot["shares_available"]:.4f} shares available on this lot'
+                'error': f'Only {int(lot["shares_available"])} whole shares available on this lot'
             }), 400
 
         if is_iso:
@@ -1205,9 +1211,11 @@ def api_delete_sale(sale_id):
 def api_record_exercise():
     """Record ISO exercise (critical for AMT + later sale basis)."""
     try:
+        from app.utils.shares import whole_shares
+
         data = request.get_json() or {}
         vest_id = int(data['vest_event_id'])
-        shares = float(data['shares_exercised'])
+        shares = float(whole_shares(data['shares_exercised']))
         exercise_date = datetime.fromisoformat(data['exercise_date']).date()
         fmv = float(data['fmv_at_exercise'])
         vest = VestEvent.query.join(Grant).filter(
@@ -1216,6 +1224,8 @@ def api_record_exercise():
         grant = vest.grant
         if not _iso(grant.share_type):
             return jsonify({'error': 'Lot is not an ISO'}), 400
+        if shares <= 0:
+            return jsonify({'error': 'Shares must be a whole number ≥ 1'}), 400
 
         strike = grant.share_price_at_grant
         bargain = max(0.0, fmv - strike)

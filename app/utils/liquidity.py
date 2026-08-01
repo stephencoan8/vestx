@@ -26,6 +26,7 @@ from app.utils.equity_planner import (
     _profile_for_year,
 )
 from app.utils.tax_engine import analyze_sales, LotSaleInput, ExerciseInput
+from app.utils.shares import whole_shares, whole_shares_ceil
 
 
 @dataclass
@@ -52,26 +53,63 @@ class CoverResult:
 
 
 def _scale_lots(lots: Sequence[LotSpec], shares: float) -> List[LotSpec]:
-    """Allocate `shares` across lots pro-rata by original shares."""
-    total = sum(l.shares for l in lots)
-    if total <= 0 or shares <= 0:
+    """Allocate whole `shares` across lots pro-rata by original shares."""
+    total = whole_shares(sum(whole_shares(l.shares) for l in lots))
+    need = whole_shares(shares)
+    if total <= 0 or need <= 0:
         return []
-    if shares >= total - 1e-9:
-        return [deepcopy(l) for l in lots]
+    if need >= total:
+        out = []
+        for l in lots:
+            nl = deepcopy(l)
+            nl.shares = float(whole_shares(l.shares))
+            if nl.shares > 0:
+                out.append(nl)
+        return out
 
-    remaining = shares
+    remaining = need
     out: List[LotSpec] = []
     for i, lot in enumerate(lots):
-        if i == len(lots) - 1:
-            take = remaining
+        lot_sh = whole_shares(lot.shares)
+        if lot_sh <= 0:
+            continue
+        if i == len(lots) - 1 or remaining <= lot_sh:
+            take = min(remaining, lot_sh)
         else:
-            take = min(remaining, lot.shares * (shares / total))
-            take = min(take, lot.shares)
-        if take > 1e-9:
+            take = min(remaining, whole_shares(lot_sh * (need / total)))
+            take = max(0, min(take, lot_sh))
+        if take > 0:
             nl = deepcopy(lot)
-            nl.shares = take
+            nl.shares = float(take)
             out.append(nl)
             remaining -= take
+        if remaining <= 0:
+            break
+    # Distribute leftover whole shares if pro-rata undershot
+    if remaining > 0:
+        for lot in lots:
+            if remaining <= 0:
+                break
+            lot_sh = whole_shares(lot.shares)
+            already = 0
+            for o in out:
+                if o.vest_event_id == lot.vest_event_id:
+                    already = whole_shares(o.shares)
+                    break
+            room = lot_sh - already
+            if room <= 0:
+                continue
+            add = min(room, remaining)
+            if already > 0:
+                for o in out:
+                    if o.vest_event_id == lot.vest_event_id:
+                        o.shares = float(already + add)
+                        break
+            else:
+                nl = deepcopy(lot)
+                nl.shares = float(add)
+                out.append(nl)
+            remaining -= add
     return out
 
 
@@ -110,12 +148,13 @@ def solve_iso_exercise_sell_to_cover(
             notes=['No ISO lots with shares selected.'],
         )
 
-    total_shares = sum(l.shares for l in iso)
-    strike_w = sum(l.strike_price * l.shares for l in iso) / total_shares  # avg
+    total_shares = float(whole_shares(sum(whole_shares(l.shares) for l in iso)))
+    for l in iso:
+        l.shares = float(whole_shares(l.shares))
 
     def evaluate(sell_shares: float) -> Dict[str, float]:
-        sell_shares = max(0.0, min(total_shares, sell_shares))
-        hold_shares = total_shares - sell_shares
+        sell_shares = float(whole_shares(max(0.0, min(total_shares, sell_shares))))
+        hold_shares = float(whole_shares(total_shares - sell_shares))
         sell_lots = _scale_lots(iso, sell_shares)
         hold_lots = _scale_lots(iso, hold_shares)
 
@@ -214,23 +253,30 @@ def solve_iso_exercise_sell_to_cover(
             detail=e_all,
         )
 
-    lo, hi = 0.0, total_shares
+    # Integer binary search — whole shares only
+    lo, hi = 0, int(total_shares)
     best = e_all
-    for i in range(max_iter):
-        mid = (lo + hi) / 2
-        e = evaluate(mid)
+    iters = 0
+    while lo <= hi and iters < max(max_iter * 2, 40):
+        mid = (lo + hi) // 2
+        e = evaluate(float(mid))
+        iters += 1
         if e['surplus'] >= 0:
             best = e
-            hi = mid
+            hi = mid - 1
         else:
-            lo = mid
+            lo = mid + 1
+    # Ensure whole-share best
+    best['sell'] = float(whole_shares(best['sell']))
+    best['hold'] = float(whole_shares(total_shares - best['sell']))
 
     notes = [
-        f'Sell ~{best["sell"]:,.2f} of {total_shares:,.2f} shares cashless (DD) to cover '
+        f'Sell {int(best["sell"]):,} of {int(total_shares):,} whole shares cashless (DD) to cover '
         f'{"strike" if cover_strike else ""}'
         f'{" + " if cover_strike and cover_tax else ""}'
-        f'{"tax/AMT on held" if cover_tax else ""} on remaining {best["hold"]:,.2f} shares.',
+        f'{"tax/AMT on held" if cover_tax else ""} on remaining {int(best["hold"]):,} shares.',
         'Sold tranche is same-day DD (ordinary income). Held tranche is exercise-and-hold (AMT preference).',
+        'Whole shares only — no fractional lots.',
         'Re-check with your CPA before exercising — AMT estimates are planning-grade.',
     ]
     return CoverResult(
@@ -300,10 +346,12 @@ def solve_rsu_sell_to_fund_iso(
     if cover_tax:
         need += p_hold.total_incremental_tax
 
-    total_rsu = sum(l.shares for l in rsus)
+    total_rsu = float(whole_shares(sum(whole_shares(l.shares) for l in rsus)))
+    for l in rsus:
+        l.shares = float(whole_shares(l.shares))
 
     def evaluate(sell_shares: float) -> Dict[str, float]:
-        sell_shares = max(0.0, min(total_rsu, sell_shares))
+        sell_shares = float(whole_shares(max(0.0, min(total_rsu, sell_shares))))
         if sell_shares <= 0:
             return {
                 'sell': 0, 'proceeds': 0, 'tax': 0, 'net': 0,
@@ -351,23 +399,26 @@ def solve_rsu_sell_to_fund_iso(
             detail={**e_all, 'iso_hold': p_hold.to_dict()},
         )
 
-    lo, hi = 0.0, total_rsu
+    lo, hi = 0, int(total_rsu)
     best = e_all
-    for _ in range(max_iter):
-        mid = (lo + hi) / 2
-        e = evaluate(mid)
+    iters = 0
+    while lo <= hi and iters < max(max_iter * 2, 40):
+        mid = (lo + hi) // 2
+        e = evaluate(float(mid))
+        iters += 1
         if e['surplus'] >= 0:
             best = e
-            hi = mid
+            hi = mid - 1
         else:
-            lo = mid
+            lo = mid + 1
+    best['sell'] = float(whole_shares(best['sell']))
 
     return CoverResult(
         success=True,
         mode='rsu_fund_iso',
         price=sale_price,
         shares_to_sell=best['sell'],
-        shares_to_hold=total_rsu - best['sell'],
+        shares_to_hold=float(whole_shares(total_rsu - best['sell'])),
         shares_total=total_rsu,
         strike_outlay_held=p_hold.cash.exercise_cash_outlay,
         sale_proceeds=best['proceeds'],
@@ -376,10 +427,11 @@ def solve_rsu_sell_to_fund_iso(
         total_cash_needed=need,
         net_cash_after=best['surplus'],
         shortfall=0,
-        iterations=max_iter,
+        iterations=iters,
         notes=[
-            f'Sell ~{best["sell"]:,.2f} RSU shares at ${sale_price:.2f} to fund ISO exercise-and-hold.',
+            f'Sell {int(best["sell"]):,} whole RSU shares at ${sale_price:.2f} to fund ISO exercise-and-hold.',
             f'ISO cash need ≈ ${need:,.0f} (strike ${p_hold.cash.exercise_cash_outlay:,.0f} + tax ${p_hold.total_incremental_tax:,.0f}).',
+            'Whole shares only — no fractional lots.',
             'RSU sale and ISO exercise in the same year stack on brackets — modeled together only approximately (separate plans).',
         ],
         detail={**best, 'iso_plan': {

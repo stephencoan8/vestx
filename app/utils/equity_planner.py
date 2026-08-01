@@ -157,12 +157,14 @@ def _build_sale(
     fmv_at_exercise: Optional[float],
     commission: float = 0.0,
 ) -> LotSaleInput:
+    from app.utils.shares import whole_shares
+
     return LotSaleInput(
         vest_event_id=lot.vest_event_id,
         grant_id=lot.grant_id,
         share_type=lot.share_type,
         grant_type=lot.grant_type,
-        shares=shares,
+        shares=float(whole_shares(shares)),
         sale_price=sale_price,
         sale_date=sale_date,
         vest_date=lot.vest_date,
@@ -184,9 +186,11 @@ def _build_exercise(
     exercise_date: date,
     fmv: float,
 ) -> ExerciseInput:
+    from app.utils.shares import whole_shares
+
     return ExerciseInput(
         vest_event_id=lot.vest_event_id,
-        shares=shares,
+        shares=float(whole_shares(shares)),
         exercise_date=exercise_date,
         strike_price=lot.strike_price,
         fmv_at_exercise=fmv,

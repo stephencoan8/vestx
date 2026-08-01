@@ -274,14 +274,14 @@
               </a>
             </td>
             <td data-value="{{ lot.share_type }}">{{ lot.share_type }}</td>
-            <td data-value="{{ held }}">{{ "{:,.2f}".format(held) }}</td>
-            <td data-value="{{ unex }}">{% if lot.is_iso %}{{ "{:,.2f}".format(unex) }}{% else %}—{% endif %}</td>
+            <td data-value="{{ held }}">{{ "{:,.0f}".format(held) }}</td>
+            <td data-value="{{ unex }}">{% if lot.is_iso %}{{ "{:,.0f}".format(unex) }}{% else %}—{% endif %}</td>
             <td data-value="{{ basis or 0 }}">${{ "{:,.2f}".format(basis or 0) }}</td>
             <td class="tax-muted-sm" data-value="{{ lot.exercise_date or '' }}">{{ lot.exercise_date or '—' }}</td>
             <td data-value="{{ 'LT' if lot.is_long_term else 'ST' }}">{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
             <td class="tax-lot-no-nav" data-value="0">
-              <input type="number" class="lot-qty form-control" step="0.01" min="0"
-                     max="{{ max_q }}" value="0"
+              <input type="number" class="lot-qty form-control" step="1" min="0"
+                     max="{{ max_q|int }}" value="0" inputmode="numeric"
                      {% if max_q <= 0 %}disabled{% endif %}>
             </td>
           </tr>
@@ -376,8 +376,8 @@
               <select id="saleVest" required>
                 <option value="">Select…</option>
                 {% for lot in lots if lot.shares_available > 0 %}
-                <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_available }}">
-                  {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.2f}".format(lot.shares_available) }})
+                <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_available|int }}">
+                  {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.0f}".format(lot.shares_available) }})
                 </option>
                 {% endfor %}
               </select>
@@ -388,7 +388,7 @@
             </div>
             <div class="form-group">
               <label for="saleShares">Shares</label>
-              <input type="number" step="0.01" id="saleShares" required>
+              <input type="number" step="1" min="1" id="saleShares" inputmode="numeric" required>
             </div>
             <div class="form-group">
               <label for="salePrice">Price</label>
@@ -417,8 +417,8 @@
             <select id="exVest">
               <option value="">Select…</option>
               {% for lot in lots if lot.is_iso and lot.shares_unexercised > 0 %}
-              <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_unexercised }}">
-                {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.2f}".format(lot.shares_unexercised) }} unex)
+              <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_unexercised|int }}">
+                {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.0f}".format(lot.shares_unexercised) }} unex)
               </option>
               {% endfor %}
             </select>
@@ -429,7 +429,7 @@
           </div>
           <div class="form-group">
             <label for="exShares">Shares</label>
-            <input type="number" step="0.01" id="exShares">
+            <input type="number" step="1" min="1" id="exShares" inputmode="numeric">
           </div>
           <div class="form-group">
             <label for="exFmv">FMV at exercise</label>
@@ -1048,8 +1048,8 @@
       const check = tr.querySelector('.lot-check');
       const qty = tr.querySelector('.lot-qty');
       if (!check || !check.checked || !qty) return;
-      const held = parseFloat(tr.dataset.available || 0);
-      const unex = parseFloat(tr.dataset.unexercised || 0);
+      const held = Math.floor(Number(tr.dataset.available || 0));
+      const unex = Math.floor(Number(tr.dataset.unexercised || 0));
       const isIso = tr.dataset.iso === 'true';
       if (!isIso) qty.value = held;
       else if (strategy === 'iso_sell_held') qty.value = held;
@@ -1059,6 +1059,11 @@
     });
   });
 
+  function wholeShares(n) {
+    var v = Math.floor(Number(n) || 0);
+    return v > 0 ? v : 0;
+  }
+
   function collectLots() {
     const lots = [];
     document.querySelectorAll('#lotsTable tbody tr.tax-lot-row').forEach(function (tr) {
@@ -1066,8 +1071,11 @@
       const check = tr.querySelector('.lot-check');
       const qty = tr.querySelector('.lot-qty');
       if (!check || !check.checked || !qty) return;
-      const shares = parseFloat(qty.value || 0);
-      if (shares > 0) lots.push({ vest_event_id: parseInt(tr.dataset.vest, 10), shares: shares });
+      const shares = wholeShares(qty.value);
+      if (shares > 0) {
+        qty.value = String(shares);
+        lots.push({ vest_event_id: parseInt(tr.dataset.vest, 10), shares: shares });
+      }
     });
     return lots;
   }
@@ -1315,7 +1323,7 @@
     const body = {
       vest_event_id: parseInt(vest, 10),
       sale_date: document.getElementById('saleDate').value,
-      shares_sold: parseFloat(document.getElementById('saleShares').value),
+      shares_sold: Math.floor(Number(document.getElementById('saleShares').value) || 0),
       sale_price: parseFloat(document.getElementById('salePrice').value),
       commission_fees: parseFloat(document.getElementById('saleComm').value || 0),
       notes: document.getElementById('saleNotes').value
@@ -1343,7 +1351,7 @@
     const body = {
       vest_event_id: parseInt(document.getElementById('exVest').value, 10),
       exercise_date: document.getElementById('exDate').value,
-      shares_exercised: parseFloat(document.getElementById('exShares').value),
+      shares_exercised: Math.floor(Number(document.getElementById('exShares').value) || 0),
       fmv_at_exercise: parseFloat(document.getElementById('exFmv').value)
     };
     fetch('{{ url_for("tax_center.api_record_exercise") }}', {
