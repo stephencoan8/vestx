@@ -115,9 +115,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script>
-const vestingData = {{ vesting_timeline | tojson | safe }};
-const currentPrice = {{ current_price }};
-
+/* Shared palette — keep both charts independent so one failure cannot kill the other */
 const COLORS = {
     green: '#2d6b52',
     greenFill: 'rgba(45, 107, 82, 0.12)',
@@ -130,232 +128,268 @@ const COLORS = {
     tooltipBorder: 'rgba(184, 115, 51, 0.45)',
     body: '#e8e4dc'
 };
+const currentPrice = {{ current_price|default(0)|tojson }};
 
-let currentView = 'value';
-let chartInstance = null;
-const transitionIndex = vestingData.findIndex(d => !d.is_vested);
+/* ——— Vesting timeline (isolated) ——— */
+(function () {
+    'use strict';
+    var raw = {{ vesting_timeline|default([])|tojson|safe }};
+    var vestingData = Array.isArray(raw) ? raw : [];
+    var currentView = 'value';
+    var chartInstance = null;
+    var transitionIndex = vestingData.findIndex(function (d) { return d && !d.is_vested; });
 
-/** Parse YYYY-MM-DD as local calendar date (avoids UTC shift that misaligns hover). */
-function parseTimelineDate(raw) {
-    if (raw == null) return null;
-    if (raw instanceof Date) return raw;
-    const s = String(raw);
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) {
-        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
-    }
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d;
-}
-
-function timelinePoints(view) {
-    return (vestingData || []).map(function (d) {
-        return {
-            x: parseTimelineDate(d.date),
-            y: view === 'value' ? Number(d.total_value) : Number(d.total_shares),
-            is_vested: !!d.is_vested
-        };
-    }).filter(function (p) { return p.x && !isNaN(p.y); });
-}
-
-function createChart(view) {
-    const canvas = document.getElementById('vestingChart');
-    if (!canvas) return;
-
-    if (!vestingData || vestingData.length === 0) {
-        const c = canvas.getContext('2d');
-        c.fillStyle = COLORS.text;
-        c.font = '14px sans-serif';
-        c.fillText('No vesting data available', 24, 80);
-        return;
+    /** YYYY-MM-DD → local noon ms (avoids UTC day shift + stable Chart.js time axis). */
+    function parseTimelineMs(rawDate) {
+        if (rawDate == null) return null;
+        if (typeof rawDate === 'number' && isFinite(rawDate)) return rawDate;
+        if (rawDate instanceof Date) {
+            var t = rawDate.getTime();
+            return isNaN(t) ? null : t;
+        }
+        var s = String(rawDate);
+        var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) {
+            return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0).getTime();
+        }
+        var d = new Date(s);
+        return isNaN(d.getTime()) ? null : d.getTime();
     }
 
-    const points = timelinePoints(view);
-    if (!points.length) return;
-
-    // Split past / future series (overlap one point at transition for continuous line)
-    let split = transitionIndex;
-    if (split < 0) split = points.length;
-    const vestedPts = points.slice(0, split > 0 ? split : points.length);
-    const unvestedPts = split < points.length
-        ? points.slice(Math.max(0, split - 1))
-        : [];
-
-    if (chartInstance) {
-        chartInstance.destroy();
-        chartInstance = null;
+    function timelinePoints(view) {
+        var out = [];
+        for (var i = 0; i < vestingData.length; i++) {
+            var d = vestingData[i];
+            if (!d) continue;
+            var x = parseTimelineMs(d.date);
+            var y = view === 'value' ? Number(d.total_value) : Number(d.total_shares);
+            if (x == null || !isFinite(y)) continue;
+            out.push({ x: x, y: y, is_vested: !!d.is_vested });
+        }
+        return out;
     }
 
-    chartInstance = new Chart(canvas, {
-        type: 'line',
-        data: {
-            // No category labels — time scale + {x,y} points only.
-            // Category labels + mode:'index' caused hover date ≠ cursor x.
-            datasets: [
-                {
-                    label: 'Vested (Past)',
-                    data: vestedPts,
-                    borderColor: COLORS.green,
-                    backgroundColor: COLORS.greenFill,
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.25,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: COLORS.green,
-                    spanGaps: false
-                },
-                {
-                    label: 'Unvested (Future)',
-                    data: unvestedPts,
-                    borderColor: COLORS.copper,
-                    backgroundColor: COLORS.copperFill,
-                    borderWidth: 2,
-                    borderDash: [6, 4],
-                    fill: true,
-                    tension: 0.25,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: COLORS.copper,
-                    spanGaps: false
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            resizeDelay: 0,
-            // Match tooltip to x-position under mouse (not category index)
-            interaction: {
-                mode: 'nearest',
-                axis: 'x',
-                intersect: false
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    enabled: true,
-                    mode: 'nearest',
-                    axis: 'x',
-                    intersect: false,
-                    backgroundColor: COLORS.tooltipBg,
-                    titleColor: COLORS.body,
-                    bodyColor: COLORS.body,
-                    borderColor: COLORS.tooltipBorder,
-                    borderWidth: 1,
-                    padding: 12,
-                    displayColors: false,
-                    callbacks: {
-                        title: function (items) {
-                            if (!items || !items.length) return '';
-                            const x = items[0].parsed.x;
-                            const d = x instanceof Date ? x : new Date(x);
-                            return d.toLocaleDateString('en-US', {
-                                year: 'numeric', month: 'short', day: 'numeric'
-                            });
-                        },
-                        label: function (context) {
-                            const value = context.parsed.y;
-                            if (view === 'value') {
-                                return '$' + value.toLocaleString('en-US', {
-                                    minimumFractionDigits: 2, maximumFractionDigits: 2
+    function createChart(view) {
+        var canvas = document.getElementById('vestingChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        if (!vestingData.length) {
+            try {
+                var c = canvas.getContext('2d');
+                c.clearRect(0, 0, canvas.width || 300, canvas.height || 150);
+                c.fillStyle = COLORS.text;
+                c.font = '14px sans-serif';
+                c.fillText('No vesting data available', 24, 80);
+            } catch (e) {}
+            return;
+        }
+
+        var points = timelinePoints(view);
+        if (!points.length) return;
+
+        var split = transitionIndex;
+        if (split < 0) split = points.length;
+        var vestedPts = points.slice(0, split > 0 ? split : points.length);
+        var unvestedPts = split < points.length
+            ? points.slice(Math.max(0, split - 1))
+            : [];
+
+        if (chartInstance) {
+            try { chartInstance.destroy(); } catch (e) {}
+            chartInstance = null;
+        }
+
+        var xMin = points[0].x;
+        var xMax = points[points.length - 1].x;
+        if (xMax <= xMin) xMax = xMin + 86400000; // one day — avoids broken time scale
+
+        var datasets = [];
+        if (vestedPts.length) {
+            datasets.push({
+                label: 'Vested (Past)',
+                data: vestedPts,
+                borderColor: COLORS.green,
+                backgroundColor: COLORS.greenFill,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.25,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointBackgroundColor: COLORS.green,
+                spanGaps: false
+            });
+        }
+        if (unvestedPts.length) {
+            datasets.push({
+                label: 'Unvested (Future)',
+                data: unvestedPts,
+                borderColor: COLORS.copper,
+                backgroundColor: COLORS.copperFill,
+                borderWidth: 2,
+                borderDash: [6, 4],
+                fill: true,
+                tension: 0.25,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointBackgroundColor: COLORS.copper,
+                spanGaps: false
+            });
+        }
+        if (!datasets.length) return;
+
+        chartInstance = new Chart(canvas, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                parsing: false,
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        enabled: true,
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false,
+                        backgroundColor: COLORS.tooltipBg,
+                        titleColor: COLORS.body,
+                        bodyColor: COLORS.body,
+                        borderColor: COLORS.tooltipBorder,
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            title: function (items) {
+                                if (!items || !items.length) return '';
+                                var x = items[0].parsed.x;
+                                var d = new Date(x);
+                                return d.toLocaleDateString('en-US', {
+                                    year: 'numeric', month: 'short', day: 'numeric'
                                 });
+                            },
+                            label: function (context) {
+                                var value = context.parsed.y;
+                                if (view === 'value') {
+                                    return '$' + value.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2, maximumFractionDigits: 2
+                                    });
+                                }
+                                return value.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2, maximumFractionDigits: 2
+                                }) + ' shares';
                             }
-                            return value.toLocaleString('en-US', {
-                                minimumFractionDigits: 2, maximumFractionDigits: 2
-                            }) + ' shares';
                         }
                     }
-                }
-            },
-            scales: {
-                x: {
-                    type: 'time',
-                    adapters: undefined,
-                    time: {
-                        unit: 'month',
-                        tooltipFormat: 'MMM d, yyyy',
-                        displayFormats: {
-                            day: 'MMM d',
-                            month: 'MMM yyyy',
-                            year: 'yyyy'
-                        }
-                    },
-                    min: points[0].x,
-                    max: points[points.length - 1].x,
-                    grid: { color: COLORS.grid, drawBorder: false },
-                    ticks: { color: COLORS.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }
                 },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: COLORS.grid, drawBorder: false },
-                    ticks: {
-                        color: COLORS.text,
-                        callback: function (value) {
-                            if (view === 'value') {
-                                return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                scales: {
+                    x: {
+                        type: 'time',
+                        min: xMin,
+                        max: xMax,
+                        time: {
+                            unit: 'month',
+                            tooltipFormat: 'MMM d, yyyy',
+                            displayFormats: {
+                                day: 'MMM d',
+                                month: 'MMM yyyy',
+                                year: 'yyyy'
                             }
-                            return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                        },
+                        grid: { color: COLORS.grid, drawBorder: false },
+                        ticks: { color: COLORS.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: COLORS.grid, drawBorder: false },
+                        ticks: {
+                            color: COLORS.text,
+                            callback: function (value) {
+                                if (view === 'value') {
+                                    return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                                }
+                                return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                            }
                         }
                     }
                 }
             }
+        });
+
+        requestAnimationFrame(function () {
+            if (chartInstance) {
+                try { chartInstance.resize(); } catch (e) {}
+            }
+        });
+    }
+
+    var xZoomValue = 1;
+    var yZoomValue = 1;
+    var xZoomEl = document.getElementById('xZoom');
+    var yZoomEl = document.getElementById('yZoom');
+    var resetEl = document.getElementById('resetZoom');
+
+    function updateChartZoom() {
+        if (!chartInstance) return;
+        var points = timelinePoints(currentView);
+        if (!points.length) return;
+        var minDate = points[0].x;
+        var maxDate = points[points.length - 1].x;
+        var dateRange = Math.max(maxDate - minDate, 86400000);
+        var newMaxDate = minDate + dateRange * xZoomValue;
+        var maxValue = 0;
+        for (var i = 0; i < points.length; i++) {
+            if (points[i].y > maxValue) maxValue = points[i].y;
         }
-    });
+        chartInstance.options.scales.x.min = minDate;
+        chartInstance.options.scales.x.max = newMaxDate;
+        chartInstance.options.scales.y.max = Math.max(maxValue * yZoomValue, 1e-6);
+        try { chartInstance.update('none'); } catch (e) {}
+    }
 
-    // Force layout so devicePixelRatio / CSS size match hit-testing
-    requestAnimationFrame(function () {
-        if (chartInstance) chartInstance.resize();
-    });
-}
+    if (xZoomEl) {
+        xZoomEl.addEventListener('input', function (e) {
+            xZoomValue = parseFloat(e.target.value) || 1;
+            var lab = document.getElementById('xZoomLabel');
+            if (lab) lab.textContent = Math.round(xZoomValue * 100) + '%';
+            updateChartZoom();
+        });
+    }
+    if (yZoomEl) {
+        yZoomEl.addEventListener('input', function (e) {
+            yZoomValue = parseFloat(e.target.value) || 1;
+            var lab = document.getElementById('yZoomLabel');
+            if (lab) lab.textContent = Math.round(yZoomValue * 100) + '%';
+            updateChartZoom();
+        });
+    }
+    if (resetEl) {
+        resetEl.addEventListener('click', function () {
+            xZoomValue = 1;
+            yZoomValue = 1;
+            if (xZoomEl) xZoomEl.value = 1;
+            if (yZoomEl) yZoomEl.value = 1;
+            var xl = document.getElementById('xZoomLabel');
+            var yl = document.getElementById('yZoomLabel');
+            if (xl) xl.textContent = '100%';
+            if (yl) yl.textContent = '100%';
+            updateChartZoom();
+        });
+    }
 
-
-let xZoomValue = 1;
-let yZoomValue = 1;
-
-document.getElementById('xZoom').addEventListener('input', function(e) {
-    xZoomValue = parseFloat(e.target.value);
-    document.getElementById('xZoomLabel').textContent = Math.round(xZoomValue * 100) + '%';
-    updateChartZoom();
-});
-
-document.getElementById('yZoom').addEventListener('input', function(e) {
-    yZoomValue = parseFloat(e.target.value);
-    document.getElementById('yZoomLabel').textContent = Math.round(yZoomValue * 100) + '%';
-    updateChartZoom();
-});
-
-document.getElementById('resetZoom').addEventListener('click', function() {
-    xZoomValue = 1;
-    yZoomValue = 1;
-    document.getElementById('xZoom').value = 1;
-    document.getElementById('yZoom').value = 1;
-    document.getElementById('xZoomLabel').textContent = '100%';
-    document.getElementById('yZoomLabel').textContent = '100%';
-    updateChartZoom();
-});
-
-function updateChartZoom() {
-    if (!chartInstance || !vestingData || vestingData.length === 0) return;
-    const points = timelinePoints(currentView);
-    if (!points.length) return;
-    const minDate = points[0].x;
-    const maxDate = points[points.length - 1].x;
-    const dateRange = maxDate.getTime() - minDate.getTime();
-    const newMaxDate = new Date(minDate.getTime() + dateRange * xZoomValue);
-    const maxValue = Math.max.apply(null, points.map(function (p) { return p.y; }));
-    chartInstance.options.scales.x.min = minDate;
-    chartInstance.options.scales.x.max = newMaxDate;
-    chartInstance.options.scales.y.max = Math.max(maxValue * yZoomValue, 1e-6);
-    chartInstance.update('none');
-}
-
-if (typeof Chart !== 'undefined') {
-    createChart(currentView);
-    window.addEventListener('resize', function () {
-        if (chartInstance) chartInstance.resize();
-    });
-}
+    try {
+        if (typeof Chart !== 'undefined') {
+            createChart(currentView);
+            window.addEventListener('resize', function () {
+                if (chartInstance) {
+                    try { chartInstance.resize(); } catch (e) {}
+                }
+            });
+        }
+    } catch (err) {
+        console.error('Vesting timeline chart failed:', err);
+    }
+})();
 
 /* ——— Share price: step pre-IPO, smooth public, drag measure ——— */
 (function () {
@@ -496,15 +530,17 @@ if (typeof Chart !== 'undefined') {
     }
 
     function buildChart(view) {
-        if (!view.length) return;
+        if (!view || !view.length) return;
         viewSeries = view.slice();
         const parts = buildConnectedSeries(view);
+        if (!parts.line || !parts.line.length) return;
         const allYs = parts.line.map(function (p) { return p.y; });
         const minY = Math.min.apply(null, allYs);
         const maxY = Math.max.apply(null, allYs);
         const pad = (maxY - minY) * 0.12 || maxY * 0.02 || 1;
-        const minX = parts.line[0].x;
-        const maxX = parts.line[parts.line.length - 1].x;
+        let minX = parts.line[0].x;
+        let maxX = parts.line[parts.line.length - 1].x;
+        if (!(maxX > minX)) maxX = minX + 86400000;
         const spanMs = Math.max(maxX - minX, 86400000);
         const unit = (activeRange === '1d' || activeRange === '1w' || activeRange === '1m')
             ? 'day'
@@ -787,26 +823,48 @@ if (typeof Chart !== 'undefined') {
         });
     });
 
-    fetch('{{ url_for("main.stock_price_chart_data") }}')
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (data.cutover) {
-                cutoverMs = new Date(data.cutover + 'T00:00:00').getTime();
-            }
-            fullSeries = (data.dates || []).map(function (d, i) {
-                var ms = new Date(d + 'T12:00:00').getTime();
-                var src = (data.sources && data.sources[i]) || (
-                    cutoverMs != null && ms >= cutoverMs ? 'public' : 'private'
-                );
-                return { x: ms, y: Number(data.prices[i]), source: src };
-            }).filter(function (p) { return !isNaN(p.y) && !isNaN(p.x); });
+    try {
+        fetch('{{ url_for("main.stock_price_chart_data") }}')
+            .then(function (r) {
+                if (!r.ok) throw new Error('price chart HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (data) {
+                if (!data || !data.dates || !data.prices) {
+                    console.warn('Share price chart: empty payload');
+                    return;
+                }
+                if (data.cutover) {
+                    cutoverMs = new Date(data.cutover + 'T00:00:00').getTime();
+                }
+                fullSeries = (data.dates || []).map(function (d, i) {
+                    var ms = new Date(d + 'T12:00:00').getTime();
+                    var src = (data.sources && data.sources[i]) || (
+                        cutoverMs != null && ms >= cutoverMs ? 'public' : 'private'
+                    );
+                    return { x: ms, y: Number(data.prices[i]), source: src };
+                }).filter(function (p) { return isFinite(p.y) && isFinite(p.x); });
 
-            if (fullSeries.length > 60) activeRange = '1y';
-            else if (fullSeries.length > 20) activeRange = '1m';
-            else activeRange = 'all';
-            setRange(activeRange);
-        })
-        .catch(function () {});
+                if (!fullSeries.length) {
+                    console.warn('Share price chart: no plottable points');
+                    return;
+                }
+                if (fullSeries.length > 60) activeRange = '1y';
+                else if (fullSeries.length > 20) activeRange = '1m';
+                else activeRange = 'all';
+                setRange(activeRange);
+                requestAnimationFrame(function () {
+                    if (priceChart) {
+                        try { priceChart.resize(); } catch (e) {}
+                    }
+                });
+            })
+            .catch(function (err) {
+                console.error('Share price chart failed:', err);
+            });
+    } catch (err) {
+        console.error('Share price chart init failed:', err);
+    }
 })();
 </script>
 
@@ -890,8 +948,9 @@ if (typeof Chart !== 'undefined') {
     flex: 1 1 auto;
     min-height: 200px;
 }
+/* Fixed height so Chart.js hit area is not 0 (height:auto + canvas 100% collapses) */
 .price-chart-wrap.compact {
-    height: auto;
+    height: 240px;
     min-height: 220px;
 }
 .price-chart-wrap canvas {
