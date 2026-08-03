@@ -755,8 +755,8 @@ def api_goal():
         eng = _engine_profile_for_request(current_user, data)
         live = get_latest_user_price(current_user.id) or 0.0
         try:
-            from app.utils.vest_basis import backfill_user_vest_fmv
-            backfill_user_vest_fmv(current_user.id)
+            from app.utils.vest_basis import recompute_user_vest_fmv
+            recompute_user_vest_fmv(current_user.id)
         except Exception:
             pass
         lots = build_lots_for_user(current_user.id)

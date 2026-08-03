@@ -108,7 +108,7 @@ def test_resolve_persists_fmv_and_inventory_basis(app_ctx):
     with patch('app.utils.price_utils.has_request_context', return_value=False):
         fmv, src = resolve_vest_fmv(vest, user_id=user.id, persist=True)
         assert fmv == pytest.approx(40.0, abs=0.01), (fmv, src)
-        assert src in ('as_of', 'stored', 'forward_fill')
+        assert src in ('as_of', 'stored', 'private_as_of', 'public_as_of', 'grant_price')
         db.session.refresh(vest)
         assert float(vest.fmv_at_vest) == pytest.approx(40.0, abs=0.01)
 
@@ -290,3 +290,109 @@ def test_goal_optimizer_pick_basis_not_zero(app_ctx):
         for p in r.picks:
             if p.action == 'sell_rsu':
                 assert p.basis_or_strike == pytest.approx(40.0, abs=0.05), p
+
+
+def test_pre_ipo_vest_never_uses_public_ipo_price(app_ctx):
+    """
+    Screenshot regression: RSU grant/vest 2023-10-15 grant price $16.20 must NOT
+    show Price at Vest = public IPO ~$160.95.
+    """
+    from app.utils.vest_basis import resolve_vest_fmv, recompute_user_vest_fmv
+    from app.utils.lot_inventory import build_lots_for_user
+    from app.utils.market_data import public_market_start
+    from app.models.market_price import MarketPrice
+
+    user, key = _make_user_with_key('ipo_pollute')
+    cutover = public_market_start()
+    vest_day = date(2023, 10, 15)
+    assert vest_day < cutover
+
+    # Poison: public IPO-level price only (no private history)
+    db.session.add(MarketPrice(
+        ticker='SPCX',
+        valuation_date=cutover,
+        price_per_share=160.95,
+        source='test',
+    ))
+    db.session.commit()
+
+    grant = Grant(
+        user_id=user.id,
+        grant_type=GrantType.NEW_HIRE.value,
+        share_type=ShareType.RSU.value,
+        grant_date=vest_day,
+        share_quantity=630,
+        vest_years=0,
+        cliff_years=0,
+        share_price_at_grant=16.20,
+    )
+    db.session.add(grant)
+    db.session.flush()
+    vest = VestEvent(
+        grant_id=grant.id,
+        vest_date=vest_day,
+        shares_vested=630,
+        tax_year=2023,
+        fmv_at_vest=160.95,  # poisoned snapshot as on production
+    )
+    db.session.add(vest)
+    db.session.commit()
+
+    with patch('app.utils.price_utils.has_request_context', return_value=False):
+        # Auto-reject polluted stored + fall back to grant price
+        fmv, src = resolve_vest_fmv(vest, user_id=user.id, persist=True)
+        assert fmv == pytest.approx(16.20, abs=0.01), (fmv, src)
+        assert src in ('grant_price', 'private_as_of')
+        assert fmv != pytest.approx(160.95, abs=0.5)
+
+        stats = recompute_user_vest_fmv(user.id)
+        assert stats.get('still_missing', 1) == 0 or fmv > 0
+        db.session.refresh(vest)
+        assert float(vest.fmv_at_vest) == pytest.approx(16.20, abs=0.01)
+
+        lots = build_lots_for_user(user.id)
+        lot = next(l for l in lots if l['vest_event_id'] == vest.id)
+        assert lot['cost_basis_per_share'] == pytest.approx(16.20, abs=0.01)
+        assert lot['fmv_at_vest'] == pytest.approx(16.20, abs=0.01)
+
+
+def test_pre_ipo_uses_private_price_not_grant_when_available(app_ctx):
+    from app.utils.vest_basis import resolve_vest_fmv
+    from app.utils.market_data import public_market_start
+    from app.models.market_price import MarketPrice
+
+    user, key = _make_user_with_key('private_ok')
+    cutover = public_market_start()
+    vest_day = date(2024, 3, 1)
+    _add_price(user, key, date(2024, 2, 15), 42.50)
+    db.session.add(MarketPrice(
+        ticker='SPCX', valuation_date=cutover, price_per_share=160.95, source='test',
+    ))
+    db.session.commit()
+
+    grant = Grant(
+        user_id=user.id,
+        grant_type=GrantType.NEW_HIRE.value,
+        share_type=ShareType.RSU.value,
+        grant_date=date(2023, 1, 1),
+        share_quantity=100,
+        vest_years=4,
+        cliff_years=1,
+        share_price_at_grant=16.20,
+    )
+    db.session.add(grant)
+    db.session.flush()
+    vest = VestEvent(
+        grant_id=grant.id,
+        vest_date=vest_day,
+        shares_vested=100,
+        tax_year=2024,
+        fmv_at_vest=None,
+    )
+    db.session.add(vest)
+    db.session.commit()
+
+    with patch('app.utils.price_utils.has_request_context', return_value=False):
+        fmv, src = resolve_vest_fmv(vest, user_id=user.id, persist=True, force_recompute=True)
+    assert fmv == pytest.approx(42.50, abs=0.01), (fmv, src)
+    assert src == 'private_as_of'

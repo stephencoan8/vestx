@@ -106,11 +106,11 @@ def run_advisor_turn(
 
     # Ensure RSU vest FMV snapshots exist before inventory (background-safe decrypt)
     try:
-        from app.utils.vest_basis import backfill_user_vest_fmv
-        stats = backfill_user_vest_fmv(user_id)
+        from app.utils.vest_basis import recompute_user_vest_fmv
+        stats = recompute_user_vest_fmv(user_id)
         if stats.get('still_missing'):
             logger.warning(
-                'advisor user %s: %s vested lots still missing FMV after backfill',
+                'advisor user %s: %s vested lots still missing FMV after recompute',
                 user_id, stats.get('still_missing'),
             )
     except Exception as e:

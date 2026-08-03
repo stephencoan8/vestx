@@ -193,17 +193,14 @@ def get_price_on_or_near_date(
     user_id: int,
     on_date: date,
     *,
-    allow_forward_fill: bool = True,
+    allow_forward_fill: bool = False,
 ) -> tuple:
     """
-    Price for basis / vest FMV lookups.
+    Generic as-of price: last known on or before ``on_date``.
 
-    Prefer last known price on or before ``on_date``. If none exists and
-    ``allow_forward_fill``, use the earliest later price (planning fallback —
-    never invent a number from thin air, but also never silently use $0 when
-    history exists only after the vest).
-
-    Returns (price_or_None, source) with source in {'as_of','forward_fill','missing'}.
+    Forward-fill is OFF by default. Using the first public IPO price for every
+    pre-IPO vest incorrectly baselined RSUs near IPO (~$160). Use
+    ``get_vest_date_fmv`` for RSU cost basis.
     """
     if on_date is None:
         return None, 'missing'
@@ -226,7 +223,6 @@ def get_price_on_or_near_date(
             _cache_set(cache_key, result)
             return result
         if allow_forward_fill:
-            # All history is after on_date — take earliest available
             result = (float(history[0][1]), 'forward_fill')
             _cache_set(cache_key, result)
             return result
@@ -237,6 +233,68 @@ def get_price_on_or_near_date(
         logger.error(
             "Failed near-date price for user %s on %s: %s",
             user_id, on_date, e, exc_info=True,
+        )
+        return None, 'missing'
+
+
+def get_vest_date_fmv(user_id: int, vest_date: date) -> tuple:
+    """
+    FMV for RSU cost basis on a vest date — IPO-regime aware.
+
+    Pre-IPO (vest < PUBLIC_MARKET_START):
+      Only private valuations on or before vest_date.
+      Never public post-IPO prices (avoids stamping every old vest at ~IPO price).
+
+    Post-IPO:
+      Public market price on or before vest_date.
+
+    Returns (price_or_None, source): private_as_of | public_as_of | missing
+    """
+    if vest_date is None or not user_id:
+        return None, 'missing'
+
+    cutover = _public_start()
+    cache_key = (user_id, vest_date.isoformat(), 'vest_fmv', str(cutover))
+    cached, hit = _cache_get(cache_key)
+    if hit:
+        return cached
+
+    try:
+        if vest_date < cutover:
+            private = _load_private_history(user_id)
+            if not private:
+                result = (None, 'missing')
+                _cache_set(cache_key, result)
+                return result
+            dates = [d for d, _ in private]
+            idx = bisect.bisect_right(dates, vest_date) - 1
+            if idx < 0:
+                result = (None, 'missing')
+                _cache_set(cache_key, result)
+                return result
+            result = (float(private[idx][1]), 'private_as_of')
+            _cache_set(cache_key, result)
+            return result
+
+        history = _load_sorted_price_history(user_id)
+        post = [(d, p) for d, p in history if d >= cutover]
+        if not post:
+            result = (None, 'missing')
+            _cache_set(cache_key, result)
+            return result
+        dates = [d for d, _ in post]
+        idx = bisect.bisect_right(dates, vest_date) - 1
+        if idx < 0:
+            result = (None, 'missing')
+            _cache_set(cache_key, result)
+            return result
+        result = (float(post[idx][1]), 'public_as_of')
+        _cache_set(cache_key, result)
+        return result
+    except Exception as e:
+        logger.error(
+            "Failed vest-date FMV for user %s on %s: %s",
+            user_id, vest_date, e, exc_info=True,
         )
         return None, 'missing'
 

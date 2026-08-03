@@ -139,8 +139,8 @@ def add_price():
     db.session.commit()
     # Refresh vest FMV snapshots that may have been missing this history
     try:
-        from app.utils.vest_basis import backfill_user_vest_fmv
-        backfill_user_vest_fmv(current_user.id)
+        from app.utils.vest_basis import recompute_user_vest_fmv
+        recompute_user_vest_fmv(current_user.id)
     except Exception:
         pass
     AuditLogger.log_security_event(

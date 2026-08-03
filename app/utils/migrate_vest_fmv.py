@@ -39,25 +39,26 @@ def migrate_vest_fmv(app):
         logger.warning('vest_fmv column migration skipped: %s', e)
         return
 
-    # Best-effort backfill for all users (background-safe master-key decrypt)
+    # Force recompute for all users — repairs IPO-polluted ~$160 snapshots on pre-IPO vests
     try:
         from app.models.user import User
-        from app.utils.vest_basis import backfill_user_vest_fmv
+        from app.utils.vest_basis import recompute_user_vest_fmv
 
         users = User.query.with_entities(User.id).all()
+        total_repaired = 0
         total_filled = 0
         total_missing = 0
         for (uid,) in users:
             try:
-                stats = backfill_user_vest_fmv(uid)
+                stats = recompute_user_vest_fmv(uid)
+                total_repaired += int(stats.get('repaired') or 0)
                 total_filled += int(stats.get('filled') or 0)
                 total_missing += int(stats.get('still_missing') or 0)
             except Exception as e:
-                logger.warning('vest FMV backfill failed for user %s: %s', uid, e)
-        if total_filled or total_missing:
-            logger.info(
-                'vest FMV backfill: filled=%s still_missing=%s users=%s',
-                total_filled, total_missing, len(users),
-            )
+                logger.warning('vest FMV recompute failed for user %s: %s', uid, e)
+        logger.info(
+            'vest FMV recompute: repaired=%s filled=%s still_missing=%s users=%s',
+            total_repaired, total_filled, total_missing, len(users),
+        )
     except Exception as e:
-        logger.warning('vest FMV backfill skipped: %s', e)
+        logger.warning('vest FMV recompute skipped: %s', e)
