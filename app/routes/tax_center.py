@@ -785,8 +785,13 @@ def api_goal():
             goal.allow_iso_exercise_hold = (
                 goal.allow_iso_exercise_hold or heur.allow_iso_exercise_hold
             )
-            goal.exercise_all_iso = goal.exercise_all_iso or bool(heur.exercise_all_iso)
-            if heur.iso_prefer_hold_fraction is not None:
+            # Form toggle wins when checked; prompt can still turn it on
+            goal.exercise_all_iso = bool(goal.exercise_all_iso) or bool(heur.exercise_all_iso)
+            if goal.exercise_all_iso:
+                goal.allow_iso_exercise_hold = True
+                goal.allow_iso_cashless = False
+                goal.iso_prefer_hold_fraction = 1.0
+            elif heur.iso_prefer_hold_fraction is not None:
                 goal.iso_prefer_hold_fraction = heur.iso_prefer_hold_fraction
             parse_meta = {'source': 'heuristic', 'interpretation': None}
 

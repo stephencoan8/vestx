@@ -100,12 +100,22 @@
       <button type="button" class="tax-chip" data-goal-fill="500000">$500k</button>
     </div>
 
+    <div class="tax-goal-iso-toggle" id="goalExerciseAllWrap">
+      <label class="form-check tax-goal-iso-label">
+        <input type="checkbox" id="goalExerciseAllIso">
+        <span class="tax-goal-iso-text">
+          <strong>Exercise ALL ISOs</strong>
+          <span class="tax-muted-sm">Hold (do not sell ISO stock). RSU sales fund strike + AMT tax, then your target net cash.</span>
+        </span>
+      </label>
+    </div>
+
     <details class="tax-hub-details" id="goalAdvancedDetails">
       <summary>Options &amp; constraints</summary>
       <div class="tax-details-body">
         <div class="form-group" style="margin-bottom:1rem;">
           <label for="goalPrompt">Describe in plain language (optional)</label>
-          <textarea id="goalPrompt" rows="2" placeholder="e.g. Net $300k after tax, prefer long-term RSUs; cashless ISO only if needed."></textarea>
+          <textarea id="goalPrompt" rows="2" placeholder="e.g. Net $300k after tax, prefer long-term RSUs; exercise all ISOs and cover strike/AMT from RSU sales."></textarea>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -121,7 +131,7 @@
             <input type="number" step="0.01" id="goalPrice" value="{{ '%.2f'|format(live_price) }}">
           </div>
           <div class="form-group">
-            <label for="goalSaleDate">Sale date</label>
+            <label for="goalSaleDate">Sale / exercise date</label>
             <input type="date" id="goalSaleDate" value="{{ today.isoformat() }}">
           </div>
         </div>
@@ -132,6 +142,9 @@
           <label class="form-check"><input type="checkbox" id="goalAllowHold"> Model ISO hold split</label>
           <label class="form-check"><input type="checkbox" id="goalExplain" {% if not grok_enabled %}disabled{% endif %}> Grok explanation{% if not grok_enabled %} <span class="tax-muted">(add key in Settings)</span>{% endif %}</label>
         </div>
+        <p class="tax-muted-sm" id="goalExerciseAllHint" style="display:none;margin-top:0.65rem;">
+          Exercise-all is on: cashless ISO is turned off (you hold ISOs). Pocket net = RSU proceeds − tax − strike.
+        </p>
       </div>
     </details>
 
@@ -596,7 +609,39 @@
     }
   } catch (e) {}
 
+  function syncExerciseAllIsoUi() {
+    var allEl = document.getElementById('goalExerciseAllIso');
+    var cashless = document.getElementById('goalAllowCashless');
+    var hold = document.getElementById('goalAllowHold');
+    var hint = document.getElementById('goalExerciseAllHint');
+    var wrap = document.getElementById('goalExerciseAllWrap');
+    if (!allEl) return;
+    var on = !!allEl.checked;
+    if (wrap) wrap.classList.toggle('is-on', on);
+    if (hint) hint.style.display = on ? 'block' : 'none';
+    if (on) {
+      if (cashless) {
+        cashless.checked = false;
+        cashless.disabled = true;
+      }
+      if (hold) {
+        hold.checked = true;
+        hold.disabled = true;
+      }
+    } else {
+      if (cashless) cashless.disabled = false;
+      if (hold) hold.disabled = false;
+    }
+  }
+
+  var goalExerciseAllEl = document.getElementById('goalExerciseAllIso');
+  if (goalExerciseAllEl) {
+    goalExerciseAllEl.addEventListener('change', syncExerciseAllIsoUi);
+  }
+
   function goalBody(extra) {
+    var exerciseAll = !!(document.getElementById('goalExerciseAllIso') &&
+      document.getElementById('goalExerciseAllIso').checked);
     const body = {
       target_net_cash: document.getElementById('goalTarget').value || null,
       objective: document.getElementById('goalObjective').value,
@@ -606,8 +651,11 @@
       exercise_fmv: parseFloat(document.getElementById('goalPrice').value),
       allow_rsu: document.getElementById('goalAllowRsu').checked,
       allow_iso_sell_held: document.getElementById('goalAllowIsoHeld').checked,
-      allow_iso_cashless: document.getElementById('goalAllowCashless').checked,
-      allow_iso_exercise_hold: document.getElementById('goalAllowHold').checked,
+      // When exercising all, hold ISOs (no cashless DD on those shares)
+      allow_iso_cashless: exerciseAll ? false : document.getElementById('goalAllowCashless').checked,
+      allow_iso_exercise_hold: exerciseAll ? true : document.getElementById('goalAllowHold').checked,
+      exercise_all_iso: exerciseAll,
+      iso_prefer_hold_fraction: exerciseAll ? 1.0 : null,
       explain: document.getElementById('goalExplain').checked,
       prompt: document.getElementById('goalPrompt').value,
       use_grok_parse: false
@@ -734,8 +782,29 @@
       ['Shortfall', money2(data.shortfall), false],
       ['Eff. rate', pct(data.effective_tax_rate), false]
     ];
+    var strikeOut = Number(data.total_strike_outlay || 0);
+    if (strikeOut > 0.5) {
+      heroes.splice(1, 0, ['Strike outlay (ISO)', money2(strikeOut), false]);
+    }
+    var isoHolds = (data.picks || []).filter(function (p) { return p.action === 'iso_exercise_hold'; });
+    if (isoHolds.length) {
+      var isoSh = isoHolds.reduce(function (s, p) { return s + Number(p.shares || 0); }, 0);
+      heroes.push([
+        'ISO exercise & hold',
+        isoSh.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' sh · ' + isoHolds.length + ' lot(s)',
+        false
+      ]);
+    }
     if (residual) {
       heroes.push(['Still hold', money(residual.value) + ' · ' + residual.shares.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' sh', false]);
+    }
+    // Reflect plan flags back onto the form when coming from chat/engine
+    if (data.goal) {
+      var gAll = document.getElementById('goalExerciseAllIso');
+      if (gAll && data.goal.exercise_all_iso != null) {
+        gAll.checked = !!data.goal.exercise_all_iso;
+        syncExerciseAllIsoUi();
+      }
     }
     document.getElementById('goalStats').innerHTML = heroes.map(function (c) {
       return '<div class="stat-card' + (c[2] ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
