@@ -71,6 +71,24 @@ def dashboard():
     vested_value_net = vested_shares_net * current_price
     needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
 
+    # Unexercised vested ISOs (intrinsic / spread value at live price)
+    unexercised_iso_shares = 0.0
+    unexercised_iso_value = 0.0
+    try:
+        from app.utils.lot_inventory import build_lots_for_user
+        for lot in build_lots_for_user(current_user.id) or []:
+            if not lot.get('is_iso'):
+                continue
+            unex = float(lot.get('shares_unexercised') or 0)
+            if unex <= 0:
+                continue
+            strike = float(lot.get('strike_price') or 0)
+            unexercised_iso_shares += unex
+            unexercised_iso_value += unex * max(0.0, float(current_price) - strike)
+    except Exception:
+        unexercised_iso_shares = 0.0
+        unexercised_iso_value = 0.0
+
     # Merged private pre-IPO + public SPCX history for timeline price points
     from app.utils.price_utils import get_merged_price_series
     all_stock_prices = [
@@ -164,6 +182,8 @@ def dashboard():
         vested_shares_net=vested_shares_net,
         vested_value_gross=vested_value_gross,
         vested_value_net=vested_value_net,
+        unexercised_iso_shares=unexercised_iso_shares,
+        unexercised_iso_value=unexercised_iso_value,
         upcoming_vests=upcoming_vests,
         current_price=current_price,
         vesting_timeline=vesting_timeline,
