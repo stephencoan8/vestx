@@ -1652,6 +1652,19 @@ body.advisor-open .app-main {
     max-height: 400px;
 }
 
+/* Vesting timeline: full-size hit area so Chart.js hover x matches the cursor */
+.vesting-chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 400px;
+}
+.vesting-chart-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none;
+}
+
 .chart-section {
     background: var(--bg-card);
     border: 1px solid var(--border);

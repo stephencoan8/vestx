@@ -44,7 +44,7 @@
             <button type="button" class="btn btn-sm btn-secondary" id="resetZoom">Reset view</button>
         </div>
 
-        <div class="chart-container" style="border: none; padding: 0; margin: 0; background: transparent; height: 400px;">
+        <div class="chart-container vesting-chart-wrap" style="border: none; padding: 0; margin: 0; background: transparent; height: 400px; position: relative; width: 100%;">
             <canvas id="vestingChart"></canvas>
         </div>
         <div class="chart-legend">
@@ -129,66 +129,109 @@ let currentView = 'value';
 let chartInstance = null;
 const transitionIndex = vestingData.findIndex(d => !d.is_vested);
 
+/** Parse YYYY-MM-DD as local calendar date (avoids UTC shift that misaligns hover). */
+function parseTimelineDate(raw) {
+    if (raw == null) return null;
+    if (raw instanceof Date) return raw;
+    const s = String(raw);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function timelinePoints(view) {
+    return (vestingData || []).map(function (d) {
+        return {
+            x: parseTimelineDate(d.date),
+            y: view === 'value' ? Number(d.total_value) : Number(d.total_shares),
+            is_vested: !!d.is_vested
+        };
+    }).filter(function (p) { return p.x && !isNaN(p.y); });
+}
+
 function createChart(view) {
-    const ctx = document.getElementById('vestingChart');
-    if (!ctx) return;
+    const canvas = document.getElementById('vestingChart');
+    if (!canvas) return;
 
     if (!vestingData || vestingData.length === 0) {
-        const c = ctx.getContext('2d');
+        const c = canvas.getContext('2d');
         c.fillStyle = COLORS.text;
         c.font = '14px sans-serif';
         c.fillText('No vesting data available', 24, 80);
         return;
     }
 
-    const dates = vestingData.map(d => new Date(d.date));
-    const totalData = vestingData.map(d => view === 'value' ? d.total_value : d.total_shares);
-    const vestedDates = dates.slice(0, transitionIndex >= 0 ? transitionIndex : dates.length);
-    const unvestedDates = transitionIndex >= 0 ? dates.slice(transitionIndex - 1) : [];
-    const vestedValues = totalData.slice(0, transitionIndex >= 0 ? transitionIndex : totalData.length);
-    const unvestedValues = transitionIndex >= 0 ? totalData.slice(transitionIndex - 1) : [];
+    const points = timelinePoints(view);
+    if (!points.length) return;
 
-    if (chartInstance) chartInstance.destroy();
+    // Split past / future series (overlap one point at transition for continuous line)
+    let split = transitionIndex;
+    if (split < 0) split = points.length;
+    const vestedPts = points.slice(0, split > 0 ? split : points.length);
+    const unvestedPts = split < points.length
+        ? points.slice(Math.max(0, split - 1))
+        : [];
 
-    chartInstance = new Chart(ctx, {
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+
+    chartInstance = new Chart(canvas, {
         type: 'line',
         data: {
-            labels: dates,
+            // No category labels — time scale + {x,y} points only.
+            // Category labels + mode:'index' caused hover date ≠ cursor x.
             datasets: [
                 {
                     label: 'Vested (Past)',
-                    data: vestedDates.map((date, idx) => ({x: date, y: vestedValues[idx]})),
+                    data: vestedPts,
                     borderColor: COLORS.green,
                     backgroundColor: COLORS.greenFill,
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.35,
+                    tension: 0.25,
                     pointRadius: 0,
                     pointHoverRadius: 5,
-                    pointBackgroundColor: COLORS.green
+                    pointBackgroundColor: COLORS.green,
+                    spanGaps: false
                 },
                 {
                     label: 'Unvested (Future)',
-                    data: unvestedDates.map((date, idx) => ({x: date, y: unvestedValues[idx]})),
+                    data: unvestedPts,
                     borderColor: COLORS.copper,
                     backgroundColor: COLORS.copperFill,
                     borderWidth: 2,
                     borderDash: [6, 4],
                     fill: true,
-                    tension: 0.35,
+                    tension: 0.25,
                     pointRadius: 0,
                     pointHoverRadius: 5,
-                    pointBackgroundColor: COLORS.copper
+                    pointBackgroundColor: COLORS.copper,
+                    spanGaps: false
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: { intersect: false, mode: 'index' },
+            resizeDelay: 0,
+            // Match tooltip to x-position under mouse (not category index)
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            },
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    enabled: true,
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false,
                     backgroundColor: COLORS.tooltipBg,
                     titleColor: COLORS.body,
                     bodyColor: COLORS.body,
@@ -197,17 +240,24 @@ function createChart(view) {
                     padding: 12,
                     displayColors: false,
                     callbacks: {
-                        title: function(items) {
-                            return new Date(items[0].parsed.x).toLocaleDateString('en-US', {
+                        title: function (items) {
+                            if (!items || !items.length) return '';
+                            const x = items[0].parsed.x;
+                            const d = x instanceof Date ? x : new Date(x);
+                            return d.toLocaleDateString('en-US', {
                                 year: 'numeric', month: 'short', day: 'numeric'
                             });
                         },
-                        label: function(context) {
+                        label: function (context) {
                             const value = context.parsed.y;
                             if (view === 'value') {
-                                return '$' + value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                return '$' + value.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2, maximumFractionDigits: 2
+                                });
                             }
-                            return value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' shares';
+                            return value.toLocaleString('en-US', {
+                                minimumFractionDigits: 2, maximumFractionDigits: 2
+                            }) + ' shares';
                         }
                     }
                 }
@@ -215,25 +265,41 @@ function createChart(view) {
             scales: {
                 x: {
                     type: 'time',
-                    time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
+                    adapters: undefined,
+                    time: {
+                        unit: 'month',
+                        tooltipFormat: 'MMM d, yyyy',
+                        displayFormats: {
+                            day: 'MMM d',
+                            month: 'MMM yyyy',
+                            year: 'yyyy'
+                        }
+                    },
+                    min: points[0].x,
+                    max: points[points.length - 1].x,
                     grid: { color: COLORS.grid, drawBorder: false },
-                    ticks: { color: COLORS.text, maxRotation: 0 }
+                    ticks: { color: COLORS.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }
                 },
                 y: {
                     beginAtZero: true,
                     grid: { color: COLORS.grid, drawBorder: false },
                     ticks: {
                         color: COLORS.text,
-                        callback: function(value) {
+                        callback: function (value) {
                             if (view === 'value') {
-                                return '$' + value.toLocaleString('en-US', {maximumFractionDigits: 0});
+                                return '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 });
                             }
-                            return value.toLocaleString('en-US', {maximumFractionDigits: 0});
+                            return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
                         }
                     }
                 }
             }
         }
+    });
+
+    // Force layout so devicePixelRatio / CSS size match hit-testing
+    requestAnimationFrame(function () {
+        if (chartInstance) chartInstance.resize();
     });
 }
 
@@ -265,20 +331,24 @@ document.getElementById('resetZoom').addEventListener('click', function() {
 
 function updateChartZoom() {
     if (!chartInstance || !vestingData || vestingData.length === 0) return;
-    const dates = vestingData.map(d => new Date(d.date));
-    const values = vestingData.map(d => currentView === 'value' ? d.total_value : d.total_shares);
-    const minDate = dates[0];
-    const maxDate = dates[dates.length - 1];
-    const dateRange = maxDate - minDate;
+    const points = timelinePoints(currentView);
+    if (!points.length) return;
+    const minDate = points[0].x;
+    const maxDate = points[points.length - 1].x;
+    const dateRange = maxDate.getTime() - minDate.getTime();
     const newMaxDate = new Date(minDate.getTime() + dateRange * xZoomValue);
-    const maxValue = Math.max(...values);
+    const maxValue = Math.max.apply(null, points.map(function (p) { return p.y; }));
+    chartInstance.options.scales.x.min = minDate;
     chartInstance.options.scales.x.max = newMaxDate;
-    chartInstance.options.scales.y.max = maxValue * yZoomValue;
-    chartInstance.update();
+    chartInstance.options.scales.y.max = Math.max(maxValue * yZoomValue, 1e-6);
+    chartInstance.update('none');
 }
 
 if (typeof Chart !== 'undefined') {
     createChart(currentView);
+    window.addEventListener('resize', function () {
+        if (chartInstance) chartInstance.resize();
+    });
 }
 
 /* ——— Share price: step pre-IPO, smooth public, drag measure ——— */
