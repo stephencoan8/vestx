@@ -1262,6 +1262,23 @@ body.advisor-open .app-main {
     border: 1px solid var(--border-subtle);
     flex-wrap: wrap;
     flex-shrink: 0;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+a.vest-item-link {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+a.vest-item-link:hover {
+    border-color: var(--copper-border);
+    background: var(--bg-hover);
+}
+
+a.vest-item-link:focus-visible {
+    outline: 2px solid var(--copper-border);
+    outline-offset: 2px;
 }
 
 .vest-date {
