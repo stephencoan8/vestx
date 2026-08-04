@@ -90,6 +90,7 @@
       </div>
       <div class="tax-goal-actions">
         <button type="button" class="btn btn-primary" id="btnGoalRun">Optimize lots</button>
+        <button type="button" class="btn btn-secondary" id="btnGoalClear" title="Reset goal form and results">Clear</button>
       </div>
     </div>
 
@@ -664,16 +665,32 @@
     return body;
   }
 
+  function clearLotsHighlights() {
+    const table = document.getElementById('lotsTable');
+    if (table) {
+      table.querySelectorAll('tbody tr').forEach(function (tr) {
+        tr.classList.remove('lot-pick-highlight');
+        const check = tr.querySelector('.lot-check');
+        const qty = tr.querySelector('.lot-qty');
+        if (check) check.checked = false;
+        if (qty && !qty.disabled) qty.value = 0;
+      });
+    }
+    var hint = document.getElementById('goalToScenarioHint');
+    if (hint) {
+      hint.style.display = 'none';
+      hint.innerHTML = '';
+    }
+    var openBtn = document.getElementById('btnOpenScenario');
+    if (openBtn) openBtn.style.display = 'none';
+    var copyBtn = document.getElementById('btnCopyPicks');
+    if (copyBtn) copyBtn.style.display = 'none';
+  }
+
   function applyPicksToLotsTable(picks) {
     const table = document.getElementById('lotsTable');
     if (!table || !picks || !picks.length) return;
-    table.querySelectorAll('tbody tr').forEach(function (tr) {
-      tr.classList.remove('lot-pick-highlight');
-      const check = tr.querySelector('.lot-check');
-      const qty = tr.querySelector('.lot-qty');
-      if (check) check.checked = false;
-      if (qty && !qty.disabled) qty.value = 0;
-    });
+    clearLotsHighlights();
     picks.forEach(function (p) {
       const sellActions = { sell_rsu: true, sell_iso_held: true, iso_cashless_dd: true };
       if (!sellActions[p.action] && p.action !== 'iso_exercise_hold') return;
@@ -702,6 +719,83 @@
       if (b) b.addEventListener('click', function () { showTaxTab('scenario'); });
     }
     if (openBtn) openBtn.style.display = 'inline-flex';
+  }
+
+  function clearGoalPlanner() {
+    lastGoalPlan = null;
+    window.VESTX_LAST_PLAN = null;
+    try { sessionStorage.removeItem('vestx_last_plan'); } catch (e) {}
+    chatHistory.length = 0;
+
+    var target = document.getElementById('goalTarget');
+    if (target) target.value = '';
+    var prompt = document.getElementById('goalPrompt');
+    if (prompt) prompt.value = '';
+    var obj = document.getElementById('goalObjective');
+    if (obj) obj.value = 'min_tax';
+    var price = document.getElementById('goalPrice');
+    if (price) {
+      var defPx = price.defaultValue || (livePrice != null ? Number(livePrice).toFixed(2) : '');
+      price.value = defPx;
+    }
+    var saleDate = document.getElementById('goalSaleDate');
+    if (saleDate && saleDate.defaultValue) saleDate.value = saleDate.defaultValue;
+
+    var rsu = document.getElementById('goalAllowRsu');
+    if (rsu) rsu.checked = true;
+    var isoHeld = document.getElementById('goalAllowIsoHeld');
+    if (isoHeld) isoHeld.checked = true;
+    var cashless = document.getElementById('goalAllowCashless');
+    if (cashless) {
+      cashless.disabled = false;
+      cashless.checked = true;
+    }
+    var hold = document.getElementById('goalAllowHold');
+    if (hold) {
+      hold.disabled = false;
+      hold.checked = false;
+    }
+    var explain = document.getElementById('goalExplain');
+    if (explain && !explain.disabled) explain.checked = false;
+    var allIso = document.getElementById('goalExerciseAllIso');
+    if (allIso) allIso.checked = false;
+    syncExerciseAllIsoUi();
+
+    var adv = document.getElementById('goalAdvancedDetails');
+    if (adv) adv.open = false;
+
+    var panel = document.getElementById('goalPanel');
+    if (panel) panel.style.display = 'none';
+    var status = document.getElementById('goalStatus');
+    if (status) {
+      status.textContent = '';
+      status.className = 'tax-result-status';
+    }
+    var stats = document.getElementById('goalStats');
+    if (stats) stats.innerHTML = '';
+    var stack = document.getElementById('goalTaxStack');
+    if (stack) {
+      stack.style.display = 'none';
+      stack.innerHTML = '';
+    }
+    var tbl = document.getElementById('goalPicksTable');
+    if (tbl) tbl.innerHTML = '';
+    var notes = document.getElementById('goalNotes');
+    if (notes) notes.innerHTML = '';
+    var explWrap = document.getElementById('goalExplainDetails');
+    if (explWrap) explWrap.style.display = 'none';
+    var expl = document.getElementById('goalExplanation');
+    if (expl) expl.style.display = 'none';
+    var explBody = document.getElementById('goalExplanationBody');
+    if (explBody) explBody.textContent = '';
+    var chatLog = document.getElementById('goalChatLog');
+    if (chatLog) chatLog.innerHTML = '';
+    var chatInput = document.getElementById('goalChatInput');
+    if (chatInput) chatInput.value = '';
+
+    clearLotsHighlights();
+
+    if (target) target.focus();
   }
 
   function renderGoalTaxStack(data) {
@@ -882,6 +976,13 @@
       }
     }
   } catch (e) {}
+
+  var btnGoalClear = document.getElementById('btnGoalClear');
+  if (btnGoalClear) {
+    btnGoalClear.addEventListener('click', function () {
+      clearGoalPlanner();
+    });
+  }
 
   document.getElementById('btnGoalRun').addEventListener('click', function () {
     const btn = document.getElementById('btnGoalRun');
