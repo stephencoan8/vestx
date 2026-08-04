@@ -65,10 +65,10 @@
             {% if upcoming_vests %}
             <div class="vest-list vest-list-scroll" role="list" aria-label="Upcoming vesting events">
                 {% for vest in upcoming_vests %}
-                <div class="vest-item" role="listitem">
+                <a href="{{ url_for('grants.vest_detail', vest_id=vest.id) }}" class="vest-item vest-item-link" role="listitem" title="Open vest detail">
                     <div class="vest-date">{{ vest.vest_date.strftime('%b %d, %Y') }}</div>
                     <div class="vest-value">${{ "{:,.2f}".format(vest.shares_vested * current_price) }}</div>
-                </div>
+                </a>
                 {% endfor %}
             </div>
             {% if upcoming_vests|length >= 48 %}
