@@ -47,8 +47,11 @@
 
  <!-- Vest Event Details -->
  <section class="detail-section">
- <h2> Vest Event</h2>
- <div class="info-grid">
+ <div class="header-content" style="margin-bottom: 1rem; align-items: center;">
+ <h2 style="margin:0;"> Vest Event</h2>
+ <button type="button" class="btn btn-secondary btn-sm" id="btnToggleVestEdit" onclick="toggleVestDetailsEdit()">Edit details</button>
+ </div>
+ <div class="info-grid" id="vestDetailsDisplay">
  <div class="info-item">
  <label>Vest Date:</label>
  <span class="{% if vest_event.has_vested %}vested{% else %}unvested{% endif %}">
@@ -65,11 +68,14 @@
  <span class="highlight">{{ "%.4f"|format(vest_data.shares_vested) }}</span>
  </div>
  <div class="info-item">
- <label>Price at Vest:</label>
+ <label>Price at Vest {% if not vest_data.is_iso %}(RSU basis){% endif %}:</label>
  <span>
  ${{ "%.2f"|format(vest_data.price_at_vest) }}
  {% if not vest_data.has_vested %}
  <small style="color: var(--text-secondary); font-style: italic;">(estimated)</small>
+ {% endif %}
+ {% if vest_event.fmv_at_vest %}
+ <small class="tax-muted-sm">stored snapshot</small>
  {% endif %}
  </span>
  </div>
@@ -115,6 +121,38 @@
  </div>
  {% endif %}
  </div>
+
+ <form id="vestDetailsEditForm" class="vest-details-edit" style="display:none; margin-top:1rem; padding:1.25rem; background:rgba(74,85,104,0.15); border-radius:8px;" onsubmit="saveVestDetails(event)">
+ <p class="tax-muted-sm" style="margin-top:0;">
+ Update the core lot fields. Changing <strong>price at vest</strong> updates the stored FMV snapshot
+ {% if not vest_data.is_iso %}(RSU cost basis) and recalculates basis/gain on sales for this SpecID{% endif %}.
+ Changing the vest date may flip ST/LT on existing sales.
+ </p>
+ <div class="info-grid">
+ <div class="info-item">
+ <label for="editVestDate">Vest date</label>
+ <input type="date" id="editVestDate" name="vest_date" class="themed-input"
+ value="{{ vest_event.vest_date.isoformat() }}" required>
+ </div>
+ <div class="info-item">
+ <label for="editSharesVested">Shares vested</label>
+ <input type="number" id="editSharesVested" name="shares_vested" class="themed-input"
+ value="{{ '%.0f'|format(vest_event.shares_vested) }}" step="1" min="1" inputmode="numeric" required>
+ </div>
+ <div class="info-item">
+ <label for="editFmvAtVest">Price / FMV at vest ($)</label>
+ <input type="number" id="editFmvAtVest" name="fmv_at_vest" class="themed-input"
+ value="{{ '%.2f'|format(vest_event.fmv_at_vest if vest_event.fmv_at_vest is not none else vest_data.price_at_vest) }}"
+ step="0.01" min="0" required>
+ <small class="tax-muted-sm">Overrides price-history lookup for this lot</small>
+ </div>
+ </div>
+ <div id="vestDetailsEditResult" class="tax-inline-result" style="margin-top:0.75rem;"></div>
+ <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+ <button type="submit" class="btn btn-primary" id="btnSaveVestDetails">Save vest details</button>
+ <button type="button" class="btn btn-secondary" onclick="toggleVestDetailsEdit(false)">Cancel</button>
+ </div>
+ </form>
  </section>
 
  <!-- Vest Details Section - Collapsible -->
@@ -673,6 +711,71 @@
 <script>
 const CSRF_TOKEN = '{{ csrf_token() }}';
 const VEST_ID = {{ vest_event.id }};
+
+function toggleVestDetailsEdit(forceOpen) {
+ const form = document.getElementById('vestDetailsEditForm');
+ const display = document.getElementById('vestDetailsDisplay');
+ const btn = document.getElementById('btnToggleVestEdit');
+ if (!form) return;
+ const open = forceOpen === true ? true
+ : forceOpen === false ? false
+ : form.style.display === 'none';
+ form.style.display = open ? 'block' : 'none';
+ if (display) display.style.opacity = open ? '0.55' : '1';
+ if (btn) btn.textContent = open ? 'Hide edit' : 'Edit details';
+ if (open) {
+ form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+ const dateEl = document.getElementById('editVestDate');
+ if (dateEl) dateEl.focus();
+ } else {
+ const res = document.getElementById('vestDetailsEditResult');
+ if (res) res.innerHTML = '';
+ }
+}
+
+async function saveVestDetails(e) {
+ e.preventDefault();
+ const res = document.getElementById('vestDetailsEditResult');
+ const btn = document.getElementById('btnSaveVestDetails');
+ const body = {
+ vest_date: document.getElementById('editVestDate').value,
+ shares_vested: document.getElementById('editSharesVested').value,
+ fmv_at_vest: document.getElementById('editFmvAtVest').value
+ };
+ if (btn) {
+ btn.disabled = true;
+ btn.textContent = 'Saving…';
+ }
+ try {
+ const response = await fetch(`/grants/vest-event/${VEST_ID}/details`, {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ 'X-CSRFToken': CSRF_TOKEN,
+ 'Accept': 'application/json'
+ },
+ body: JSON.stringify(body)
+ });
+ const data = await response.json();
+ if (!response.ok || data.error) {
+ if (res) res.innerHTML = '<div class="alert alert-danger">' + (data.error || 'Update failed') + '</div>';
+ return;
+ }
+ let msg = 'Vest details saved.';
+ if (data.sales_updated) {
+ msg += ' Updated basis/holding on ' + data.sales_updated + ' sale(s).';
+ }
+ if (res) res.innerHTML = '<div class="alert alert-success">' + msg + '</div>';
+ setTimeout(function () { location.reload(); }, 700);
+ } catch (err) {
+ if (res) res.innerHTML = '<div class="alert alert-danger">' + (err.message || String(err)) + '</div>';
+ } finally {
+ if (btn) {
+ btn.disabled = false;
+ btn.textContent = 'Save vest details';
+ }
+ }
+}
 
 function toggleSharesSold() {
  const cashCoveredAll = document.getElementById('cashCoveredAll').value === 'true';

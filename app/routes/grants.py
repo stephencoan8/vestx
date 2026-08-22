@@ -299,6 +299,127 @@ def update_vest_event(event_id):
         return jsonify({'error': str(e)}), 500
 
 
+@grants_bp.route('/vest-event/<int:event_id>/details', methods=['POST', 'PUT'])
+@login_required
+def update_vest_details(event_id):
+    """Update core vest fields: date, shares vested, FMV at vest (basis)."""
+    from app.models.stock_sale import StockSale, ISOExercise
+    from app.utils.shares import whole_shares
+
+    vest_event = VestEvent.query.get_or_404(event_id)
+    if vest_event.grant.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    try:
+        data = request.get_json(silent=True) or {}
+        # Also accept form posts
+        if not data and request.form:
+            data = {k: request.form.get(k) for k in (
+                'vest_date', 'shares_vested', 'fmv_at_vest', 'price_at_vest', 'notes'
+            ) if request.form.get(k) is not None}
+
+        grant = vest_event.grant
+        is_iso = grant.share_type in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value)
+        is_cash = grant.share_type == ShareType.CASH.value
+
+        old_date = vest_event.vest_date
+        old_shares = float(vest_event.shares_vested or 0)
+        old_fmv = float(vest_event.fmv_at_vest or 0) if vest_event.fmv_at_vest else None
+
+        # --- vest date ---
+        if 'vest_date' in data and data['vest_date']:
+            new_date = datetime.strptime(str(data['vest_date'])[:10], '%Y-%m-%d').date()
+            if grant.grant_date and new_date < grant.grant_date:
+                return jsonify({
+                    'error': f'Vest date cannot be before grant date ({grant.grant_date.isoformat()})'
+                }), 400
+            vest_event.vest_date = new_date
+            vest_event.tax_year = new_date.year
+
+        # --- shares vested ---
+        shares_key = 'shares_vested' if 'shares_vested' in data else None
+        if shares_key is not None and data.get(shares_key) not in (None, ''):
+            if is_cash:
+                new_shares = float(data[shares_key])
+            else:
+                new_shares = float(whole_shares(data[shares_key]))
+            if new_shares <= 0:
+                return jsonify({'error': 'Shares vested must be ≥ 1'}), 400
+
+            tax_sold = float(vest_event.shares_sold or 0)
+            sales = StockSale.query.filter_by(
+                user_id=current_user.id, vest_event_id=event_id
+            ).all()
+            sold_total = sum(float(s.shares_sold or 0) for s in sales)
+            exercises = ISOExercise.query.filter_by(
+                user_id=current_user.id, vest_event_id=event_id
+            ).all()
+            exercised_total = sum(float(e.shares_exercised or 0) for e in exercises)
+
+            min_needed = max(tax_sold, tax_sold + sold_total)
+            if is_iso:
+                min_needed = max(min_needed, exercised_total, sold_total)
+            if new_shares + 1e-9 < min_needed:
+                return jsonify({
+                    'error': (
+                        f'Cannot set shares to {int(new_shares)} — this lot already has '
+                        f'{int(min_needed)} committed (tax withholding / sales / exercises). '
+                        f'Delete or reduce those first.'
+                    )
+                }), 400
+            vest_event.shares_vested = new_shares
+
+        # --- FMV / price at vest (RSU basis snapshot) ---
+        fmv_raw = data.get('fmv_at_vest', data.get('price_at_vest', None))
+        fmv_changed = False
+        if fmv_raw is not None and fmv_raw != '':
+            new_fmv = float(fmv_raw)
+            if new_fmv < 0:
+                return jsonify({'error': 'FMV / price at vest cannot be negative'}), 400
+            vest_event.fmv_at_vest = new_fmv
+            fmv_changed = (old_fmv is None) or (abs(new_fmv - old_fmv) > 1e-9)
+
+        if 'notes' in data and data['notes'] is not None:
+            vest_event.notes = str(data['notes']).strip()
+
+        # Propagate to recorded sales when FMV or date changes (RSU basis / holding period)
+        sales = StockSale.query.filter_by(
+            user_id=current_user.id, vest_event_id=event_id
+        ).all()
+        date_changed = vest_event.vest_date != old_date
+        if sales and (fmv_changed or date_changed):
+            for sale in sales:
+                if fmv_changed and not is_iso and not is_cash:
+                    # RSU/RSA: cost basis is FMV at vest
+                    sale.cost_basis_per_share = float(vest_event.fmv_at_vest)
+                    sale.total_cost_basis = sale.shares_sold * sale.cost_basis_per_share
+                    sale.capital_gain = (
+                        float(sale.total_proceeds or 0)
+                        - float(sale.total_cost_basis or 0)
+                        - float(sale.commission_fees or 0)
+                    )
+                if date_changed and sale.sale_date and vest_event.vest_date:
+                    holding = (sale.sale_date - vest_event.vest_date).days
+                    sale.is_long_term = holding >= 365
+
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Vest details updated',
+            'vest_id': vest_event.id,
+            'vest_date': vest_event.vest_date.isoformat() if vest_event.vest_date else None,
+            'shares_vested': vest_event.shares_vested,
+            'fmv_at_vest': vest_event.fmv_at_vest,
+            'price_at_vest': vest_event.share_price_at_vest,
+            'sales_updated': len(sales) if (fmv_changed or date_changed) else 0,
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error("Failed to update vest details %s: %s", event_id, e, exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @grants_bp.route('/schedule')
 @login_required
 def vest_schedule():
