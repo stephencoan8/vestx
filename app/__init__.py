@@ -125,6 +125,9 @@ def create_app():
         from app.utils.migrate_vest_fmv import migrate_vest_fmv
         _safe_migrate('vest_fmv', migrate_vest_fmv)
 
+        from app.utils.migrate_grant_vest_frequency import migrate_grant_vest_frequency
+        _safe_migrate('grant_vest_frequency', migrate_grant_vest_frequency)
+
         try:
             from app.utils.init_db import init_admin_user
             init_admin_user()

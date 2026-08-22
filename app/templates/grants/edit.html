@@ -82,6 +82,15 @@
  <small class="form-help">For Kickass bonus only (1-5 years)</small>
  </div>
 
+ <div class="form-group" id="vest_frequency_group">
+ <label for="vest_frequency">RSU vest cadence</label>
+ <select id="vest_frequency" name="vest_frequency">
+ <option value="semiannual" {% if (grant.vest_frequency or 'semiannual') == 'semiannual' %}selected{% endif %}>Semi-annual (May / Nov)</option>
+ <option value="quarterly" {% if grant.vest_frequency == 'quarterly' %}selected{% endif %}>Quarterly (Feb / May / Aug / Nov)</option>
+ </select>
+ <small class="form-help">Default semi-annual. Quarterly for newer public-company style grants. Saving rebuilds the schedule (tax/sale rows preserved).</small>
+ </div>
+
  <!-- Notes -->
  <div class="form-group full-width">
  <label for="notes">Notes (Optional)</label>
@@ -99,17 +108,15 @@
 <div class="info-box" style="margin-top: 2rem;">
  <h3>ℹ Grant Structure Reference</h3>
  <ul>
- <li><strong>New Hire:</strong> 5 year RSU, 1 year cliff, semi-annual vesting</li>
- <li><strong>Promotion:</strong> Same as New Hire</li>
+ <li><strong>New Hire / Promotion:</strong> labeled 5y, 1y cliff, <strong>48 months</strong> RSU delivery (8 semi-annual or 16 quarterly)</li>
  <li><strong>Annual Performance:</strong>
  <ul>
- <li>Short Term: 1 year cliff, RSU or Cash</li>
- <li>Long Term RSU: 0.5 year cliff (after short term), semi-annual</li>
- <li>Long Term ISO 5Y: 2x shares, 0.5 year cliff, monthly vesting</li>
- <li>Long Term ISO 6Y: 3x shares, 2.5 year cliff total, monthly vesting</li>
+ <li>Short Term (STI): ~1 period payout</li>
+ <li>Long Term RSU (LTI): 1y lag + <strong>48 months</strong> delivery (8 semi-annual events), cliff at 1.5y</li>
+ <li>Long Term ISO 5Y / 6Y: monthly over 48 months after lag</li>
  </ul>
  </li>
- <li><strong>Kickass:</strong> 1-5 years, 1 year cliff, semi-annual</li>
+ <li><strong>Kickass:</strong> 1-5 years, 1 year cliff, RSU cadence as selected</li>
  <li><strong>ESPP:</strong> Immediate, 15% discount</li>
  <li><strong>nqESPP:</strong> Immediate, no discount</li>
  </ul>

@@ -64,36 +64,66 @@ def get_next_vest_date(grant_date: date) -> date:
         return date(year + 1, 5, 15)
 
 
-def get_closest_vest_date(target_date: date) -> date:
+def _vest_months_for_frequency(frequency: str) -> List[int]:
+    """Calendar months used for SpaceX-style vest dates."""
+    freq = (frequency or 'semiannual').strip().lower()
+    if freq in ('quarterly', 'quarter', 'q'):
+        return [2, 5, 8, 11]  # mid-quarter-ish; extends May/Nov pattern
+    return [5, 11]  # classic biannual
+
+
+def normalize_vest_frequency(frequency: str = None) -> str:
+    freq = (frequency or 'semiannual').strip().lower()
+    if freq in ('quarterly', 'quarter', 'q'):
+        return 'quarterly'
+    return 'semiannual'
+
+
+def get_vest_frequency_months(frequency: str = None) -> int:
+    return 3 if normalize_vest_frequency(frequency) == 'quarterly' else 6
+
+
+def get_closest_vest_date(target_date: date, frequency: str = None) -> date:
     """
-    Find the SpaceX vest date (5/15 or 11/15) closest to the target date.
-    
-    Args:
-        target_date: The date to find the closest vest date to
-        
-    Returns:
-        The closest vest date (5/15 or 11/15)
+    Find the SpaceX-style vest date closest to the target date.
+
+    Semi-annual: 5/15 or 11/15.
+    Quarterly: 2/15, 5/15, 8/15, or 11/15.
     """
+    months = _vest_months_for_frequency(frequency)
     year = target_date.year
-    
-    # Check the two vest dates in the same year
-    may_15 = date(year, 5, 15)
-    nov_15 = date(year, 11, 15)
-    
-    # Also check previous and next year dates
-    prev_nov_15 = date(year - 1, 11, 15)
-    next_may_15 = date(year + 1, 5, 15)
-    
-    # Calculate distances
-    candidates = [
-        (abs((target_date - prev_nov_15).days), prev_nov_15),
-        (abs((target_date - may_15).days), may_15),
-        (abs((target_date - nov_15).days), nov_15),
-        (abs((target_date - next_may_15).days), next_may_15),
-    ]
-    
-    # Return the date with minimum distance
-    return min(candidates, key=lambda x: x[0])[1]
+    candidates = []
+    for y in (year - 1, year, year + 1):
+        for m in months:
+            candidates.append(date(y, m, 15))
+    return min(candidates, key=lambda d: abs((target_date - d).days))
+
+
+def advance_vest_date(current: date, frequency: str = None) -> date:
+    """Next vest date after ``current`` on the selected cadence."""
+    months = _vest_months_for_frequency(frequency)
+    # Find next month in cycle strictly after current
+    for y in (current.year, current.year + 1, current.year + 2):
+        for m in months:
+            d = date(y, m, 15)
+            if d > current:
+                return d
+    # Fallback (should not hit)
+    return current + relativedelta(months=get_vest_frequency_months(frequency))
+
+
+def rsu_active_vesting_months(grant) -> int:
+    """
+    Months over which RSU/RSA shares actually deliver.
+
+    SpaceX multi-year grants are labeled vest_years=5 (lag/cliff structure
+    included) but LTI / new-hire delivery is 4 years = 48 months — same active
+    window as ISO_5Y. Shorter grants use vest_years × 12.
+    """
+    vy = int(getattr(grant, 'vest_years', None) or 1)
+    if vy >= 5:
+        return 48
+    return max(get_vest_frequency_months(getattr(grant, 'vest_frequency', None)), vy * 12)
 
 
 def get_next_espp_date(grant_date: date) -> date:
@@ -161,23 +191,22 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
         # Snap to closest SpaceX vest date (5/15 or 11/15)
         cliff_date = get_closest_vest_date(theoretical_cliff)
     else:
-        # RSU/RSA: Use standard SpaceX vest dates (5/15 or 11/15)
-        # Calculate the actual cliff date, then find the closest vest date
+        # RSU/RSA: Use standard SpaceX vest dates for the grant's cadence
         cliff_months = int(grant.cliff_years * 12)
-        
-        # Calculate actual cliff date (grant_date + cliff period)
         actual_cliff_date = grant.grant_date + relativedelta(months=cliff_months)
-        
-        # Find the closest SpaceX vest date to the cliff anniversary
-        cliff_date = get_closest_vest_date(actual_cliff_date)
+        cliff_date = get_closest_vest_date(
+            actual_cliff_date,
+            getattr(grant, 'vest_frequency', None),
+        )
     
     # Determine vesting frequency
+    rsu_frequency = normalize_vest_frequency(getattr(grant, 'vest_frequency', None))
     if grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
         # Monthly vesting for ISOs
         vest_frequency_months = 1
     else:
-        # Semi-annual vesting for RSUs/RSAs
-        vest_frequency_months = 6
+        # Semi-annual (default) or quarterly for RSUs/RSAs
+        vest_frequency_months = get_vest_frequency_months(rsu_frequency)
     
     # Calculate total vesting periods
     total_months = int(grant.vest_years * 12)
@@ -222,85 +251,69 @@ def calculate_vest_schedule(grant: Grant) -> List[Dict]:
                 'is_cliff': False
             })
     
-    elif vest_frequency_months == 6:
-        # Semi-annual vesting
-        total_vests = total_months // 6
+    elif vest_frequency_months in (3, 6):
+        # RSU/RSA: semi-annual (default) or quarterly.
+        # Active delivery window is 48 months for vest_years >= 5 (not 60).
+        # LTI example: 48 mo / 6 = 8 events (was wrongly 10 over 60 mo).
+        active_months = rsu_active_vesting_months(grant)
+        total_vests = max(1, active_months // vest_frequency_months)
         shares_per_vest = grant.share_quantity / total_vests
-        
-        # Special handling for 5-year RSU annual bonus (long_term)
-        # Vests like ISO 5Y but biannually instead of monthly
-        if (grant.grant_type == GrantType.ANNUAL_PERFORMANCE.value and 
-            grant.bonus_type == 'long_term' and 
+
+        # Annual-performance LTI RSU: 1y lag then 4y delivery (like ISO_5Y),
+        # first cliff vest = one period only (not cliff_years worth of catch-up).
+        if (grant.grant_type == GrantType.ANNUAL_PERFORMANCE.value and
+            grant.bonus_type == 'long_term' and
             grant.share_type == ShareType.RSU.value and
-            grant.vest_years == 5):
-            # First vest includes first 6 months worth (1 biannual period)
-            # Total is 10 biannual vests over 60 months
-            cliff_shares = shares_per_vest  # 1/10 of total
-            
+            int(grant.vest_years or 0) >= 5):
+            cliff_shares = shares_per_vest  # 1/8 semi-annual, or 1/16 quarterly
+
             vest_events.append({
                 'vest_date': cliff_date,
                 'shares': cliff_shares,
                 'is_cliff': True
             })
-            
-            # Add remaining 9 biannual vests
+
             current_date = cliff_date
             remaining_shares = grant.share_quantity - cliff_shares
-            remaining_vests = total_vests - 1  # Already vested the first period
-            
+            remaining_vests = total_vests - 1
+
             if remaining_vests > 0:
                 shares_per_remaining_vest = remaining_shares / remaining_vests
-                
                 for _ in range(remaining_vests):
-                    # Move to next vest date
-                    if current_date.month == 5:
-                        current_date = date(current_date.year, 11, 15)
-                    else:
-                        current_date = date(current_date.year + 1, 5, 15)
-                    
+                    current_date = advance_vest_date(current_date, rsu_frequency)
                     vest_events.append({
                         'vest_date': current_date,
                         'shares': shares_per_remaining_vest,
                         'is_cliff': False
                     })
         else:
-            # Standard RSU vesting (new hire, promotion, short-term bonus, etc.)
-            cliff_months = int(grant.cliff_years * 12)
-            cliff_periods = cliff_months // 6
+            # Standard RSU (new hire, promotion, short-term, kickass, etc.)
+            cliff_months = int(float(grant.cliff_years or 0) * 12)
+            cliff_periods = max(1, cliff_months // vest_frequency_months) if cliff_months else 1
+            # Don't credit more periods than the schedule has
+            cliff_periods = min(cliff_periods, total_vests)
             cliff_shares = shares_per_vest * cliff_periods
-            
-            # Special case for 6-year ISO with 2.5 year cliff
-            if grant.share_type == ShareType.ISO_6Y.value and grant.cliff_years == 2.5:
-                cliff_shares = grant.share_quantity * (0.5 / grant.vest_years)
-            
-            # Add cliff event
+
             vest_events.append({
                 'vest_date': cliff_date,
                 'shares': cliff_shares,
                 'is_cliff': True
             })
-            
-            # Add remaining vests
+
             current_date = cliff_date
             remaining_shares = grant.share_quantity - cliff_shares
             remaining_vests = total_vests - cliff_periods
-            
-            if remaining_vests > 0:
+
+            if remaining_vests > 0 and remaining_shares > 0:
                 shares_per_remaining_vest = remaining_shares / remaining_vests
-                
                 for _ in range(remaining_vests):
-                    # Move to next vest date
-                    if current_date.month == 5:
-                        current_date = date(current_date.year, 11, 15)
-                    else:
-                        current_date = date(current_date.year + 1, 5, 15)
-                    
+                    current_date = advance_vest_date(current_date, rsu_frequency)
                     vest_events.append({
                         'vest_date': current_date,
                         'shares': shares_per_remaining_vest,
                         'is_cliff': False
                     })
-    
+
     vest_events = round_vest_schedule(vest_events, grant.share_quantity)
     return vest_events
 
@@ -322,10 +335,11 @@ def get_grant_configuration(grant_type: str, share_type: str, bonus_type: str = 
     
     elif grant_type == GrantType.ANNUAL_PERFORMANCE.value:
         if bonus_type == 'short_term':
-            return (1, 1.0)
+            return (1, 1.0)  # STI: ~20% tranche, paid in first period
         elif bonus_type == 'long_term':
             if share_type == ShareType.RSU.value:
-                return (5, 1.5)  # 5 years vesting, 1.5 year cliff (like ISO 5Y but biannual)
+                # LTI: labeled 5y (1y lag + 4y/48mo delivery), cliff at 1.5y
+                return (5, 1.5)
             elif share_type == ShareType.ISO_5Y.value:
                 return (5, 1.5)
             elif share_type == ShareType.ISO_6Y.value:

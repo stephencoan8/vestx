@@ -50,6 +50,8 @@ class Grant(db.Model):
     # Vesting details
     vest_years = db.Column(db.Integer, nullable=False)
     cliff_years = db.Column(db.Float, nullable=False)
+    # RSU/RSA cadence: 'semiannual' (May/Nov, default) or 'quarterly' (Feb/May/Aug/Nov)
+    vest_frequency = db.Column(db.String(20), nullable=True, default='semiannual')
     
     # ESPP specific - discount percentage (typically 15% = 0.15)
     espp_discount = db.Column(db.Float, nullable=True, default=0.0)

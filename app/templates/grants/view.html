@@ -66,6 +66,12 @@
  <span class="detail-label">Cliff Period</span>
  <span class="detail-value">{{ grant.cliff_years }} years</span>
  </div>
+ {% if grant.share_type not in ['iso_5y', 'iso_6y'] %}
+ <div class="detail-item">
+ <span class="detail-label">RSU cadence</span>
+ <span class="detail-value">{{ 'Quarterly' if grant.vest_frequency == 'quarterly' else 'Semi-annual' }}</span>
+ </div>
+ {% endif %}
  </div>
  {% if grant.notes %}
  <div class="detail-notes">
@@ -75,8 +81,15 @@
  </div>
 
  <div class="detail-card">
- <h2>Vesting Schedule</h2>
- <p class="help-text">For vested events, enter how you covered taxes. Save each row after entering info.</p>
+ <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.75rem; margin-bottom:0.75rem;">
+ <h2 style="margin:0;">Vesting Schedule</h2>
+ <form method="POST" action="{{ url_for('grants.rebuild_grant_schedule', grant_id=grant.id) }}" style="display:inline;"
+ onsubmit="return confirm('Rebuild this grant’s vest schedule from current rules? Tax/sale-linked events are kept; empty leftover dates are removed.');">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <button type="submit" class="btn btn-secondary btn-sm">Rebuild schedule</button>
+ </form>
+ </div>
+ <p class="help-text">Multi-year RSUs deliver over 48 months (not 60). Click a row to open vest detail — you can edit that vest’s date, shares, and FMV there. Use Rebuild after changing cadence on Edit Grant.</p>
  <div class="table-container">
  <table class="data-table vest-schedule-table">
  <thead>

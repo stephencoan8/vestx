@@ -8,7 +8,11 @@ from app import db
 from app.models.grant import Grant, GrantType, ShareType
 from app.models.vest_event import VestEvent
 from app.models.sale_plan import SalePlan
-from app.utils.vest_calculator import calculate_vest_schedule, get_grant_configuration
+from app.utils.vest_calculator import (
+    calculate_vest_schedule,
+    get_grant_configuration,
+    normalize_vest_frequency,
+)
 from app.utils.price_utils import get_latest_user_price
 from datetime import datetime, date, timedelta
 import logging
@@ -40,6 +44,7 @@ def add_grant():
             share_quantity = float(whole_shares(request.form.get('share_quantity')))
             bonus_type = request.form.get('bonus_type')
             vest_years = request.form.get('vest_years')
+            vest_frequency = normalize_vest_frequency(request.form.get('vest_frequency'))
             notes = request.form.get('notes', '')
             
             # ESPP discount (typically 15% = 0.15)
@@ -69,6 +74,7 @@ def add_grant():
                 share_price_at_grant=share_price,
                 vest_years=vest_years,
                 cliff_years=cliff_years,
+                vest_frequency=vest_frequency,
                 bonus_type=bonus_type,
                 espp_discount=espp_discount,
                 notes=notes
@@ -124,6 +130,38 @@ def view_grant(grant_id):
     return render_template('grants/view.html', grant=grant, vest_events=vest_events)
 
 
+@grants_bp.route('/<int:grant_id>/rebuild-schedule', methods=['POST'])
+@login_required
+def rebuild_grant_schedule(grant_id):
+    """Rebuild vest rows from current grant rules (preserves tax/sale-linked events)."""
+    grant = Grant.query.get_or_404(grant_id)
+    if grant.user_id != current_user.id:
+        flash('Access denied', 'error')
+        return redirect(url_for('grants.list_grants'))
+    try:
+        from app.utils.sync_vest_schedule import sync_vest_events_for_grant
+        if not grant.vest_frequency:
+            grant.vest_frequency = 'semiannual'
+        schedule = calculate_vest_schedule(grant)
+        stats = sync_vest_events_for_grant(grant, schedule)
+        db.session.commit()
+        msg = (
+            f"Schedule rebuilt: {stats.get('created', 0)} added, "
+            f"{stats.get('updated', 0)} updated, {stats.get('deleted', 0)} removed."
+        )
+        if stats.get('preserved'):
+            msg += (
+                f" {stats['preserved']} event(s) with tax/sale data kept even though "
+                "they fell off the new schedule — edit or delete those vest rows manually."
+            )
+        flash(msg, 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error('rebuild schedule failed for grant %s: %s', grant_id, e, exc_info=True)
+        flash(f'Could not rebuild schedule: {e}', 'danger')
+    return redirect(url_for('grants.view_grant', grant_id=grant_id))
+
+
 @grants_bp.route('/<int:grant_id>/delete', methods=['POST'])
 @login_required
 def delete_grant(grant_id):
@@ -162,6 +200,7 @@ def edit_grant(grant_id):
             share_quantity = float(whole_shares(request.form.get('share_quantity')))
             bonus_type = request.form.get('bonus_type') or None
             vest_years = request.form.get('vest_years') or None
+            vest_frequency = normalize_vest_frequency(request.form.get('vest_frequency'))
             notes = request.form.get('notes', '')
             
             # ESPP discount (typically 15% = 0.15)
@@ -183,7 +222,7 @@ def edit_grant(grant_id):
             # Get vesting configuration
             if vest_years:
                 vest_years = int(vest_years)
-                cliff_years = 1.0  # Default
+                cliff_years = grant.cliff_years or 1.0
             else:
                 vest_years, cliff_years = get_grant_configuration(grant_type, share_type, bonus_type)
             
@@ -195,6 +234,7 @@ def edit_grant(grant_id):
             grant.share_price_at_grant = share_price
             grant.vest_years = vest_years
             grant.cliff_years = cliff_years
+            grant.vest_frequency = vest_frequency
             grant.bonus_type = bonus_type
             grant.espp_discount = espp_discount
             grant.notes = notes
