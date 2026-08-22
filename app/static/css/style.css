@@ -2120,6 +2120,13 @@ a.vest-item-link:focus-visible {
     border: none !important;
     overflow-x: auto;
 }
+.tax-ledger-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: flex-end;
+    align-items: center;
+}
 .tax-lot-label { font-weight: 500; }
 .tax-lot-id {
     display: block;

@@ -382,7 +382,7 @@
 
     <div class="tax-activity-grid">
       <div class="tax-activity-block">
-        <h3 class="tax-subhead">Record a sale</h3>
+        <h3 class="tax-subhead" id="recordSaleHeading">Record a sale</h3>
         <form id="recordSaleForm">
           <div class="form-row">
             <div class="form-group">
@@ -418,7 +418,10 @@
             </div>
           </div>
         </form>
-        <button type="button" class="btn btn-primary" id="btnRecordSale">Save sale</button>
+        <div class="tax-goal-actions" style="margin-top:0.75rem;">
+          <button type="button" class="btn btn-primary" id="btnRecordSale">Save sale</button>
+          <button type="button" class="btn btn-secondary" id="btnCancelSaleEdit" style="display:none;">Cancel edit</button>
+        </div>
         <div id="recordSaleResult" class="tax-inline-result"></div>
       </div>
 
@@ -482,7 +485,17 @@
               <td>${{ "{:,.2f}".format(s.total_proceeds) }}</td>
               <td>${{ "{:,.2f}".format(s.capital_gain) }}</td>
               <td>{% if s.is_long_term %}LT{% else %}ST{% endif %}</td>
-              <td><button type="button" class="btn btn-danger btn-sm btn-del-sale" data-id="{{ s.id }}">Delete</button></td>
+              <td class="tax-ledger-actions">
+                <button type="button" class="btn btn-secondary btn-sm btn-edit-sale"
+                  data-id="{{ s.id }}"
+                  data-vest="{{ s.vest_event_id }}"
+                  data-date="{{ s.sale_date.isoformat() if s.sale_date else '' }}"
+                  data-shares="{{ s.shares_sold|int }}"
+                  data-price="{{ '%.2f'|format(s.sale_price) }}"
+                  data-comm="{{ '%.2f'|format(s.commission_fees or 0) }}"
+                  data-notes="{{ (s.notes or '')|e }}">Edit</button>
+                <button type="button" class="btn btn-danger btn-sm btn-del-sale" data-id="{{ s.id }}">Delete</button>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -1483,6 +1496,75 @@
     } else t.innerHTML = '';
   }
 
+  var editingSaleId = null;
+
+  function ensureSaleVestOption(vestId, label) {
+    var sel = document.getElementById('saleVest');
+    if (!sel) return;
+    var id = String(vestId);
+    var found = Array.prototype.some.call(sel.options, function (o) { return o.value === id; });
+    if (!found) {
+      var opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = label || ('Lot #' + id);
+      sel.appendChild(opt);
+    }
+    sel.value = id;
+  }
+
+  function resetSaleForm() {
+    editingSaleId = null;
+    var heading = document.getElementById('recordSaleHeading');
+    if (heading) heading.textContent = 'Record a sale';
+    var btn = document.getElementById('btnRecordSale');
+    if (btn) btn.textContent = 'Save sale';
+    var cancel = document.getElementById('btnCancelSaleEdit');
+    if (cancel) cancel.style.display = 'none';
+    var vest = document.getElementById('saleVest');
+    if (vest) {
+      vest.disabled = false;
+      vest.value = '';
+    }
+    var dateEl = document.getElementById('saleDate');
+    if (dateEl && dateEl.defaultValue) dateEl.value = dateEl.defaultValue;
+    var shares = document.getElementById('saleShares');
+    if (shares) shares.value = '';
+    var price = document.getElementById('salePrice');
+    if (price && price.defaultValue) price.value = price.defaultValue;
+    var comm = document.getElementById('saleComm');
+    if (comm) comm.value = '0';
+    var notes = document.getElementById('saleNotes');
+    if (notes) notes.value = '';
+    var el = document.getElementById('recordSaleResult');
+    if (el) el.innerHTML = '';
+  }
+
+  function startSaleEdit(btn) {
+    editingSaleId = parseInt(btn.dataset.id, 10);
+    ensureSaleVestOption(btn.dataset.vest, 'Lot #' + btn.dataset.vest + ' (editing)');
+    var vest = document.getElementById('saleVest');
+    if (vest) {
+      vest.value = String(btn.dataset.vest);
+      vest.disabled = true;
+    }
+    document.getElementById('saleDate').value = btn.dataset.date || '';
+    document.getElementById('saleShares').value = btn.dataset.shares || '';
+    document.getElementById('salePrice').value = btn.dataset.price || '';
+    document.getElementById('saleComm').value = btn.dataset.comm || '0';
+    document.getElementById('saleNotes').value = btn.dataset.notes || '';
+    var heading = document.getElementById('recordSaleHeading');
+    if (heading) heading.textContent = 'Edit sale #' + editingSaleId;
+    var saveBtn = document.getElementById('btnRecordSale');
+    if (saveBtn) saveBtn.textContent = 'Update sale';
+    var cancel = document.getElementById('btnCancelSaleEdit');
+    if (cancel) cancel.style.display = 'inline-flex';
+    var el = document.getElementById('recordSaleResult');
+    if (el) el.innerHTML = '<div class="alert alert-info">Editing sale #' + editingSaleId +
+      ' — lot is locked; change date, shares, price, commission, or notes.</div>';
+    var form = document.getElementById('recordSaleForm');
+    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
   document.getElementById('btnRecordSale').addEventListener('click', function () {
     const vest = document.getElementById('saleVest').value;
     const el = document.getElementById('recordSaleResult');
@@ -1498,8 +1580,12 @@
       commission_fees: parseFloat(document.getElementById('saleComm').value || 0),
       notes: document.getElementById('saleNotes').value
     };
-    fetch('{{ url_for("tax_center.api_record_sale") }}', {
-      method: 'POST',
+    var updating = !!editingSaleId;
+    var url = updating
+      ? ('/tax/api/sales/' + editingSaleId)
+      : '{{ url_for("tax_center.api_record_sale") }}';
+    fetch(url, {
+      method: updating ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
       body: JSON.stringify(body)
     })
@@ -1509,11 +1595,31 @@
           el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
           return;
         }
-        el.innerHTML = '<div class="alert alert-success">Sale #' + data.sale_id + ' saved · after-tax ' +
-          money2(data.analysis.after_tax_proceeds) + ' · tax ' + money2(data.analysis.total_tax) + '</div>';
+        var verb = updating ? 'updated' : 'saved';
+        var analysis = data.analysis || {};
+        el.innerHTML = '<div class="alert alert-success">Sale #' + data.sale_id + ' ' + verb +
+          (analysis.after_tax_proceeds != null
+            ? (' · after-tax ' + money2(analysis.after_tax_proceeds) + ' · tax ' + money2(analysis.total_tax))
+            : '') + '</div>';
         try { sessionStorage.setItem('vestx_tax_hub_tab', 'activity'); } catch (e) {}
         setTimeout(function () { location.reload(); }, 900);
+      })
+      .catch(function (e) {
+        el.innerHTML = '<div class="alert alert-danger">' + (e.message || String(e)) + '</div>';
       });
+  });
+
+  var btnCancelSaleEdit = document.getElementById('btnCancelSaleEdit');
+  if (btnCancelSaleEdit) {
+    btnCancelSaleEdit.addEventListener('click', function () {
+      resetSaleForm();
+    });
+  }
+
+  document.querySelectorAll('.btn-edit-sale').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      startSaleEdit(btn);
+    });
   });
 
   document.getElementById('btnRecordEx').addEventListener('click', function () {

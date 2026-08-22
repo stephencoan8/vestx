@@ -1256,10 +1256,189 @@ def api_record_sale():
         return jsonify({'error': str(e)}), 400
 
 
+def _iso_reduce_still_held(user_id: int, vest_id: int, shares: float) -> None:
+    """FIFO: peel sold shares off earliest exercises' shares_still_held."""
+    remaining = float(shares or 0)
+    if remaining <= 0:
+        return
+    exs = (
+        ISOExercise.query.filter_by(user_id=user_id, vest_event_id=vest_id)
+        .order_by(ISOExercise.exercise_date.asc())
+        .all()
+    )
+    for ex in exs:
+        if remaining <= 0:
+            break
+        held = ex.shares_still_held if ex.shares_still_held is not None else ex.shares_exercised
+        take = min(held, remaining)
+        ex.shares_still_held = held - take
+        remaining -= take
+
+
+def _iso_restore_still_held(user_id: int, vest_id: int, shares: float) -> None:
+    """Reverse of reduce: put shares back onto latest exercises first (LIFO undo)."""
+    remaining = float(shares or 0)
+    if remaining <= 0:
+        return
+    exs = (
+        ISOExercise.query.filter_by(user_id=user_id, vest_event_id=vest_id)
+        .order_by(ISOExercise.exercise_date.desc())
+        .all()
+    )
+    for ex in exs:
+        if remaining <= 0:
+            break
+        held = ex.shares_still_held if ex.shares_still_held is not None else ex.shares_exercised
+        room = max(0.0, float(ex.shares_exercised or 0) - float(held or 0))
+        take = min(room, remaining)
+        ex.shares_still_held = held + take
+        remaining -= take
+
+
+@tax_center_bp.route('/api/sales/<int:sale_id>', methods=['PUT'])
+@login_required
+def api_update_sale(sale_id):
+    """Update an existing sale (date / shares / price / commission / notes). Lot is fixed."""
+    try:
+        from app.utils.shares import whole_shares
+
+        sale = StockSale.query.filter_by(id=sale_id, user_id=current_user.id).first_or_404()
+        data = request.get_json() or {}
+
+        vest = VestEvent.query.join(Grant).filter(
+            VestEvent.id == sale.vest_event_id, Grant.user_id == current_user.id
+        ).first_or_404()
+        grant = vest.grant
+        is_iso = _iso(grant.share_type)
+
+        old_shares = float(sale.shares_sold or 0)
+        shares = float(whole_shares(data['shares_sold'])) if 'shares_sold' in data else old_shares
+        sale_price = float(data['sale_price']) if 'sale_price' in data else float(sale.sale_price)
+        if 'sale_date' in data and data['sale_date']:
+            sale_date = datetime.fromisoformat(data['sale_date']).date()
+        else:
+            sale_date = sale.sale_date
+        commission = (
+            float(data['commission_fees'])
+            if 'commission_fees' in data
+            else float(sale.commission_fees or 0)
+        )
+        notes = data['notes'] if 'notes' in data else (sale.notes or '')
+
+        if shares <= 0:
+            return jsonify({'error': 'Shares must be a whole number ≥ 1'}), 400
+
+        lots = {l['vest_event_id']: l for l in build_lots_for_user(current_user.id)}
+        lot = lots.get(sale.vest_event_id)
+        if not lot:
+            return jsonify({'error': 'Lot not found'}), 400
+        # Inventory already excludes this sale's shares — add them back for the cap
+        max_shares = float(lot.get('shares_available') or 0) + old_shares
+        if shares > max_shares + 1e-9:
+            return jsonify({
+                'error': f'Only {int(max_shares)} whole shares available on this lot (including this sale)'
+            }), 400
+
+        if is_iso:
+            basis = grant.share_price_at_grant
+        else:
+            basis = vest.share_price_at_vest or float(sale.cost_basis_per_share or 0)
+
+        proceeds = shares * sale_price
+        total_basis = shares * basis
+        gain = proceeds - total_basis - commission
+        holding = (sale_date - vest.vest_date).days
+        is_lt = holding >= 365
+
+        is_qd = None
+        dd_ord = None
+        if is_iso:
+            ex = (
+                ISOExercise.query.filter_by(user_id=current_user.id, vest_event_id=sale.vest_event_id)
+                .order_by(ISOExercise.exercise_date.desc())
+                .first()
+            )
+            if ex and ex.exercise_date:
+                from app.utils.tax_engine import classify_iso_disposition
+                disp = classify_iso_disposition(grant.grant_date, ex.exercise_date, sale_date)
+                is_qd = disp == 'qualifying'
+                if not is_qd:
+                    fmv_ex = ex.fmv_at_exercise or sale_price
+                    dd_ord = max(0.0, min(sale_price, fmv_ex) - grant.share_price_at_grant) * shares
+
+        delta = shares - old_shares
+        if is_iso and abs(delta) > 1e-9:
+            if delta > 0:
+                _iso_reduce_still_held(current_user.id, sale.vest_event_id, delta)
+            else:
+                _iso_restore_still_held(current_user.id, sale.vest_event_id, -delta)
+
+        sale.sale_date = sale_date
+        sale.shares_sold = shares
+        sale.sale_price = sale_price
+        sale.total_proceeds = proceeds
+        sale.cost_basis_per_share = basis
+        sale.total_cost_basis = total_basis
+        sale.capital_gain = gain
+        sale.is_long_term = is_lt if not is_iso or not is_qd else True
+        sale.commission_fees = commission
+        sale.is_qualifying_disposition = is_qd
+        sale.disqualifying_ordinary_income = dd_ord
+        sale.notes = notes or ''
+
+        db.session.commit()
+
+        eng = _engine_profile_for_request(current_user, {'tax_year': sale_date.year})
+        lot_in = LotSaleInput(
+            vest_event_id=vest.id,
+            grant_id=grant.id,
+            share_type=grant.share_type,
+            grant_type=grant.grant_type,
+            shares=shares,
+            sale_price=sale_price,
+            sale_date=sale_date,
+            vest_date=vest.vest_date,
+            grant_date=grant.grant_date,
+            cost_basis_per_share=basis,
+            is_iso=is_iso,
+            strike_price=grant.share_price_at_grant if is_iso else 0.0,
+            exercise_date=(
+                ISOExercise.query.filter_by(user_id=current_user.id, vest_event_id=sale.vest_event_id)
+                .order_by(ISOExercise.exercise_date.desc())
+                .first()
+                or type('E', (), {'exercise_date': None})()
+            ).exercise_date,
+            fmv_at_exercise=(
+                (ISOExercise.query.filter_by(user_id=current_user.id, vest_event_id=sale.vest_event_id)
+                 .order_by(ISOExercise.exercise_date.desc()).first()
+                 or type('E', (), {'fmv_at_exercise': None})())
+                .fmv_at_exercise
+            ),
+            commission=commission,
+            label=f'sale {sale.id}',
+        )
+        analysis = analyze_sales(eng, [lot_in])
+
+        return jsonify({
+            'success': True,
+            'sale_id': sale.id,
+            'analysis': analysis.to_dict(),
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error('update sale failed: %s', e, exc_info=True)
+        return jsonify({'error': str(e)}), 400
+
+
 @tax_center_bp.route('/api/sales/<int:sale_id>', methods=['DELETE'])
 @login_required
 def api_delete_sale(sale_id):
     sale = StockSale.query.filter_by(id=sale_id, user_id=current_user.id).first_or_404()
+    vest = VestEvent.query.join(Grant).filter(
+        VestEvent.id == sale.vest_event_id, Grant.user_id == current_user.id
+    ).first()
+    if vest and _iso(vest.grant.share_type):
+        _iso_restore_still_held(current_user.id, sale.vest_event_id, float(sale.shares_sold or 0))
     db.session.delete(sale)
     db.session.commit()
     return jsonify({'success': True})
