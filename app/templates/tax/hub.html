@@ -404,7 +404,7 @@
         <div class="tax-sit-value">${{ "{:,.0f}".format(sold.summary_year.worth_now) }}</div>
         <div class="tax-sit-sub">
           {% set fg = sold.summary_year.forgone_vs_sale %}
-          {% if fg > 0 %}Δ +${{ "{:,.0f}".format(fg) }} if held{% elif fg < 0 %}Δ −${{ "{:,.0f}".format(-fg) }} vs sale{% else %}≈ sale proceeds{% endif %}
+          {% if fg > 0 %}+${{ "{:,.0f}".format(fg) }} vs hold{% elif fg < 0 %}−${{ "{:,.0f}".format(-fg) }} vs hold{% else %}≈ live{% endif %}
         </div>
       </div>
       <div class="tax-sit-card">
@@ -430,7 +430,7 @@
               <th>Term</th>
               <th>Est. tax</th>
               <th>Worth now</th>
-              <th>Δ vs sale</th>
+              <th>Δ vs now</th>
             </tr>
           </thead>
           <tbody>

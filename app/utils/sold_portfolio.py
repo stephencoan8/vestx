@@ -43,7 +43,8 @@ def build_sold_portfolio(
         basis = float(s.total_cost_basis or 0)
         gain = float(s.capital_gain if s.capital_gain is not None else proceeds - basis)
         worth_now = sh * float(live_price or 0)
-        delta = worth_now - proceeds
+        # Positive = sold above today's value (a win); negative = price ran after sale
+        delta = proceeds - worth_now
         y = s.sale_date.year if s.sale_date else None
         if y == tax_year:
             year_sales.append(s)
@@ -84,7 +85,7 @@ def build_sold_portfolio(
     )
     gain_y = sum(float(s.capital_gain or 0) for s in year_sales)
     worth_now_y = shares_y * float(live_price or 0)
-    forgone_y = worth_now_y - proceeds_y  # positive = would be worth more if held
+    forgone_y = proceeds_y - worth_now_y  # positive = sold above today's mark
 
     # Per-row est tax sum for year (detail); stacked estimate preferred in calendar module
     est_tax_sum_y = 0.0
@@ -117,7 +118,7 @@ def build_sold_portfolio(
             'shares': whole_shares(shares_all),
             'proceeds': float(proceeds_all),
             'worth_now': float(worth_now_all),
-            'forgone_vs_sale': float(worth_now_all - proceeds_all),
+            'forgone_vs_sale': float(proceeds_all - worth_now_all),
             'sale_count': len(all_sales),
         },
     }
