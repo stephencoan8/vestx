@@ -55,8 +55,7 @@
     </div>
   </div>
 
-  <div id="taxProfileBody" class="tax-profile-body tax-profile-cockpit">
-    {# LEFT: primary inputs #}
+  <div id="taxProfileBody" class="tax-profile-body">
     <section class="detail-card tax-profile-inputs">
       <form method="post" id="taxProfileForm" autocomplete="off">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -223,74 +222,6 @@
           </div>
         </details>
       </form>
-    </section>
-
-    {# RIGHT: composition #}
-    <section class="detail-card tax-year-result-card" id="yearTaxCard">
-      <div id="yearTaxEmpty" class="tax-profile-empty" {% if year_tax %}hidden{% endif %}>
-        Enter box 1 wages — estimate updates as you type.
-      </div>
-      <div id="yearTaxBody" {% if not year_tax %}hidden{% endif %}>
-        <h3 class="tax-comp-title">Composition</h3>
-        <div class="tax-comp-rows">
-          <div class="tax-comp-row">
-            <span>Federal income</span>
-            <span class="tax-comp-val" data-k="federal_income_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.federal_income_tax) }}{% else %}—{% endif %}</span>
-          </div>
-          <div class="tax-comp-row">
-            <span>State</span>
-            <span class="tax-comp-val" data-k="state_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.state_tax) }}{% else %}—{% endif %}</span>
-          </div>
-          <div class="tax-comp-row">
-            <span>FICA</span>
-            <span class="tax-comp-val" data-k="total_fica_comp">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_fica) }}{% else %}—{% endif %}</span>
-          </div>
-          <div class="tax-comp-row tax-comp-total">
-            <span>All-in</span>
-            <span class="tax-comp-val" data-k="total_tax_comp">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_tax) }}{% else %}—{% endif %}</span>
-          </div>
-        </div>
-
-        <details class="tax-hub-details" open>
-          <summary>FICA detail</summary>
-          <div class="tax-stack tax-details-body">
-            <div class="tax-stack-row">
-              <div class="tax-stack-item"><span class="tax-stack-label">Social Security</span><span class="tax-stack-val" data-k="social_security">{% if year_tax %}${{ "{:,.0f}".format(year_tax.social_security) }}{% else %}$0{% endif %}</span></div>
-              <div class="tax-stack-item"><span class="tax-stack-label">Medicare</span><span class="tax-stack-val" data-k="medicare">{% if year_tax %}${{ "{:,.0f}".format(year_tax.medicare) }}{% else %}$0{% endif %}</span></div>
-              <div class="tax-stack-item" id="addMedRow" {% if not year_tax or not year_tax.additional_medicare %}hidden{% endif %}>
-                <span class="tax-stack-label">Add’l Medicare</span>
-                <span class="tax-stack-val" data-k="additional_medicare">{% if year_tax and year_tax.additional_medicare %}${{ "{:,.0f}".format(year_tax.additional_medicare) }}{% else %}$0{% endif %}</span>
-              </div>
-            </div>
-            <div class="tax-stack-meta" id="ficaMeta">
-              {% if year_tax %}SS base ${{ "{:,.0f}".format(year_tax.ss_wage_base) }} · wages ${{ "{:,.0f}".format(year_tax.wages) }}{% endif %}
-            </div>
-          </div>
-        </details>
-
-        <details class="tax-hub-details">
-          <summary>Full stack</summary>
-          <div class="tax-stack tax-details-body">
-            <div class="tax-stack-row">
-              <div class="tax-stack-item"><span class="tax-stack-label">Fed ordinary</span><span class="tax-stack-val" data-k="federal_ordinary_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.federal_ordinary_tax) }}{% else %}$0{% endif %}</span></div>
-              <div class="tax-stack-item" id="niitRow" {% if not year_tax or not year_tax.niit %}hidden{% endif %}><span class="tax-stack-label">NIIT</span><span class="tax-stack-val" data-k="niit">{% if year_tax and year_tax.niit %}${{ "{:,.0f}".format(year_tax.niit) }}{% else %}$0{% endif %}</span></div>
-              <div class="tax-stack-item"><span class="tax-stack-label">CA PIT</span><span class="tax-stack-val" data-k="state_regular_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.state_regular_tax) }}{% else %}$0{% endif %}</span></div>
-              <div class="tax-stack-item" id="mhstRow" {% if not year_tax or not year_tax.state_surtax %}hidden{% endif %}><span class="tax-stack-label">CA MHST</span><span class="tax-stack-val" data-k="state_surtax">{% if year_tax and year_tax.state_surtax %}${{ "{:,.0f}".format(year_tax.state_surtax) }}{% else %}$0{% endif %}</span></div>
-            </div>
-            <div class="tax-stack-meta" id="yearTaxMeta">
-              {% if year_tax %}
-              Tax year {{ year_tax.tax_year }}
-              {% if year_tax.federal_std_deduction is defined %} · fed std ded ${{ "{:,.0f}".format(year_tax.federal_std_deduction) }}{% endif %}
-              {% endif %}
-            </div>
-            <ul class="tax-notes-list" id="yearTaxNotes">
-              {% if year_tax and year_tax.notes %}
-              {% for n in year_tax.notes[:3] %}<li>{{ n }}</li>{% endfor %}
-              {% endif %}
-            </ul>
-          </div>
-        </details>
-      </div>
     </section>
   </div>
 
@@ -475,11 +406,7 @@
   }
 
   function renderResult(r, y) {
-    var empty = document.getElementById('yearTaxEmpty');
-    var taxBody = document.getElementById('yearTaxBody');
     if (!r) {
-      if (empty) empty.hidden = false;
-      if (taxBody) taxBody.hidden = true;
       setText('[data-k="total_tax"]', '—');
       setText('[data-k="effective_rate"]', '—');
       setText('[data-k="income_tax_effective_rate"]', '—');
@@ -487,11 +414,7 @@
       setText('[data-k="total_fica"]', '—');
       return;
     }
-    if (empty) empty.hidden = true;
-    if (taxBody) taxBody.hidden = false;
-
     setMoney(document.querySelector('[data-k="total_tax"]'), r.total_tax);
-    setMoney(document.querySelector('[data-k="total_tax_comp"]'), r.total_tax);
     setText('[data-k="effective_rate"]', (Number(r.effective_rate || 0) * 100).toFixed(1) + '%');
     var ir = r.income_tax_effective_rate;
     if (ir == null && r.income_tax_total != null && r.wages) {
@@ -504,50 +427,6 @@
       (Number(r.state_marginal || 0) * 100).toFixed(1) + '%'
     );
     setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
-    setMoney(document.querySelector('[data-k="total_fica_comp"]'), r.total_fica);
-    setMoney(document.querySelector('[data-k="federal_income_tax"]'), r.federal_income_tax);
-    setMoney(document.querySelector('[data-k="state_tax"]'), r.state_tax);
-    setMoney(document.querySelector('[data-k="federal_ordinary_tax"]'), r.federal_ordinary_tax);
-    setMoney(document.querySelector('[data-k="state_regular_tax"]'), r.state_regular_tax);
-    setMoney(document.querySelector('[data-k="social_security"]'), r.social_security);
-    setMoney(document.querySelector('[data-k="medicare"]'), r.medicare);
-
-    var addMed = document.getElementById('addMedRow');
-    if (addMed) {
-      addMed.hidden = !(r.additional_medicare > 0);
-      setMoney(addMed.querySelector('[data-k="additional_medicare"]'), r.additional_medicare || 0);
-    }
-    var niitRow = document.getElementById('niitRow');
-    if (niitRow) {
-      niitRow.hidden = !(r.niit > 0);
-      setMoney(niitRow.querySelector('[data-k="niit"]'), r.niit);
-    }
-    var mhstRow = document.getElementById('mhstRow');
-    if (mhstRow) {
-      mhstRow.hidden = !(r.state_surtax > 0);
-      setMoney(mhstRow.querySelector('[data-k="state_surtax"]'), r.state_surtax);
-    }
-
-    var ficaMeta = document.getElementById('ficaMeta');
-    if (ficaMeta) {
-      ficaMeta.textContent =
-        'SS base ' + money(r.ss_wage_base) + ' · wages ' + money(r.wages);
-    }
-    var meta = document.getElementById('yearTaxMeta');
-    if (meta) {
-      meta.textContent =
-        'Tax year ' + (r.tax_year || y) +
-        (r.federal_std_deduction != null ? ' · fed std ded ' + money(r.federal_std_deduction) : '');
-    }
-    var notes = document.getElementById('yearTaxNotes');
-    if (notes) {
-      notes.innerHTML = '';
-      (r.notes || []).slice(0, 3).forEach(function (n) {
-        var li = document.createElement('li');
-        li.textContent = n;
-        notes.appendChild(li);
-      });
-    }
   }
 
   function applyPackage(data) {
@@ -647,8 +526,6 @@
   function runRecalc() {
     if (switching) return;
     var payload = collectPayload();
-    var card = document.getElementById('yearTaxCard');
-    if (card) card.classList.add('is-recalc');
     if (kpis) kpis.classList.add('is-recalc');
     var opts = {
       method: 'POST',
@@ -669,7 +546,6 @@
       })
       .catch(function (err) { console.warn('recalc', err); })
       .finally(function () {
-        if (card) card.classList.remove('is-recalc');
         if (kpis) kpis.classList.remove('is-recalc');
       });
   }
