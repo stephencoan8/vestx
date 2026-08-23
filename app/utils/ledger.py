@@ -189,6 +189,66 @@ def apply_sale_qty_delta(*, user_id: int, vest_event_id: int, delta: float) -> N
             _iso_restore_still_held(user_id, vest_event_id, -d)
 
 
+def record_exercise(
+    *,
+    user_id: int,
+    vest_event_id: int,
+    qty: float,
+    exercise_date: date,
+    fmv: float,
+    strike: float,
+    exercise_id: Optional[int] = None,
+    commit: bool = True,
+) -> TaxLot:
+    """Convert ISO option remaining into an iso_stock lot."""
+    qty = float(whole_shares(qty))
+    if qty <= 0:
+        raise LedgerError('Exercise quantity must be a positive whole share count')
+    opt = (
+        TaxLot.query.filter_by(
+            user_id=user_id, vest_event_id=vest_event_id, kind='iso_option',
+        )
+        .order_by(TaxLot.id.desc())
+        .first()
+    )
+    if opt is None:
+        raise LedgerError('No ISO option lot for that vest')
+    remaining = float(whole_shares(opt.remaining_qty))
+    if qty > remaining + 1e-9:
+        raise LedgerError(
+            f'Cannot exercise {qty:.0f} — option lot has {remaining:.0f} remaining'
+        )
+    opt.remaining_qty = remaining - qty
+    opt.close_if_empty()
+    stock = TaxLot(
+        user_id=user_id,
+        grant_id=opt.grant_id,
+        vest_event_id=vest_event_id,
+        parent_lot_id=opt.id,
+        kind='iso_stock',
+        acquired_date=exercise_date,
+        original_qty=qty,
+        remaining_qty=qty,
+        cost_basis_per_share=float(strike or 0),
+        fmv_at_open=float(fmv or 0) or None,
+        strike_price=float(strike or 0),
+        status='open',
+    )
+    db.session.add(stock)
+    db.session.flush()
+    db.session.add(LedgerEntry(
+        user_id=user_id, lot_id=opt.id, kind='exercise',
+        entry_date=exercise_date, qty=-qty, price=fmv, exercise_id=exercise_id,
+    ))
+    db.session.add(LedgerEntry(
+        user_id=user_id, lot_id=stock.id, kind='exercise',
+        entry_date=exercise_date, qty=qty, price=fmv, exercise_id=exercise_id,
+    ))
+    if commit:
+        db.session.commit()
+    return stock
+
+
 def ensure_lots_for_user(user_id: int) -> None:
     """Backfill lots if this user has grants but no tax lots yet."""
     from app.models.grant import Grant

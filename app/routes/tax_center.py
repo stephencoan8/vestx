@@ -1515,6 +1515,23 @@ def api_record_exercise():
             notes=data.get('notes') or '',
         )
         db.session.add(ex)
+        db.session.flush()
+        from app.utils.ledger import record_exercise, LedgerError, ensure_lots_for_user
+        ensure_lots_for_user(current_user.id)
+        try:
+            record_exercise(
+                user_id=current_user.id,
+                vest_event_id=vest_id,
+                qty=shares,
+                exercise_date=exercise_date,
+                fmv=fmv,
+                strike=strike,
+                exercise_id=ex.id,
+                commit=False,
+            )
+        except LedgerError as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 400
         db.session.commit()
 
         eng = _engine_profile_for_request(current_user, {'tax_year': exercise_date.year})
