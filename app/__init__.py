@@ -128,6 +128,9 @@ def create_app():
         from app.utils.migrate_grant_vest_frequency import migrate_grant_vest_frequency
         _safe_migrate('grant_vest_frequency', migrate_grant_vest_frequency)
 
+        from app.utils.migrate_estimated_tax_fields import migrate_estimated_tax_fields
+        _safe_migrate('estimated_tax_fields', migrate_estimated_tax_fields)
+
         try:
             from app.utils.init_db import init_admin_user
             init_admin_user()

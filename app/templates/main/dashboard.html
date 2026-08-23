@@ -14,18 +14,21 @@
             <div class="hero-metric">
                 <div class="hero-metric-label">Portfolio value</div>
                 <div class="hero-metric-value">${{ "{:,.2f}".format(total_value) }}</div>
-                <div class="hero-metric-note">All grants at current price</div>
+                <div class="hero-metric-note">Still held @ ${{ "{:,.2f}".format(current_price) }} · {{ "{:,.0f}".format(total_shares) }} sh</div>
                 {% if unexercised_iso_shares and unexercised_iso_shares > 0 %}
                 <div class="hero-metric-subnote">incl. ${{ "{:,.0f}".format(unexercised_iso_value) }} unexercised ISO · {{ "{:,.0f}".format(unexercised_iso_shares) }} sh</div>
+                {% endif %}
+                {% if shares_sold_market and shares_sold_market > 0 %}
+                <div class="hero-metric-subnote">excludes {{ "{:,.0f}".format(shares_sold_market) }} sh sold · book if never sold ~${{ "{:,.0f}".format(grant_book_value) }}</div>
                 {% endif %}
             </div>
             <div class="hero-metric-divider" aria-hidden="true"></div>
             <div class="hero-metric">
-                <div class="hero-metric-label">Vested value</div>
+                <div class="hero-metric-label">Held equity</div>
                 <div class="hero-metric-value">${{ "{:,.2f}".format(vested_value_net) }}</div>
-                <div class="hero-metric-note">Net shares received, current price</div>
+                <div class="hero-metric-note">Sellable shares only (after market sales)</div>
                 {% if unexercised_iso_shares and unexercised_iso_shares > 0 %}
-                <div class="hero-metric-subnote">of which ${{ "{:,.0f}".format(unexercised_iso_value) }} unexercised ISO · {{ "{:,.0f}".format(unexercised_iso_shares) }} sh</div>
+                <div class="hero-metric-subnote">unexercised ISO tracked separately above</div>
                 {% endif %}
             </div>
         </div>

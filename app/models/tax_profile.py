@@ -43,6 +43,13 @@ class TaxProfile(db.Model):
     ca_amt_credit_carryforward = db.Column(db.Float, default=0.0)  # CA Schedule P credit
     prior_year_amt_paid = db.Column(db.Float, default=0.0)
 
+    # Estimated-tax / safe-harbor inputs (Sold tab calendar)
+    prior_year_total_tax = db.Column(db.Float, default=0.0)  # prior-year total tax (safe harbor base)
+    prior_year_agi = db.Column(db.Float, nullable=True)  # if >150k → 110% safe harbor
+    federal_withholding_ytd = db.Column(db.Float, default=0.0)
+    state_withholding_ytd = db.Column(db.Float, default=0.0)
+    estimated_payments_ytd = db.Column(db.Float, default=0.0)  # estimated tax payments made YTD
+
     # Analysis year default
     tax_year = db.Column(db.Integer, nullable=True)
 

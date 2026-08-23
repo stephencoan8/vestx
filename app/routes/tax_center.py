@@ -78,24 +78,33 @@ def hub():
         .all()
     )
     live = float(get_latest_user_price(current_user.id) or 0.0)
-    rsu_held = sum(float(l.get('shares_available') or 0) for l in lots if not l.get('is_iso'))
-    iso_held = sum(float(l.get('shares_available') or 0) for l in lots if l.get('is_iso'))
-    iso_unex = sum(float(l.get('shares_unexercised') or 0) for l in lots if l.get('is_iso'))
-    available = rsu_held + iso_held
+    from app.utils.portfolio_summary import summarize_held_portfolio
+    held = summarize_held_portfolio(current_user.id, live_price=live, lots=lots)
+    rsu_held = held['rsu_held']
+    iso_held = held['iso_held']
+    iso_unex = held['iso_unexercised']
+    available = held['shares_available']
     inventory = {
         'rsu_held': rsu_held,
         'iso_held': iso_held,
         'iso_unexercised': iso_unex,
         'shares_available': available,
-        'sellable_value': available * live,
-        'unex_intrinsic': sum(
-            max(0.0, live - float(l.get('strike_price') or l.get('cost_basis_per_share') or 0))
-            * float(l.get('shares_unexercised') or 0)
-            for l in lots if l.get('is_iso')
-        ),
+        'sellable_value': held['sellable_value'],
+        'held_value': held['held_value'],
+        'portfolio_value': held['portfolio_value'],
+        'unex_intrinsic': held['iso_unexercised_value'],
         'lt_lots': sum(1 for l in lots if l.get('is_long_term') and float(l.get('shares_available') or 0) > 0),
         'st_lots': sum(1 for l in lots if not l.get('is_long_term') and float(l.get('shares_available') or 0) > 0),
+        'shares_sold_market': held['shares_sold_market'],
     }
+    tax_year = int(request.args.get('sold_year') or date.today().year)
+    from app.utils.sold_portfolio import build_sold_portfolio
+    from app.utils.estimated_tax_calendar import build_estimated_tax_calendar
+    sold = build_sold_portfolio(current_user, live_price=live, tax_year=tax_year, sales=sales)
+    tax_calendar = build_estimated_tax_calendar(
+        current_user, tax_year=tax_year, sales=sales, profile=profile
+    )
+    inventory['tax_to_save'] = float(tax_calendar.get('still_to_save') or 0)
     profile_ready = bool(
         float(profile.other_ordinary_income or 0) > 0
         or float(profile.ytd_wages or 0) > 0
@@ -109,6 +118,9 @@ def hub():
         live_price=live,
         shares_available=available,
         inventory=inventory,
+        sold=sold,
+        tax_calendar=tax_calendar,
+        sold_year=tax_year,
         profile_ready=profile_ready,
         today=date.today(),
         grok_enabled=xai_advisor.is_configured(current_user),
@@ -450,6 +462,14 @@ def tax_profile():
             year_row = TaxYearProfile.upsert_from_form(current_user.id, ty, data)
             year_row.apply_to_main_profile(profile)
 
+            # Estimated-tax calendar inputs live on main TaxProfile (cross-year)
+            profile.prior_year_total_tax = _f('prior_year_total_tax', 0) or 0
+            pagi = request.form.get('prior_year_agi', '')
+            profile.prior_year_agi = _money_float(pagi, None) if pagi not in (None, '') else None
+            profile.federal_withholding_ytd = _f('federal_withholding_ytd', 0) or 0
+            profile.state_withholding_ytd = _f('state_withholding_ytd', 0) or 0
+            profile.estimated_payments_ytd = _f('estimated_payments_ytd', 0) or 0
+
             if profile.federal_ordinary_rate is not None:
                 current_user.federal_tax_rate = profile.federal_ordinary_rate
             current_user.state_tax_rate = profile.state_ordinary_rate or 0
@@ -542,10 +562,19 @@ def tax_profile():
         except Exception as e:
             logger.warning('year tax display failed: %s', e)
 
+    est_tax_form = {
+        'prior_year_total_tax': float(getattr(profile, 'prior_year_total_tax', 0) or 0),
+        'prior_year_agi': getattr(profile, 'prior_year_agi', None),
+        'federal_withholding_ytd': float(getattr(profile, 'federal_withholding_ytd', 0) or 0),
+        'state_withholding_ytd': float(getattr(profile, 'state_withholding_ytd', 0) or 0),
+        'estimated_payments_ytd': float(getattr(profile, 'estimated_payments_ytd', 0) or 0),
+    }
+
     return render_template(
         'tax/profile.html',
         profile=profile,
         form=form,
+        est_tax_form=est_tax_form,
         selected_year=selected_year,
         years=years,
         history=history,

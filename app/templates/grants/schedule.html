@@ -5,23 +5,44 @@
 {% block content %}
 <div class="page">
  <header class="page-header">
+ <div>
  <h1>Complete Vesting Schedule</h1>
+ <p class="tax-muted-sm" style="margin:0.35rem 0 0;">Toggle columns to focus on held vs sold. Market sales ≠ tax withholding at vest.</p>
+ </div>
  </header>
 
  {% if vest_events %}
+ <div class="sched-col-toolbar" id="schedColToolbar">
+ <span class="sched-col-label">Columns</span>
+ <label class="sched-col-chip"><input type="checkbox" data-col="vested" checked> Shares vesting</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="held" checked> Shares held</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="sold"> Sold (market)</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="withheld"> Withheld at vest</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="price"> Price at vest</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="gross"> Gross value</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="esttax"> Est. tax</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="received" checked> Shares received</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="net"> Net value</label>
+ <label class="sched-col-chip"><input type="checkbox" data-col="heldval" checked> Held value now</label>
+ </div>
+
  <div class="table-container">
- <table class="data-table sortable-table">
+ <table class="data-table sortable-table" id="schedTable">
  <thead>
  <tr>
  <th data-sort="date">Vest Date</th>
  <th data-sort="text">Grant Type</th>
  <th data-sort="text">Share Type</th>
- <th data-sort="number">Shares Vesting</th>
- <th data-sort="number">Price at Vest</th>
- <th data-sort="number">Gross Value</th>
- <th data-sort="number">Est. Tax</th>
- <th data-sort="number">Shares Received</th>
- <th data-sort="number">Net Value</th>
+ <th data-sort="number" data-col="vested">Shares Vesting</th>
+ <th data-sort="number" data-col="held">Shares Held</th>
+ <th data-sort="number" data-col="sold">Sold (market)</th>
+ <th data-sort="number" data-col="withheld">Withheld at vest</th>
+ <th data-sort="number" data-col="price">Price at Vest</th>
+ <th data-sort="number" data-col="gross">Gross Value</th>
+ <th data-sort="number" data-col="esttax">Est. Tax</th>
+ <th data-sort="number" data-col="received">Shares Received</th>
+ <th data-sort="number" data-col="net">Net Value</th>
+ <th data-sort="number" data-col="heldval">Held @ ${{ "{:,.0f}".format(live_price) }}</th>
  <th data-sort="text">Status</th>
  </tr>
  </thead>
@@ -31,10 +52,13 @@
  <td>{{ vest.vest_date.strftime('%Y-%m-%d') }}</td>
  <td><span class="badge badge-{{ vest.grant.grant_type }}">{{ vest.grant.grant_type.replace('_', ' ').title() }}</span></td>
  <td><span class="badge badge-share">{{ vest.grant.share_type.upper() }}</span></td>
- <td>{{ "{:,.2f}".format(vest.shares_vested) }}</td>
- <td>${{ "{:,.2f}".format(vest.share_price_at_vest or 0) }}</td>
- <td>${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
- <td>
+ <td data-col="vested">{{ "{:,.0f}".format(vest.shares_vested) }}</td>
+ <td data-col="held" class="highlight">{{ "{:,.0f}".format(vest.shares_held_now or 0) }}</td>
+ <td data-col="sold">{{ "{:,.0f}".format(vest.market_shares_sold or 0) }}</td>
+ <td data-col="withheld">{{ "{:,.0f}".format(vest.shares_sold or 0) }}</td>
+ <td data-col="price">${{ "{:,.2f}".format(vest.share_price_at_vest or 0) }}</td>
+ <td data-col="gross">${{ "{:,.2f}".format(vest.value_at_vest) }}</td>
+ <td data-col="esttax">
  {% if vest.has_vested %}
  <span style="color: var(--text-primary);">${{ "{:,.2f}".format(vest.tax_withheld) }}</span>
  {% elif vest.estimated_tax %}
@@ -43,8 +67,9 @@
  <span style="color: var(--text-muted);">—</span>
  {% endif %}
  </td>
- <td class="highlight">{{ "{:,.2f}".format(vest.shares_received) }}</td>
- <td class="highlight">${{ "{:,.2f}".format(vest.net_value) }}</td>
+ <td data-col="received">{{ "{:,.0f}".format(vest.shares_received) }}</td>
+ <td data-col="net">${{ "{:,.2f}".format(vest.net_value) }}</td>
+ <td data-col="heldval" class="highlight">${{ "{:,.0f}".format(vest.held_value_now or 0) }}</td>
  <td>
  {% if vest.has_vested %}
  <span class="badge badge-success">✓ Vested</span>
@@ -57,9 +82,9 @@
  </tbody>
  </table>
  </div>
- 
+
  <div class="alert-bar" style="margin-top: 1rem;">
- <strong> Note:</strong> Taxes marked with an asterisk (*) are <em>estimated</em> for future vesting events based on your current tax profile and latest stock price. Actual taxes may vary.
+ <strong>Note:</strong> <em>Sold (market)</em> = recorded stock sales. <em>Withheld at vest</em> = sell-to-cover / tax shares at vest. Taxes with * are estimated for future vests.
  </div>
  {% else %}
  <div class="empty-state-large">
@@ -72,21 +97,57 @@
 </div>
 
 <style>
-.clickable-row {
- transition: background-color 0.2s ease, transform 0.1s ease;
+.clickable-row { transition: background-color 0.2s ease, transform 0.1s ease; }
+.clickable-row:hover { background-color: var(--accent-soft) !important; transform: scale(1.002); }
+.clickable-row:active { transform: scale(0.998); }
+.vested-row.clickable-row:hover { background-color: var(--copper-soft) !important; }
+.sched-col-toolbar {
+ display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
+ margin-bottom: 0.85rem; font-size: 0.8rem;
 }
-
-.clickable-row:hover {
- background-color: var(--accent-soft) !important;
- transform: scale(1.002);
+.sched-col-label { color: var(--text-muted); margin-right: 0.35rem; font-weight: 600; }
+.sched-col-chip {
+ display: inline-flex; align-items: center; gap: 0.3rem;
+ border: 1px solid var(--border-subtle); border-radius: 999px;
+ padding: 0.2rem 0.65rem; cursor: pointer; color: var(--text-secondary);
+ user-select: none;
 }
-
-.clickable-row:active {
- transform: scale(0.998);
-}
-
-.vested-row.clickable-row:hover {
- background-color: var(--copper-soft) !important;
+.sched-col-chip input { margin: 0; }
+.sched-col-chip:has(input:checked) {
+ border-color: var(--copper-border, #c9944a);
+ color: var(--text-primary);
+ background: rgba(201, 148, 74, 0.08);
 }
 </style>
+<script>
+(function () {
+  var KEY = 'vestx_schedule_cols_v1';
+  var defaults = { vested: true, held: true, sold: false, withheld: false, price: false, gross: false, esttax: false, received: true, net: false, heldval: true };
+  var state = defaults;
+  try {
+    var saved = localStorage.getItem(KEY);
+    if (saved) state = Object.assign({}, defaults, JSON.parse(saved));
+  } catch (e) {}
+
+  function apply() {
+    document.querySelectorAll('#schedColToolbar [data-col]').forEach(function (inp) {
+      var col = inp.getAttribute('data-col');
+      inp.checked = !!state[col];
+    });
+    document.querySelectorAll('#schedTable [data-col]').forEach(function (el) {
+      var col = el.getAttribute('data-col');
+      el.style.display = state[col] ? '' : 'none';
+    });
+  }
+
+  document.querySelectorAll('#schedColToolbar [data-col]').forEach(function (inp) {
+    inp.addEventListener('change', function () {
+      state[inp.getAttribute('data-col')] = inp.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+      apply();
+    });
+  });
+  apply();
+})();
+</script>
 {% endblock %}

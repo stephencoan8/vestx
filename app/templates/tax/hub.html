@@ -26,9 +26,9 @@
       <div class="tax-sit-value">${{ "{:,.2f}".format(live_price) }}</div>
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Sellable value</div>
-      <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.sellable_value) }}</div>
-      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh · RSU {{ "{:,.0f}".format(inventory.rsu_held) }} · ISO held {{ "{:,.0f}".format(inventory.iso_held) }}</div>
+      <div class="tax-sit-label">Held value</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }}</div>
+      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh still held · RSU {{ "{:,.0f}".format(inventory.rsu_held) }} · ISO {{ "{:,.0f}".format(inventory.iso_held) }}</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Unexercised ISO</div>
@@ -36,14 +36,14 @@
       <div class="tax-sit-sub">~${{ "{:,.0f}".format(inventory.unex_intrinsic) }} intrinsic @ live</div>
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Profile</div>
-      <div class="tax-sit-value tax-sit-value-sm">
-        {{ (profile.filing_status or '—')|upper }}
-        · {{ (profile.state_code or '—')|upper }}
-      </div>
+      <div class="tax-sit-label">Tax to save ({{ sold_year }})</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.tax_to_save or 0) }}</div>
       <div class="tax-sit-sub">
-        {% if profile_ready %}Wages set · {{ inventory.lt_lots }} LT / {{ inventory.st_lots }} ST lots
-        {% else %}Set income for accurate tax{% endif %}
+        {% if (inventory.shares_sold_market or 0) > 0 %}
+        {{ "{:,.0f}".format(inventory.shares_sold_market) }} sh sold · see Sold tab
+        {% else %}
+        After equity sales · Sold tab
+        {% endif %}
       </div>
     </div>
   </div>
@@ -59,6 +59,9 @@
     <button type="button" class="tax-intent" data-intent="advanced" id="intentAdvanced">
       Advanced <span>manual lots</span>
     </button>
+    <button type="button" class="tax-intent" data-intent="sold" id="intentSold">
+      Sold <span>gains &amp; tax reserve</span>
+    </button>
     <button type="button" class="tax-intent" data-intent="activity" id="intentActivity">
       Activity <span>log &amp; history</span>
     </button>
@@ -68,6 +71,7 @@
   <nav class="chart-toggle tax-hub-tabs" id="taxHubTabs" role="tablist" aria-label="Sales and tax sections">
     <button type="button" class="toggle-btn active" data-tax-tab="optimize" role="tab" aria-selected="true">Plan</button>
     <button type="button" class="toggle-btn" data-tax-tab="scenario" role="tab" aria-selected="false">Advanced</button>
+    <button type="button" class="toggle-btn" data-tax-tab="sold" role="tab" aria-selected="false">Sold</button>
     <button type="button" class="toggle-btn" data-tax-tab="activity" role="tab" aria-selected="false">Activity</button>
   </nav>
 
@@ -371,6 +375,136 @@
     </div>
   </section>
 
+  {# ===================== SOLD ===================== #}
+  <section class="detail-card tax-hub-panel" id="panelSold" data-tax-panel="sold" hidden>
+    <div class="tax-panel-head">
+      <div>
+        <h2>Sold shares</h2>
+        <p class="tax-panel-lead">Realized sales · what they’d be worth now · tax to set aside before filing (or quarterly).</p>
+      </div>
+      <form method="get" class="tax-sold-year-form" action="{{ url_for('tax_center.hub') }}">
+        <label for="soldYear">Tax year</label>
+        <select id="soldYear" name="sold_year" onchange="this.form.submit()">
+          {% for y in range(today.year, today.year - 6, -1) %}
+          <option value="{{ y }}" {% if y == sold_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+
+    <div class="tax-situation tax-sold-kpis">
+      <div class="tax-sit-card accent">
+        <div class="tax-sit-label">Shares sold ({{ sold_year }})</div>
+        <div class="tax-sit-value">{{ "{:,.0f}".format(sold.summary_year.shares) }}</div>
+        <div class="tax-sit-sub">{{ sold.summary_year.sale_count }} sale(s)</div>
+      </div>
+      <div class="tax-sit-card">
+        <div class="tax-sit-label">Proceeds</div>
+        <div class="tax-sit-value">${{ "{:,.0f}".format(sold.summary_year.proceeds) }}</div>
+        <div class="tax-sit-sub">gain ${{ "{:,.0f}".format(sold.summary_year.capital_gain) }}</div>
+      </div>
+      <div class="tax-sit-card">
+        <div class="tax-sit-label">Worth now @ live</div>
+        <div class="tax-sit-value">${{ "{:,.0f}".format(sold.summary_year.worth_now) }}</div>
+        <div class="tax-sit-sub">
+          {% set fg = sold.summary_year.forgone_vs_sale %}
+          {% if fg > 0 %}Δ +${{ "{:,.0f}".format(fg) }} if held{% elif fg < 0 %}Δ −${{ "{:,.0f}".format(-fg) }} vs sale{% else %}≈ sale proceeds{% endif %}
+        </div>
+      </div>
+      <div class="tax-sit-card">
+        <div class="tax-sit-label">Tax to set aside</div>
+        <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
+        <div class="tax-sit-sub">est. equity tax ${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }} − credits</div>
+      </div>
+    </div>
+
+    <div class="tax-ledger-block">
+      <h3 class="tax-subhead">Sales ({{ sold_year }} highlighted in KPIs · table shows all)</h3>
+      {% if sold.rows %}
+      <div class="table-container tax-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>SpecID</th>
+              <th>Shares</th>
+              <th>Sale $</th>
+              <th>Proceeds</th>
+              <th>Gain</th>
+              <th>Term</th>
+              <th>Est. tax</th>
+              <th>Worth now</th>
+              <th>Δ vs sale</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in sold.rows %}
+            <tr class="{% if r.year == sold_year %}tax-sold-row-year{% endif %}">
+              <td>{{ r.sale_date }}</td>
+              <td>{% if r.vest_event_id %}<a href="{{ url_for('grants.vest_detail', vest_id=r.vest_event_id) }}">#{{ r.vest_event_id }}</a>{% else %}—{% endif %}</td>
+              <td>{{ "{:,.0f}".format(r.shares) }}</td>
+              <td>${{ "{:,.2f}".format(r.sale_price) }}</td>
+              <td>${{ "{:,.0f}".format(r.proceeds) }}</td>
+              <td>${{ "{:,.0f}".format(r.capital_gain) }}</td>
+              <td>{% if r.is_long_term %}LT{% else %}ST{% endif %}</td>
+              <td>{% if r.estimated_tax is not none %}${{ "{:,.0f}".format(r.estimated_tax) }}{% else %}—{% endif %}</td>
+              <td>${{ "{:,.0f}".format(r.worth_now) }}</td>
+              <td class="{% if r.delta_vs_sale > 0 %}tax-delta-pos{% elif r.delta_vs_sale < 0 %}tax-delta-neg{% endif %}">
+                {% if r.delta_vs_sale >= 0 %}+{% endif %}${{ "{:,.0f}".format(r.delta_vs_sale) }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="tax-muted-sm">Worth now = shares × live price. Δ is mark-to-market since sale (not tax advice). Edit/delete sales on Activity.</p>
+      {% else %}
+      <p class="empty-state">No sales recorded yet. Log one on the <button type="button" class="btn btn-secondary btn-sm" onclick="showTaxTab('activity')">Activity</button> tab.</p>
+      {% endif %}
+    </div>
+
+    <div class="tax-ledger-block tax-reserve-block">
+      <h3 class="tax-subhead">Tax season reserve · {{ sold_year }}</h3>
+      <p class="tax-muted-sm">{{ tax_calendar.disclaimer }}</p>
+      <div class="tax-check-row" style="margin:0.75rem 0;">
+        <span>Stacked equity-sale tax est.: <strong>${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }}</strong>
+          (fed ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.federal) }}
+          · NIIT ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.niit) }}
+          · state ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.state) }})</span>
+      </div>
+      <div class="tax-check-row" style="margin-bottom:0.75rem;">
+        <span>Credits on profile: withholding F/S ${{ "{:,.0f}".format(tax_calendar.credits.federal_withholding_ytd + tax_calendar.credits.state_withholding_ytd) }}
+          · estimated payments ${{ "{:,.0f}".format(tax_calendar.credits.estimated_payments_ytd) }}
+          · <a href="{{ url_for('tax_center.tax_profile') }}">update in Tax profile</a></span>
+      </div>
+
+      <div class="tax-quarter-grid">
+        {% for q in tax_calendar.quarters %}
+        <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
+          <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_iso }}</div>
+          <div class="tax-quarter-pay">${{ "{:,.0f}".format(q.suggested_payment) }}</div>
+          <div class="tax-muted-sm">Suggested from remaining set-aside
+            {% if q.is_past %}(due date passed){% elif q.is_next %}(next){% endif %}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="tax-safe-harbor" style="margin-top:1rem;">
+        <h4 class="tax-subhead" style="font-size:0.95rem;">Safe harbor (simplified)</h4>
+        {% set sh = tax_calendar.safe_harbor %}
+        <ul class="tax-notes-list">
+          <li>Prior-year tax safe harbor: <strong>${{ "{:,.0f}".format(sh.prior_year_safe_harbor) }}</strong>
+            ({% if sh.high_agi_110 %}110%{% else %}100%{% endif %} of prior-year tax
+            {% if sh.prior_year_agi %}· prior AGI ${{ "{:,.0f}".format(sh.prior_year_agi) }}{% endif %})</li>
+          <li>90% of current equity-tax estimate: <strong>${{ "{:,.0f}".format(sh.current_year_90pct) }}</strong></li>
+          <li>Lower bar (binding): <strong>${{ "{:,.0f}".format(sh.required_annual) }}</strong>/yr
+            ≈ ${{ "{:,.0f}".format(sh.per_quarter) }}/quarter — rule: {{ sh.binding_rule }}</li>
+        </ul>
+        <p class="tax-muted-sm">Enter <strong>prior-year total tax</strong> and withholding on Tax profile so this isn’t $0. Large mid-year gains can require estimated payments before April.</p>
+      </div>
+    </div>
+  </section>
+
   {# ===================== ACTIVITY ===================== #}
   <section class="detail-card tax-hub-panel" id="panelActivity" data-tax-panel="activity" hidden>
     <div class="tax-panel-head">
@@ -577,7 +711,7 @@
       btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     document.querySelectorAll('.tax-intent').forEach(function (b) {
-      var map = { cash: 'optimize', iso: 'scenario', advanced: 'scenario', activity: 'activity' };
+      var map = { cash: 'optimize', iso: 'scenario', advanced: 'scenario', sold: 'sold', activity: 'activity' };
       var intent = b.getAttribute('data-intent');
       b.classList.toggle('active', map[intent] === name || (name === 'optimize' && intent === 'cash'));
     });
@@ -604,9 +738,20 @@
   document.getElementById('intentAdvanced').addEventListener('click', function () {
     showTaxTab('scenario');
   });
+  document.getElementById('intentSold').addEventListener('click', function () {
+    showTaxTab('sold');
+  });
   document.getElementById('intentActivity').addEventListener('click', function () {
     showTaxTab('activity');
   });
+
+  // Deep-link ?tab=sold or sold_year keeps Sold open
+  try {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('sold_year') || params.get('tab') === 'sold') {
+      showTaxTab('sold');
+    }
+  } catch (e) {}
 
   
   document.querySelectorAll('[data-goal-fill]').forEach(function (chip) {

@@ -32,17 +32,17 @@ def dashboard():
     current_price = get_latest_user_price(current_user.id) or 0.0
 
     total_grants = len(grants)
-    total_shares = sum(g.share_quantity for g in grants)
 
-    # Compute values from current_price directly — avoid N property lookups
-    total_value = 0.0
-    for g in grants:
-        if g.share_type == 'cash':
-            total_value += g.share_quantity
-        elif g.share_type in ('iso_5y', 'iso_6y'):
-            total_value += g.share_quantity * (current_price - g.share_price_at_grant)
-        else:
-            total_value += g.share_quantity * current_price
+    # Held portfolio after StockSale deductions (not full grant book)
+    from app.utils.portfolio_summary import summarize_held_portfolio
+    held = summarize_held_portfolio(current_user.id, live_price=current_price)
+    total_shares = held['held_shares']
+    total_value = held['portfolio_value']  # held shares + unexercised ISO intrinsic
+    grant_book_value = held['grant_book_value']
+    grant_book_shares = held['grant_book_shares']
+    unexercised_iso_shares = held['iso_unexercised']
+    unexercised_iso_value = held['iso_unexercised_value']
+    shares_sold_market = held['shares_sold_market']
 
     upcoming_vests = (
         VestEvent.query
@@ -66,28 +66,13 @@ def dashboard():
     today = date.today()
     vested_events = [v for v in all_vest_events if v.vest_date <= today]
     vested_shares_gross = sum(v.shares_vested for v in vested_events)
-    vested_shares_net = sum(v.shares_received for v in vested_events)
+    # Net received before market sales (withholding only) — kept for reference
+    vested_shares_net_received = sum(v.shares_received for v in vested_events)
+    # Actually still held (sellable RSU + exercised ISO held)
+    vested_shares_net = held['held_shares']
     vested_value_gross = vested_shares_gross * current_price
-    vested_value_net = vested_shares_net * current_price
+    vested_value_net = held['held_value']
     needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
-
-    # Unexercised vested ISOs (intrinsic / spread value at live price)
-    unexercised_iso_shares = 0.0
-    unexercised_iso_value = 0.0
-    try:
-        from app.utils.lot_inventory import build_lots_for_user
-        for lot in build_lots_for_user(current_user.id) or []:
-            if not lot.get('is_iso'):
-                continue
-            unex = float(lot.get('shares_unexercised') or 0)
-            if unex <= 0:
-                continue
-            strike = float(lot.get('strike_price') or 0)
-            unexercised_iso_shares += unex
-            unexercised_iso_value += unex * max(0.0, float(current_price) - strike)
-    except Exception:
-        unexercised_iso_shares = 0.0
-        unexercised_iso_value = 0.0
 
     # Merged private pre-IPO + public SPCX history for timeline price points
     from app.utils.price_utils import get_merged_price_series
@@ -178,8 +163,12 @@ def dashboard():
         total_grants=total_grants,
         total_shares=total_shares,
         total_value=total_value,
+        grant_book_value=grant_book_value,
+        grant_book_shares=grant_book_shares,
+        shares_sold_market=shares_sold_market,
         vested_shares_gross=vested_shares_gross,
         vested_shares_net=vested_shares_net,
+        vested_shares_net_received=vested_shares_net_received,
         vested_value_gross=vested_value_gross,
         vested_value_net=vested_value_net,
         unexercised_iso_shares=unexercised_iso_shares,

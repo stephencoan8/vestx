@@ -467,8 +467,9 @@ def vest_schedule():
     from app.utils.price_utils import get_latest_user_price
     from datetime import date
     from sqlalchemy.orm import joinedload
-    
     from app.utils.price_utils import warm_user_price_history
+    from app.utils.portfolio_summary import sold_shares_by_vest
+    from app.utils.lot_inventory import build_lots_for_user
 
     vest_events = VestEvent.query.options(
         joinedload(VestEvent.grant)
@@ -479,6 +480,10 @@ def vest_schedule():
     warm_user_price_history(current_user.id)
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
+    sold_map = sold_shares_by_vest(current_user.id)
+    held_by_vest = {}
+    for lot in build_lots_for_user(current_user.id) or []:
+        held_by_vest[int(lot['vest_event_id'])] = float(lot.get('shares_available') or 0)
 
     enriched_events = []
     for ve in vest_events:
@@ -487,9 +492,20 @@ def vest_schedule():
             ve.estimated_tax = tax_info['tax_amount']
         else:
             ve.estimated_tax = None
+        market_sold = float(sold_map.get(ve.id, 0) or 0)
+        ve.market_shares_sold = market_sold
+        ve.shares_held_now = float(held_by_vest.get(ve.id, 0) or 0)
+        if ve.has_vested and ve.shares_held_now <= 0 and market_sold <= 0:
+            # Future ISO unexercised etc. — fall back to received if no lot yet
+            ve.shares_held_now = max(0.0, float(ve.shares_received or 0) - market_sold)
+        ve.held_value_now = ve.shares_held_now * latest_stock_price
         enriched_events.append(ve)
 
-    return render_template('grants/schedule.html', vest_events=enriched_events)
+    return render_template(
+        'grants/schedule.html',
+        vest_events=enriched_events,
+        live_price=latest_stock_price,
+    )
 
 
 @grants_bp.route('/needs-tax-info')
@@ -550,6 +566,16 @@ def finance_deep_dive():
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
 
+    # Market sales + ISO exercises so held value drops after selling
+    from app.models.stock_sale import StockSale, ISOExercise
+    from app.utils.portfolio_summary import sold_shares_by_vest
+    sold_by_vest = sold_shares_by_vest(current_user.id)
+    exercised_by_vest = {}
+    for ex in ISOExercise.query.filter_by(user_id=current_user.id).all():
+        exercised_by_vest[ex.vest_event_id] = (
+            exercised_by_vest.get(ex.vest_event_id, 0.0) + float(ex.shares_exercised or 0)
+        )
+
     # Cache year Tax Profiles — one engine surface for the whole page
     profile_by_year = {}
 
@@ -601,8 +627,8 @@ def finance_deep_dive():
             )
             sale_tax_data = ve.get_estimated_sale_tax(
                 current_stock_price=latest_stock_price,
-                total_sold=0,
-                total_exercised=0,
+                total_sold=float(sold_by_vest.get(ve.id, 0) or 0),
+                total_exercised=float(exercised_by_vest.get(ve.id, 0) or 0),
                 user=current_user,
                 _tax_profile=prof,
             )

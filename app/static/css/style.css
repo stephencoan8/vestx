@@ -2127,6 +2127,47 @@ a.vest-item-link:focus-visible {
     justify-content: flex-end;
     align-items: center;
 }
+.tax-sold-year-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.tax-sold-year-form select {
+    min-width: 5.5rem;
+}
+.tax-sold-kpis { margin-bottom: 1.25rem; }
+.tax-sold-row-year td { background: rgba(201, 148, 74, 0.06); }
+.tax-delta-pos { color: var(--success, #3d9a6a); font-weight: 600; }
+.tax-delta-neg { color: var(--danger, #c45c5c); font-weight: 600; }
+.tax-quarter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.65rem;
+}
+.tax-quarter-card {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm, 8px);
+    padding: 0.75rem 0.85rem;
+    background: rgba(74, 85, 104, 0.12);
+}
+.tax-quarter-card.is-next {
+    border-color: var(--copper-border, #c9944a);
+    box-shadow: 0 0 0 1px var(--copper-soft, rgba(201, 148, 74, 0.25));
+}
+.tax-quarter-card.is-past { opacity: 0.65; }
+.tax-quarter-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+}
+.tax-quarter-pay {
+    font-size: 1.25rem;
+    font-weight: 650;
+    color: var(--text-primary);
+}
+.tax-reserve-block { margin-top: 1.5rem; }
 .tax-lot-label { font-weight: 500; }
 .tax-lot-id {
     display: block;
