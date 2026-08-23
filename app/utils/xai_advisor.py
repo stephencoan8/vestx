@@ -65,14 +65,14 @@ def resolve_api_key(user=None) -> Optional[str]:
 
 def _client(api_key: str):
     from openai import OpenAI
-    import httpx
     if not api_key:
         raise RuntimeError('No xAI API key available for this user')
-    # Reasoning models (grok-4.5+) can exceed the SDK default timeout.
+    # Seconds. Reasoning models (grok-4.5+) can exceed the SDK default.
+    # Use a float — do not import httpx; Railway's openai wheel vendors httpx2.
     return OpenAI(
         api_key=api_key,
         base_url=BASE_URL,
-        timeout=httpx.Timeout(600.0),
+        timeout=600.0,
     )
 
 
