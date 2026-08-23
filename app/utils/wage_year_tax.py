@@ -23,7 +23,13 @@ from app.utils.tax_engine import (
     preferential_ltcg_tax,
     _year_table,
 )
-from app.utils.payroll_tax import employee_fica_full_year
+from app.utils.payroll_tax import (
+    employee_fica_full_year,
+    SS_EMPLOYEE_RATE,
+    MEDICARE_EMPLOYEE_RATE,
+    ADDITIONAL_MEDICARE_RATE,
+    add_medicare_threshold,
+)
 
 
 # Federal standard deduction (approx IRS inflation-adjusted)
@@ -82,6 +88,8 @@ class YearTaxResult:
     ordinary_marginal: float
     ltcg_marginal: float
     state_marginal: float
+    fica_marginal: float  # SS + Medicare + Add'l on next $ of wages (0 SS if maxed)
+    combined_ordinary_marginal: float  # fed + CA + FICA next-dollar on ordinary/RSU vest
     ss_wage_base: float
     notes: List[str] = field(default_factory=list)
     vest_prefills: Dict[str, Any] = field(default_factory=dict)
@@ -227,6 +235,16 @@ def compute_w2_year_tax(
     eff = (total_tax / tax_base) if tax_base > 0 else 0.0
     income_eff = (income_tax_total / tax_base) if tax_base > 0 else 0.0
 
+    # Next $1 of ordinary (salary / RSU vest W-2): fed bracket + CA + employee FICA.
+    # NIIT does not apply to wages. SS drops off at the wage base.
+    state_marg = float(state_result.marginal_rate or 0)
+    ss_m = SS_EMPLOYEE_RATE if (include_fica and fwages < ss_base) else 0.0
+    med_m = MEDICARE_EMPLOYEE_RATE if include_fica else 0.0
+    add_thr = add_medicare_threshold(filing)
+    add_m = ADDITIONAL_MEDICARE_RATE if (include_fica and (fwages + 1.0) >= add_thr) else 0.0
+    fica_marg = ss_m + med_m + add_m
+    combined_ord_marg = ord_marginal + state_marg + fica_marg
+
     notes.append(
         'Planning estimate — not a filed return. No itemizing, credits, or pre-tax 401(k) netting.'
     )
@@ -265,7 +283,9 @@ def compute_w2_year_tax(
         income_tax_effective_rate=income_eff,
         ordinary_marginal=ord_marginal,
         ltcg_marginal=ltcg_marg,
-        state_marginal=float(state_result.marginal_rate or 0),
+        state_marginal=state_marg,
+        fica_marginal=fica_marg,
+        combined_ordinary_marginal=combined_ord_marg,
         ss_wage_base=ss_base,
         notes=notes,
         vest_prefills=vest_prefills or {},
