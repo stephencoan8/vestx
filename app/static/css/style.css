@@ -3559,6 +3559,11 @@ h1, h2, .page-header h1, .auth-header h1 {
 .tax-quarter-card.is-next {
     background: var(--ink);
     color: var(--paper);
+    border-color: var(--ink);
+}
+.tax-quarter-card.is-next .tax-quarter-label,
+.tax-quarter-card.is-next .tax-quarter-pay {
+    color: var(--paper);
 }
 
 .advisor-fab {
