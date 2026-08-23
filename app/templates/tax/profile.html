@@ -73,7 +73,6 @@
         </div>
         <div class="tax-equity-chip" id="equityChip" {% if not (history and history.suggested_equity_in_w2) %}hidden{% endif %}>
           VestX equity ordinary ≈ <strong id="histEquityVal">{% if history and history.suggested_equity_in_w2 %}${{ "{:,.0f}".format(history.suggested_equity_in_w2) }}{% else %}$0{% endif %}</strong>
-          <span class="tax-muted-sm"> · include in box 1, don’t double-count</span>
         </div>
 
         <div class="form-row tax-profile-id-row">
@@ -97,8 +96,6 @@
           <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Sales &amp; Tax</a>
           <span id="recalcStatus" class="past-year-loading" hidden>Updating…</span>
         </div>
-        <p class="tax-muted-sm tax-save-hint">Save sets this year as the active planning stack for sales &amp; goals.</p>
-
         <details class="tax-hub-details" id="planningExtras" {% if (form.ytd_wages or 0)|float > 0 or (form.amt_credit_carryforward or 0)|float > 0 or (form.ca_amt_credit_carryforward or 0)|float > 0 or (form.other_long_term_gains or 0)|float > 0 or (form.other_short_term_gains or 0)|float > 0 %}open{% endif %}>
           <summary>Planning extras</summary>
           <div class="tax-details-body">
@@ -135,9 +132,8 @@
         </details>
 
         <details class="tax-hub-details" id="estTaxReserve" open>
-          <summary>Estimated tax reserve (Sold tab)</summary>
+          <summary>Estimated tax reserve</summary>
           <div class="tax-details-body">
-            <p class="tax-muted-sm">Used for safe harbor and “tax to save” after equity sales. Prior-year total tax is usually your prior Form 1040 tax.</p>
             <div class="form-row">
               <div class="form-group">
                 <label for="prior_year_total_tax">Prior-year total tax</label>
@@ -145,10 +141,9 @@
                        value="{{ '{:,.2f}'.format(est_tax_form.prior_year_total_tax or 0) }}" data-money>
               </div>
               <div class="form-group">
-                <label for="prior_year_agi">Prior-year AGI (optional)</label>
+                <label for="prior_year_agi">Prior-year AGI</label>
                 <input type="text" inputmode="decimal" class="money-input" id="prior_year_agi" name="prior_year_agi"
-                       value="{% if est_tax_form.prior_year_agi is not none %}{{ '{:,.2f}'.format(est_tax_form.prior_year_agi) }}{% endif %}" data-money
-                       placeholder=">150k → 110% harbor">
+                       value="{% if est_tax_form.prior_year_agi is not none %}{{ '{:,.2f}'.format(est_tax_form.prior_year_agi) }}{% endif %}" data-money>
               </div>
             </div>
             <div class="form-row">
@@ -194,7 +189,6 @@
               <input type="checkbox" id="ss_wage_base_maxed" name="ss_wage_base_maxed" {% if form.ss_wage_base_maxed %}checked{% endif %}>
               <label for="ss_wage_base_maxed">SS already maxed (mid-year vest/sale only)</label>
             </div>
-            <p class="form-hint">Full-year W-2 always charges SS on min(wages, wage base). Maxed flag does not zero annual SS.</p>
           </div>
         </details>
 

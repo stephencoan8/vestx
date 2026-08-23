@@ -49,21 +49,11 @@
 
   {# ——— Intent chips ——— #}
   <div class="tax-intents" role="group" aria-label="Quick intents">
-    <button type="button" class="tax-intent active" data-intent="cash" id="intentCash">
-      Raise cash <span>min tax</span>
-    </button>
-    <button type="button" class="tax-intent" data-intent="iso" id="intentIso">
-      ISO decision <span>compare paths</span>
-    </button>
-    <button type="button" class="tax-intent" data-intent="advanced" id="intentAdvanced">
-      Advanced <span>manual lots</span>
-    </button>
-    <button type="button" class="tax-intent" data-intent="sold" id="intentSold">
-      Sold <span>gains &amp; tax reserve</span>
-    </button>
-    <button type="button" class="tax-intent" data-intent="activity" id="intentActivity">
-      Activity <span>log &amp; history</span>
-    </button>
+    <button type="button" class="tax-intent active" data-intent="cash" id="intentCash">Raise cash</button>
+    <button type="button" class="tax-intent" data-intent="iso" id="intentIso">ISO</button>
+    <button type="button" class="tax-intent" data-intent="advanced" id="intentAdvanced">Advanced</button>
+    <button type="button" class="tax-intent" data-intent="sold" id="intentSold">Sold</button>
+    <button type="button" class="tax-intent" data-intent="activity" id="intentActivity">Activity</button>
   </div>
 
   {# ——— Primary tabs ——— #}
@@ -145,9 +135,6 @@
           <label class="form-check"><input type="checkbox" id="goalAllowHold"> Model ISO hold split</label>
           <label class="form-check"><input type="checkbox" id="goalExplain" {% if not grok_enabled %}disabled{% endif %}> Grok explanation{% if not grok_enabled %} <span class="tax-muted">(add key in Settings)</span>{% endif %}</label>
         </div>
-        <p class="tax-muted-sm" id="goalExerciseAllHint" style="display:none;margin-top:0.65rem;">
-          Exercise-all is on: cashless ISO is turned off (you hold ISOs). Pocket net = RSU proceeds − tax − strike.
-        </p>
       </div>
     </details>
 
@@ -212,7 +199,7 @@
         <option value="rsu_fund_iso">RSU: fund ISO exercise + AMT</option>
         <option value="compare_iso">ISO: compare cashless vs hold vs QD</option>
       </select>
-      <span class="form-hint" id="strategyHint"></span>
+
     </div>
 
     <div class="form-row" id="planDateRow">
@@ -711,7 +698,6 @@
   document.getElementById('intentIso').addEventListener('click', function () {
     showTaxTab('scenario');
     document.getElementById('planStrategy').value = 'compare_iso';
-    updateStrategyHint();
     updatePlanFieldVisibility();
   });
   document.getElementById('intentAdvanced').addEventListener('click', function () {
@@ -965,7 +951,6 @@
       if (a.ltcg != null) meta += ' · LT gain <strong>' + money(a.ltcg) + '</strong>';
       if (a.stcg != null && Number(a.stcg) > 0) meta += ' · ST gain <strong>' + money(a.stcg) + '</strong>';
       meta += '</div>';
-      meta += '<div class="tax-stack-meta tax-stack-hint">Incremental vs profile only — add expected RSU vest wages in Tax Profile if you want them stacked this year. CA is progressive (not a flat 10%); rate on gain is usually below your top marginal.</div>';
     }
     if (!parts.length && !meta) {
       el.style.display = 'none';
@@ -1216,21 +1201,6 @@
     });
   }
 
-  const strategyHints = {
-    auto: 'RSUs as capital gains; exercised ISOs by QD/DD; unexercised ISOs as cashless DD.',
-    rsu_sell: 'Sale vs vest basis. Vest ordinary income is separate.',
-    iso_cashless_dd: 'Exercise + same-day sale. Spread is ordinary + FICA; no ISO AMT preference.',
-    iso_exercise_hold: 'Exercise only: strike cash + possible AMT. No sale proceeds.',
-    iso_exercise_sell_qd: 'AMT at exercise, then sale on earliest QD with credit handoff.',
-    iso_sell_held: 'Sell shares already exercised. Uses exercise date for QD vs DD.',
-    iso_sell_to_cover: 'Minimum cashless tranche so net funds strike + tax/AMT on shares you keep.',
-    rsu_fund_iso: 'Fewest RSUs so after-tax proceeds fund ISO exercise-and-hold.',
-    compare_iso: 'Cashless vs hold vs hold-to-QD on the same ISO lots.'
-  };
-  function updateStrategyHint() {
-    const s = document.getElementById('planStrategy').value;
-    document.getElementById('strategyHint').textContent = strategyHints[s] || '';
-  }
   function updatePlanFieldVisibility() {
     const s = document.getElementById('planStrategy').value;
     const saleOnly = (s === 'rsu_sell' || s === 'iso_sell_held');
@@ -1243,10 +1213,8 @@
     });
   }
   document.getElementById('planStrategy').addEventListener('change', function () {
-    updateStrategyHint();
     updatePlanFieldVisibility();
   });
-  updateStrategyHint();
   updatePlanFieldVisibility();
 
   // Lot table: click row (except checkbox/qty) → vest detail

@@ -6,7 +6,6 @@
 <div class="page settings-page">
   <header class="page-header">
     <h1>Settings</h1>
-    <p class="tax-panel-lead">Account preferences. Tax planning profile lives under Sales &amp; Tax.</p>
   </header>
 
   <div class="detail-card">
@@ -25,7 +24,6 @@
 
   <div class="detail-card">
     <h2>Appearance</h2>
-    <p class="help-text">Theme applies on every page in this browser.</p>
     <div class="theme-toggle-group" role="group" aria-label="Color theme">
       <button type="button" class="theme-option" data-theme-set="dark" id="themeDarkBtn">
         <span class="theme-option-swatch theme-swatch-dark" aria-hidden="true"></span>
@@ -41,33 +39,18 @@
 
   <div class="detail-card">
     <h2>Grok / xAI API</h2>
-    <p class="help-text">
-      Optional. Powers advisor chat and optional explanations on Sales &amp; Tax.
-      The key is <strong>encrypted for your account</strong> and billed to
-      <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a> — not SuperGrok chat.
-    </p>
-
     <form method="POST" class="settings-api-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="theme" id="themeFormField" value="dark">
 
-      {% if xai_key_saved %}
-      <p class="form-hint" style="margin-bottom:0.75rem;">
-        Saved key: <code>{{ xai_key_hint or '••••' }}</code>
-        — leave blank to keep; check remove to delete.
-      </p>
-      {% else %}
-      <p class="form-hint" style="margin-bottom:0.75rem;">No API key yet. Engines still work without Grok.</p>
-      {% endif %}
-
       <div class="form-group">
-        <label for="xai_api_key">xAI API key</label>
+        <label for="xai_api_key">xAI API key{% if xai_key_saved %} <span class="tax-muted">(saved {{ xai_key_hint or '••••' }})</span>{% endif %}</label>
         <input type="password"
                name="xai_api_key"
                id="xai_api_key"
                class="form-control"
                autocomplete="off"
-               placeholder="{% if xai_key_saved %}•••••••• (enter new key to replace){% else %}xai-...{% endif %}">
+               placeholder="{% if xai_key_saved %}••••••••{% else %}xai-...{% endif %}">
       </div>
       <div class="form-group">
         <label for="xai_model">Model (optional)</label>
@@ -90,10 +73,7 @@
 
   <div class="detail-card settings-tax-pointer">
     <h2>Tax planning profile</h2>
-    <p class="help-text" style="margin-bottom:1rem;">
-      Filing status, wages, California engine, NIIT, and AMT credits for SpecID / goal planning.
-    </p>
-    <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Open tax profile in Sales &amp; Tax</a>
+    <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Open tax profile</a>
   </div>
 </div>
 

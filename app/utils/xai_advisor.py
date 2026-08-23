@@ -179,7 +179,7 @@ You must NOT change the numbers — the plan is authoritative.
 Cover: what to sell (which lots), why those lots, ISO exercise vs sale if any,
 federal vs California nuances, AMT/credit if relevant, risks and what to confirm with a CPA.
 Be concise but precise. Use short sections with headings.
-Disclaimer: planning estimate, not tax advice.
+
 """
     # Prefer compact plan + short profile/inventory already provided by caller
     from app.utils.account_context import _plan_compact

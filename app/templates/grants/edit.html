@@ -5,7 +5,7 @@
 {% block content %}
 <div class="content-header">
  <h1> Edit Grant</h1>
- <p class="subtitle">Update grant details and recalculate vest schedule</p>
+
 </div>
 
 <div class="card">
@@ -51,7 +51,7 @@
  <input type="number" id="share_quantity" name="share_quantity" 
  value="{{ grant.share_quantity|int }}" 
  step="1" min="1" inputmode="numeric" required>
- <small class="form-help">Enter the exact number of shares (no auto-multiplication)</small>
+
  </div>
 
  <!-- Bonus Type (conditional) -->
@@ -70,7 +70,7 @@
  <input type="number" id="espp_discount" name="espp_discount" 
  value="{{ grant.espp_discount or 0.15 }}" 
  step="0.01" min="0" max="0.25">
- <small class="form-help">Standard is 15% (0.15). IRS max is 15%.</small>
+
  </div>
 
  <!-- Vest Years (for Kickass) -->
@@ -79,7 +79,7 @@
  <input type="number" id="vest_years" name="vest_years" 
  value="{{ grant.vest_years }}" 
  min="1" max="5" step="1">
- <small class="form-help">For Kickass bonus only (1-5 years)</small>
+
  </div>
 
  <div class="form-group" id="vest_frequency_group">
