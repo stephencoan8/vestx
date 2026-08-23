@@ -141,6 +141,11 @@ def create_app():
 
         from app.utils.migrate_ledger import migrate_ledger
         _safe_migrate('ledger', migrate_ledger)
+        try:
+            from app.utils.backfill_ledger import backfill_all
+            backfill_all()
+        except Exception as e:
+            _log.warning('ledger backfill on boot failed: %s', e)
 
         try:
             from app.utils.init_db import init_admin_user

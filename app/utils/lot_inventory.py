@@ -112,6 +112,7 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
         )
 
         lots.append({
+            'lot_id': None,
             'vest_event_id': vest.id,
             'grant_id': grant.id,
             'grant_type': grant.grant_type,
@@ -139,4 +140,44 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             'label': f"{grant.grant_type} {grant.share_type.upper()} · {vest.vest_date.isoformat()}",
         })
 
+    return _overlay_tax_lot_remaining(user_id, lots)
+
+
+def _overlay_tax_lot_remaining(user_id: int, lots: List[dict]) -> List[dict]:
+    """When TaxLot rows exist, remaining_qty is inventory SSOT."""
+    try:
+        from app.models.tax_lot import TaxLot
+        rows = TaxLot.query.filter_by(user_id=user_id).all()
+    except Exception:
+        return lots
+    if not rows:
+        return lots
+    stock: Dict[int, float] = {}
+    option: Dict[int, float] = {}
+    stock_lot_id: Dict[int, int] = {}
+    for r in rows:
+        vid = r.vest_event_id
+        if not vid:
+            continue
+        qty = float(r.remaining_qty or 0)
+        if r.is_stock():
+            stock[vid] = stock.get(vid, 0.0) + qty
+            stock_lot_id[vid] = r.id
+        elif r.is_option():
+            option[vid] = option.get(vid, 0.0) + qty
+    for lot in lots:
+        vid = int(lot.get('vest_event_id') or 0)
+        if vid in stock_lot_id:
+            lot['lot_id'] = stock_lot_id[vid]
+        if lot.get('is_iso'):
+            if vid in stock:
+                lot['shares_available'] = int(whole_shares(stock[vid]))
+            if vid in option:
+                lot['shares_unexercised'] = int(whole_shares(option[vid]))
+        elif vid in stock:
+            lot['shares_available'] = int(whole_shares(stock[vid]))
+        avail = float(lot.get('shares_available') or 0)
+        px = float(lot.get('current_price') or 0)
+        basis = float(lot.get('cost_basis_per_share') or 0)
+        lot['unrealized_gain'] = (px - basis) * avail if avail else 0.0
     return lots

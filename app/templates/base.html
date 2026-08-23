@@ -31,16 +31,10 @@
         <nav class="sidebar-nav" aria-label="Main">
             <div class="sidebar-section">
                 <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Dashboard</a>
-                <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint in ['grants.list_grants', 'grants.add_grant', 'grants.view_grant', 'grants.edit_grant'] %} active{% endif %}">Grants</a>
+                <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('grants.') %} active{% endif %}">Holdings</a>
+                <a href="{{ url_for('tax_center.hub', tab='activity') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('tax_center.') and request.args.get('tab') in ['activity', 'sold'] %} active{% endif %}">Activity</a>
+                <a href="{{ url_for('tax_center.hub', tab='optimize') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('tax_center.') and request.args.get('tab') not in ['activity', 'sold'] %} active{% endif %}">Plan</a>
                 <a href="{{ url_for('prices.list_prices') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('prices.') %} active{% endif %}">Prices</a>
-            </div>
-
-            <div class="sidebar-section">
-                <span class="sidebar-label">Analysis</span>
-                <a href="{{ url_for('tax_center.hub') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('tax_center.') %} active{% endif %}">Sales &amp; Tax</a>
-                <a href="{{ url_for('grants.vest_schedule') }}" class="nav-link{% if request.endpoint == 'grants.vest_schedule' %} active{% endif %}">Schedule</a>
-                <a href="{{ url_for('grants.finance_deep_dive') }}" class="nav-link{% if request.endpoint == 'grants.finance_deep_dive' %} active{% endif %}">Finance</a>
-                <a href="{{ url_for('grants.rules') }}" class="nav-link{% if request.endpoint == 'grants.rules' %} active{% endif %}">Rules</a>
             </div>
 
             <div class="sidebar-section">

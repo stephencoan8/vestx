@@ -1,50 +1,136 @@
 {% extends "base.html" %}
 
-{% block title %}My Grants - VestX{% endblock %}
+{% block title %}Holdings - VestX{% endblock %}
 
 {% block content %}
 <div class="page">
- <header class="page-header">
- <h1>My Grants</h1>
- <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Grant</a>
- </header>
+  <header class="page-header">
+    <h1>Holdings</h1>
+    <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">Add grant</a>
+  </header>
 
- {% if grants %}
- <div class="table-container">
- <table class="data-table sortable-table">
- <thead>
- <tr>
- <th data-sort="date">Grant Date</th>
- <th data-sort="text">Type</th>
- <th data-sort="text">Share Type</th>
- <th data-sort="number">Quantity</th>
- <th data-sort="number">Price at Grant</th>
- <th data-sort="number">Value at Grant</th>
- <th data-sort="number">Current Value</th>
- </tr>
- </thead>
- <tbody>
- {% for grant in grants %}
- <tr class="clickable-row" onclick="window.location='{{ url_for('grants.view_grant', grant_id=grant.id) }}';" style="cursor: pointer;">
- <td>{{ grant.grant_date.strftime('%Y-%m-%d') }}</td>
- <td><span class="badge badge-{{ grant.grant_type }}">{{ grant.grant_type.replace('_', ' ').title() }}</span></td>
- <td><span class="badge badge-share">{{ grant.share_type.upper() }}</span></td>
- <td>{{ "{:,.2f}".format(grant.share_quantity) }}</td>
- <td>${{ "{:,.2f}".format(grant.share_price_at_grant) }}{% if grant.share_type.startswith('iso_') %} <small>(strike)</small>{% endif %}</td>
- <td>${{ "{:,.2f}".format(grant.total_value_at_grant) }}</td>
- <td class="highlight">${{ "{:,.2f}".format(grant.current_value) }}</td>
- </tr>
- {% endfor %}
- </tbody>
- </table>
- </div>
- {% else %}
- <div class="empty-state-large">
- <div class="empty-icon"></div>
- <h2>No grants yet</h2>
- <p>Add your first stock grant to get started tracking your compensation</p>
- <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">+ Add Your First Grant</a>
- </div>
- {% endif %}
+  <nav class="chart-toggle" role="tablist" aria-label="Holdings sections">
+    <button type="button" class="toggle-btn{% if tab != 'lots' and tab != 'schedule' %} active{% endif %}" data-hold-tab="grants">Grants</button>
+    <button type="button" class="toggle-btn{% if tab == 'lots' %} active{% endif %}" data-hold-tab="lots">Lots</button>
+    <button type="button" class="toggle-btn{% if tab == 'schedule' %} active{% endif %}" data-hold-tab="schedule">Upcoming</button>
+  </nav>
+
+  <section id="holdGrants" data-hold-panel="grants" {% if tab == 'lots' or tab == 'schedule' %}hidden{% endif %}>
+    {% if grants %}
+    <div class="table-container">
+      <table class="data-table sortable-table">
+        <thead>
+          <tr>
+            <th data-sort="date">Grant date</th>
+            <th data-sort="text">Type</th>
+            <th data-sort="text">Share type</th>
+            <th data-sort="number">Granted</th>
+            <th data-sort="number">Held now</th>
+            <th data-sort="number">Held value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for grant in grants %}
+          {% set hv = held_by_grant.get(grant.id, {'shares': 0, 'value': 0, 'unex': 0}) %}
+          <tr class="clickable-row" onclick="window.location='{{ url_for('grants.view_grant', grant_id=grant.id) }}';">
+            <td>{{ grant.grant_date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ grant.grant_type.replace('_', ' ') }}</td>
+            <td>{{ grant.share_type }}</td>
+            <td>{{ "{:,.0f}".format(grant.share_quantity) }}</td>
+            <td>{{ "{:,.0f}".format(hv.shares) }}{% if hv.unex %} <span class="tax-muted">+{{ "{:,.0f}".format(hv.unex) }} unex</span>{% endif %}</td>
+            <td>${{ "{:,.0f}".format(hv.value) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state-large">
+      <h2>No grants yet</h2>
+      <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">Add grant</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section id="holdLots" data-hold-panel="lots" {% if tab != 'lots' %}hidden{% endif %}>
+    <div class="table-container">
+      <table class="data-table sortable-table">
+        <thead>
+          <tr>
+            <th data-sort="date">Acquired</th>
+            <th data-sort="text">Lot</th>
+            <th data-sort="number">Held</th>
+            <th data-sort="number">Unex ISO</th>
+            <th data-sort="number">Basis</th>
+            <th data-sort="text">Term</th>
+            <th data-sort="number">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lot in lots %}
+          {% if (lot.shares_available or 0) > 0 or (lot.shares_unexercised or 0) > 0 %}
+          <tr class="clickable-row" onclick="window.location='{{ url_for('grants.vest_detail', vest_id=lot.vest_event_id) }}';">
+            <td>{{ lot.vest_date }}</td>
+            <td>v{{ lot.vest_event_id }} {{ lot.label }}</td>
+            <td>{{ "{:,.0f}".format(lot.shares_available or 0) }}</td>
+            <td>{{ "{:,.0f}".format(lot.shares_unexercised or 0) }}</td>
+            <td>${{ "{:,.2f}".format(lot.cost_basis_per_share or 0) }}</td>
+            <td>{% if lot.is_long_term %}LT{% else %}ST{% endif %}</td>
+            <td>${{ "{:,.0f}".format((lot.shares_available or 0) * (live_price or 0)) }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="holdSched" data-hold-panel="schedule" {% if tab != 'schedule' %}hidden{% endif %}>
+    <div class="table-container">
+      <table class="data-table sortable-table">
+        <thead>
+          <tr>
+            <th data-sort="date">Vest date</th>
+            <th data-sort="text">Grant</th>
+            <th data-sort="number">Shares</th>
+            <th data-sort="number">@ live</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ve in upcoming %}
+          <tr class="clickable-row" onclick="window.location='{{ url_for('grants.vest_detail', vest_id=ve.id) }}';">
+            <td>{{ ve.vest_date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ ve.grant.grant_type.replace('_', ' ') }} {{ ve.grant.share_type }}</td>
+            <td>{{ "{:,.0f}".format(ve.shares_vested) }}</td>
+            <td>${{ "{:,.0f}".format(ve.shares_vested * (live_price or 0)) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not upcoming %}
+    <p class="empty-state">No upcoming vests</p>
+    {% endif %}
+  </section>
 </div>
+<script>
+(function () {
+  function show(name) {
+    document.querySelectorAll('[data-hold-panel]').forEach(function (el) {
+      el.hidden = el.getAttribute('data-hold-panel') !== name;
+    });
+    document.querySelectorAll('[data-hold-tab]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-hold-tab') === name);
+    });
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('tab', name);
+      history.replaceState({}, '', u);
+    } catch (e) {}
+  }
+  document.querySelectorAll('[data-hold-tab]').forEach(function (btn) {
+    btn.addEventListener('click', function () { show(btn.getAttribute('data-hold-tab')); });
+  });
+})();
+</script>
 {% endblock %}

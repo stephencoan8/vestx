@@ -25,9 +25,46 @@ logger = logging.getLogger(__name__)
 @grants_bp.route('/')
 @login_required
 def list_grants():
-    """List all user grants."""
+    """Holdings: grants + open lots + upcoming vests."""
+    from datetime import date
+    from collections import defaultdict
+    from app.utils.lot_inventory import build_lots_for_user
+    from app.utils.price_utils import get_latest_user_price
+    from app.utils.ledger import ensure_lots_for_user
+
+    ensure_lots_for_user(current_user.id)
     grants = Grant.query.filter_by(user_id=current_user.id).order_by(Grant.grant_date.desc()).all()
-    return render_template('grants/list.html', grants=grants)
+    live = get_latest_user_price(current_user.id) or 0.0
+    lots = build_lots_for_user(current_user.id) or []
+    held_by_grant = defaultdict(lambda: {'shares': 0.0, 'value': 0.0, 'unex': 0.0})
+    for lot in lots:
+        gid = lot.get('grant_id')
+        sh = float(lot.get('shares_available') or 0)
+        unex = float(lot.get('shares_unexercised') or 0)
+        held_by_grant[gid]['shares'] += sh
+        held_by_grant[gid]['unex'] += unex
+        if lot.get('is_iso') and unex:
+            strike = float(lot.get('strike_price') or 0)
+            held_by_grant[gid]['value'] += sh * live + unex * max(0.0, live - strike)
+        else:
+            held_by_grant[gid]['value'] += sh * live
+    today = date.today()
+    upcoming = (
+        VestEvent.query.join(Grant)
+        .filter(Grant.user_id == current_user.id, VestEvent.vest_date > today)
+        .order_by(VestEvent.vest_date.asc())
+        .limit(24)
+        .all()
+    )
+    return render_template(
+        'grants/list.html',
+        grants=grants,
+        lots=lots,
+        live_price=live,
+        held_by_grant=held_by_grant,
+        upcoming=upcoming,
+        tab=request.args.get('tab') or 'grants',
+    )
 
 
 @grants_bp.route('/add', methods=['GET', 'POST'])
@@ -463,6 +500,13 @@ def update_vest_details(event_id):
 @grants_bp.route('/schedule')
 @login_required
 def vest_schedule():
+    """Legacy schedule URL → Holdings calendar tab."""
+    return redirect(url_for('grants.list_grants', tab='schedule'))
+
+
+@grants_bp.route('/schedule-full')
+@login_required
+def vest_schedule_full():
     """View complete vesting schedule."""
     from app.utils.price_utils import get_latest_user_price
     from datetime import date
@@ -524,19 +568,25 @@ def needs_tax_info():
     # Filter to only vested events that need info
     vests_needing_info = [v for v in all_vest_events if v.has_vested and v.needs_tax_info]
     
-    return render_template('grants/needs_tax_info.html', vest_events=vests_needing_info)
+    return redirect(url_for('grants.list_grants', tab='lots'))
 
 
 @grants_bp.route('/rules')
 @login_required
 def rules():
-    """View vesting rules and configurations."""
-    return render_template('grants/rules.html')
+    """Legacy rules URL → add grant."""
+    return redirect(url_for('grants.add_grant'))
 
 
 @grants_bp.route('/finance-deep-dive')
 @login_required
 def finance_deep_dive():
+    return redirect(url_for('grants.list_grants'))
+
+
+@grants_bp.route('/finance-deep-dive-legacy')
+@login_required
+def finance_deep_dive_legacy():
     """Comprehensive tax and capital gains analysis."""
     from sqlalchemy.orm import joinedload
 

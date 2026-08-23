@@ -4,7 +4,7 @@
 <div class="page tax-hub" id="taxHub">
   <header class="page-header tax-hub-header">
     <div>
-      <h1>Sales &amp; tax</h1>
+      <h1>Plan</h1>
     </div>
     <div class="tax-hub-header-actions">
       <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Tax profile</a>
@@ -695,10 +695,13 @@
     showTaxTab('activity');
   });
 
-  // Deep-link ?tab=sold or sold_year keeps Sold open
+  // Deep-link ?tab= wins over session
   try {
     var params = new URLSearchParams(window.location.search);
-    if (params.get('sold_year') || params.get('tab') === 'sold') {
+    var tabQ = params.get('tab');
+    if (tabQ === 'activity' || tabQ === 'sold' || tabQ === 'optimize' || tabQ === 'scenario') {
+      showTaxTab(tabQ);
+    } else if (params.get('sold_year')) {
       showTaxTab('sold');
     }
   } catch (e) {}
@@ -712,9 +715,12 @@
   });
 
   try {
-    var savedTab = sessionStorage.getItem('vestx_tax_hub_tab');
-    if (savedTab && document.querySelector('[data-tax-panel="' + savedTab + '"]')) {
-      showTaxTab(savedTab);
+    var params2 = new URLSearchParams(window.location.search);
+    if (!params2.get('tab') && !params2.get('sold_year')) {
+      var savedTab = sessionStorage.getItem('vestx_tax_hub_tab');
+      if (savedTab && document.querySelector('[data-tax-panel="' + savedTab + '"]')) {
+        showTaxTab(savedTab);
+      }
     }
   } catch (e) {}
 

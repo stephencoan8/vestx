@@ -1218,31 +1218,25 @@ def api_record_sale():
         ).first_or_404()
         grant = vest.grant
         is_iso = _iso(grant.share_type)
-
-        # Availability check
-        lots = {l['vest_event_id']: l for l in build_lots_for_user(current_user.id)}
-        lot = lots.get(vest_id)
-        if not lot:
-            return jsonify({'error': 'Lot not found or not sellable'}), 400
         if shares <= 0:
             return jsonify({'error': 'Shares must be a whole number ≥ 1'}), 400
-        if shares > lot['shares_available']:
-            return jsonify({
-                'error': f'Only {int(lot["shares_available"])} whole shares available on this lot'
-            }), 400
 
-        if is_iso:
-            basis = grant.share_price_at_grant
-        else:
-            basis = vest.share_price_at_vest or 0.0
+        from app.utils.ledger import record_sale, LedgerError, ensure_lots_for_user
+        ensure_lots_for_user(current_user.id)
+        try:
+            sale = record_sale(
+                user_id=current_user.id,
+                vest_event_id=vest_id,
+                qty=shares,
+                price=sale_price,
+                sale_date=sale_date,
+                fees=commission,
+                notes=data.get('notes') or '',
+            )
+        except LedgerError as e:
+            return jsonify({'error': str(e)}), 400
 
-        proceeds = shares * sale_price
-        total_basis = shares * basis
-        gain = proceeds - total_basis - commission
-        holding = (sale_date - vest.vest_date).days
-        is_lt = holding >= 365
-
-        # ISO QD flag
+        basis = float(sale.cost_basis_per_share or 0)
         is_qd = None
         dd_ord = None
         if is_iso:
@@ -1258,43 +1252,10 @@ def api_record_sale():
                 if not is_qd:
                     fmv_ex = ex.fmv_at_exercise or sale_price
                     dd_ord = max(0.0, min(sale_price, fmv_ex) - grant.share_price_at_grant) * shares
-
-        sale = StockSale(
-            user_id=current_user.id,
-            vest_event_id=vest_id,
-            sale_date=sale_date,
-            shares_sold=shares,
-            sale_price=sale_price,
-            total_proceeds=proceeds,
-            cost_basis_per_share=basis,
-            total_cost_basis=total_basis,
-            capital_gain=gain,
-            is_long_term=is_lt if not is_iso or not is_qd else True,
-            commission_fees=commission,
-            is_qualifying_disposition=is_qd,
-            disqualifying_ordinary_income=dd_ord,
-            notes=data.get('notes') or '',
-            lot_selection_method=data.get('lot_selection_method') or 'SpecID',
-        )
-        db.session.add(sale)
-
-        # Reduce ISO shares_still_held if applicable
-        if is_iso:
-            remaining = shares
-            exs = (
-                ISOExercise.query.filter_by(user_id=current_user.id, vest_event_id=vest_id)
-                .order_by(ISOExercise.exercise_date.asc())
-                .all()
-            )
-            for ex in exs:
-                if remaining <= 0:
-                    break
-                held = ex.shares_still_held if ex.shares_still_held is not None else ex.shares_exercised
-                take = min(held, remaining)
-                ex.shares_still_held = held - take
-                remaining -= take
-
-        db.session.commit()
+                sale.is_long_term = True if is_qd else sale.is_long_term
+                sale.is_qualifying_disposition = is_qd
+                sale.disqualifying_ordinary_income = dd_ord
+                db.session.commit()
 
         # Tax analysis for this sale alone (year-scoped profile)
         eng = _engine_profile_for_request(current_user, {'tax_year': sale_date.year})
@@ -1410,16 +1371,17 @@ def api_update_sale(sale_id):
         if shares <= 0:
             return jsonify({'error': 'Shares must be a whole number ≥ 1'}), 400
 
-        lots = {l['vest_event_id']: l for l in build_lots_for_user(current_user.id)}
-        lot = lots.get(sale.vest_event_id)
-        if not lot:
-            return jsonify({'error': 'Lot not found'}), 400
-        # Inventory already excludes this sale's shares — add them back for the cap
-        max_shares = float(lot.get('shares_available') or 0) + old_shares
-        if shares > max_shares + 1e-9:
-            return jsonify({
-                'error': f'Only {int(max_shares)} whole shares available on this lot (including this sale)'
-            }), 400
+        from app.utils.ledger import apply_sale_qty_delta, LedgerError, ensure_lots_for_user
+        ensure_lots_for_user(current_user.id)
+        delta = shares - old_shares
+        try:
+            apply_sale_qty_delta(
+                user_id=current_user.id,
+                vest_event_id=sale.vest_event_id,
+                delta=delta,
+            )
+        except LedgerError as e:
+            return jsonify({'error': str(e)}), 400
 
         if is_iso:
             basis = grant.share_price_at_grant
@@ -1447,13 +1409,6 @@ def api_update_sale(sale_id):
                 if not is_qd:
                     fmv_ex = ex.fmv_at_exercise or sale_price
                     dd_ord = max(0.0, min(sale_price, fmv_ex) - grant.share_price_at_grant) * shares
-
-        delta = shares - old_shares
-        if is_iso and abs(delta) > 1e-9:
-            if delta > 0:
-                _iso_reduce_still_held(current_user.id, sale.vest_event_id, delta)
-            else:
-                _iso_restore_still_held(current_user.id, sale.vest_event_id, -delta)
 
         sale.sale_date = sale_date
         sale.shares_sold = shares
@@ -1516,13 +1471,9 @@ def api_update_sale(sale_id):
 @login_required
 def api_delete_sale(sale_id):
     sale = StockSale.query.filter_by(id=sale_id, user_id=current_user.id).first_or_404()
-    vest = VestEvent.query.join(Grant).filter(
-        VestEvent.id == sale.vest_event_id, Grant.user_id == current_user.id
-    ).first()
-    if vest and _iso(vest.grant.share_type):
-        _iso_restore_still_held(current_user.id, sale.vest_event_id, float(sale.shares_sold or 0))
-    db.session.delete(sale)
-    db.session.commit()
+    from app.utils.ledger import reverse_sale, ensure_lots_for_user
+    ensure_lots_for_user(current_user.id)
+    reverse_sale(user_id=current_user.id, sale=sale)
     return jsonify({'success': True})
 
 

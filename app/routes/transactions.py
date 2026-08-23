@@ -41,12 +41,7 @@ def transactions_page():
         VestEvent.vest_date <= date.today()
     ).order_by(VestEvent.vest_date.desc()).all()
     
-    return render_template(
-        'transactions/transactions.html',
-        sales=sales,
-        exercises=exercises,
-        vests=vests
-    )
+    return redirect(url_for('tax_center.hub', tab='activity'))
 
 
 @transactions_bp.route('/api/transactions/sales', methods=['POST'])
@@ -79,40 +74,26 @@ def create_sale():
             cost_basis_per_share, _ = rsu_cost_basis_per_share(
                 vest, user_id=current_user.id, persist=True
             )
-        if not cost_basis_per_share or cost_basis_per_share <= 0:
-            cost_basis_per_share = float(vest.share_price_at_vest or 0)
-        
-        total_proceeds = shares_sold * sale_price
-        total_cost_basis = shares_sold * cost_basis_per_share
-        capital_gain = total_proceeds - total_cost_basis
-        
-        # Determine if long-term (> 1 year)
-        is_long_term = False
-        if vest_event_id:
-            vest = VestEvent.query.get(vest_event_id)
-            if vest:
-                holding_days = (sale_date - vest.vest_date).days
-                is_long_term = holding_days > 365
-        
-        sale = StockSale(
-            user_id=current_user.id,
-            vest_event_id=vest_event_id,
-            sale_date=sale_date,
-            shares_sold=shares_sold,
-            sale_price=sale_price,
-            total_proceeds=total_proceeds,
-            cost_basis_per_share=cost_basis_per_share,
-            total_cost_basis=total_cost_basis,
-            capital_gain=capital_gain,
-            is_long_term=is_long_term,
-            commission_fees=float(data.get('commission_fees', 0)),
-            actual_federal_tax=data.get('actual_federal_tax'),
-            actual_state_tax=data.get('actual_state_tax'),
-            actual_total_tax=data.get('actual_total_tax'),
-            notes=data.get('notes', '')
-        )
-        
-        db.session.add(sale)
+        from app.utils.ledger import record_sale, LedgerError, ensure_lots_for_user
+        ensure_lots_for_user(current_user.id)
+        try:
+            sale = record_sale(
+                user_id=current_user.id,
+                vest_event_id=vest_event_id,
+                qty=shares_sold,
+                price=sale_price,
+                sale_date=sale_date,
+                fees=float(data.get('commission_fees', 0) or 0),
+                notes=data.get('notes', ''),
+            )
+        except LedgerError as e:
+            return jsonify({'error': str(e)}), 400
+        if data.get('actual_federal_tax') is not None:
+            sale.actual_federal_tax = data.get('actual_federal_tax')
+        if data.get('actual_state_tax') is not None:
+            sale.actual_state_tax = data.get('actual_state_tax')
+        if data.get('actual_total_tax') is not None:
+            sale.actual_total_tax = data.get('actual_total_tax')
         db.session.commit()
         
         return jsonify({
@@ -143,7 +124,18 @@ def update_sale(sale_id):
             sale.sale_date = datetime.strptime(data['sale_date'], '%Y-%m-%d').date()
         
         if 'shares_sold' in data:
-            shares_sold = float(data['shares_sold'])
+            from app.utils.shares import whole_shares
+            from app.utils.ledger import apply_sale_qty_delta, LedgerError, ensure_lots_for_user
+            shares_sold = float(whole_shares(data['shares_sold']))
+            ensure_lots_for_user(current_user.id)
+            try:
+                apply_sale_qty_delta(
+                    user_id=current_user.id,
+                    vest_event_id=sale.vest_event_id,
+                    delta=shares_sold - float(sale.shares_sold or 0),
+                )
+            except LedgerError as e:
+                return jsonify({'error': str(e)}), 400
             sale.shares_sold = shares_sold
         
         if 'sale_price' in data:
@@ -191,9 +183,9 @@ def delete_sale(sale_id):
             id=sale_id,
             user_id=current_user.id
         ).first_or_404()
-        
-        db.session.delete(sale)
-        db.session.commit()
+        from app.utils.ledger import reverse_sale, ensure_lots_for_user
+        ensure_lots_for_user(current_user.id)
+        reverse_sale(user_id=current_user.id, sale=sale)
         
         return jsonify({'message': 'Sale deleted successfully'})
         

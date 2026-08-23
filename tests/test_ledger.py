@@ -107,6 +107,63 @@ def test_record_sale_decrements_lot_and_rejects_oversell():
         db.session.commit()
 
 
+def test_build_lots_uses_tax_lot_remaining():
+    from app import create_app, db
+    from app.models.user import User
+    from app.models.grant import Grant
+    from app.models.vest_event import VestEvent
+    from app.models.tax_lot import TaxLot
+    from app.utils.lot_inventory import build_lots_for_user
+
+    app = create_app()
+    with app.app_context():
+        u = User.query.first()
+        if not u:
+            return
+        g = Grant(
+            user_id=u.id,
+            grant_date=date(2023, 5, 1),
+            grant_type='new_hire',
+            share_type='rsu',
+            share_quantity=50,
+            share_price_at_grant=10.0,
+            vest_years=1,
+            cliff_years=0,
+        )
+        db.session.add(g)
+        db.session.flush()
+        vest = VestEvent(
+            grant_id=g.id,
+            vest_date=date.today() - timedelta(days=400),
+            shares_vested=50,
+            fmv_at_vest=12.0,
+            shares_sold=0,
+        )
+        db.session.add(vest)
+        db.session.flush()
+        lot = TaxLot(
+            user_id=u.id,
+            grant_id=g.id,
+            vest_event_id=vest.id,
+            kind='rsu',
+            acquired_date=vest.vest_date,
+            original_qty=50,
+            remaining_qty=7,
+            cost_basis_per_share=12.0,
+            status='open',
+        )
+        db.session.add(lot)
+        db.session.commit()
+        built = {l['vest_event_id']: l for l in build_lots_for_user(u.id)}
+        assert vest.id in built
+        assert built[vest.id]['shares_available'] == 7
+        db.session.delete(lot)
+        VestEvent.query.filter_by(id=vest.id).delete()
+        Grant.query.filter_by(id=g.id).delete()
+        db.session.commit()
+
+
 if __name__ == '__main__':
     test_record_sale_decrements_lot_and_rejects_oversell()
+    test_build_lots_uses_tax_lot_remaining()
     print('LEDGER TESTS PASSED')
