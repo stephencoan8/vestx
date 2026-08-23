@@ -387,17 +387,8 @@
         <div class="tax-sit-sub">gain ${{ "{:,.0f}".format(sold.summary_year.capital_gain) }}</div>
       </div>
       <div class="tax-sit-card">
-        <div class="tax-sit-label">Worth now @ live</div>
-        <div class="tax-sit-value">${{ "{:,.0f}".format(sold.summary_year.worth_now) }}</div>
-        <div class="tax-sit-sub">
-          {% set fg = sold.summary_year.forgone_vs_sale %}
-          {% if fg > 0 %}+${{ "{:,.0f}".format(fg) }} vs hold{% elif fg < 0 %}−${{ "{:,.0f}".format(-fg) }} vs hold{% else %}≈ live{% endif %}
-        </div>
-      </div>
-      <div class="tax-sit-card">
         <div class="tax-sit-label">Tax to set aside</div>
         <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
-        <div class="tax-sit-sub">est. equity tax ${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }} − credits</div>
       </div>
     </div>
 
@@ -416,8 +407,6 @@
               <th>Gain</th>
               <th>Term</th>
               <th>Est. tax</th>
-              <th>Worth now</th>
-              <th>Δ vs now</th>
             </tr>
           </thead>
           <tbody>
@@ -431,10 +420,6 @@
               <td>${{ "{:,.0f}".format(r.capital_gain) }}</td>
               <td>{% if r.is_long_term %}LT{% else %}ST{% endif %}</td>
               <td>{% if r.estimated_tax is not none %}${{ "{:,.0f}".format(r.estimated_tax) }}{% else %}—{% endif %}</td>
-              <td>${{ "{:,.0f}".format(r.worth_now) }}</td>
-              <td class="{% if r.delta_vs_sale > 0 %}tax-delta-pos{% elif r.delta_vs_sale < 0 %}tax-delta-neg{% endif %}">
-                {% if r.delta_vs_sale >= 0 %}+{% endif %}${{ "{:,.0f}".format(r.delta_vs_sale) }}
-              </td>
             </tr>
             {% endfor %}
           </tbody>
