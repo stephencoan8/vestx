@@ -464,8 +464,8 @@
       <div class="tax-quarter-grid">
         {% for q in tax_calendar.quarters %}
         <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
-          <div class="tax-quarter-label">{{ q.label }} · {{ q.due_iso }}</div>
-          <div class="tax-quarter-pay">${{ "{:,.0f}".format(q.suggested_payment) }}</div>
+          <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_label or q.due_iso }}</div>
+          <div class="tax-quarter-pay">{% if q.is_past %}—{% else %}${{ "{:,.0f}".format(q.suggested_payment) }}{% endif %}</div>
         </div>
         {% endfor %}
       </div>

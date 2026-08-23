@@ -173,24 +173,25 @@ def build_estimated_tax_calendar(
     quarters = []
     for q in federal_estimated_due_dates(tax_year):
         due = q['due']
-        past = due < as_of
+        past = due <= as_of
         quarters.append({
             **q,
             'due_iso': due.isoformat(),
+            'due_label': due.strftime('%b %d, %Y').replace(' 0', ' '),
             'is_past': past,
             'is_next': False,
+            'suggested_payment': 0.0,
+            'safe_harbor_quarter': float(harbor['per_quarter'] or 0),
         })
-    # Mark next upcoming
+
+    # Front-load remaining set-aside onto the next federal due date.
+    # Equal-splitting Q3/Q4 made August sale tax look like two identical bills;
+    # for lumpy equity gains, catch up on the next installment instead.
     for q in quarters:
         if not q['is_past']:
             q['is_next'] = True
+            q['suggested_payment'] = still_to_save
             break
-
-    n_rem = sum(1 for q in quarters if not q['is_past']) or 1
-    per_remaining = still_to_save / n_rem
-    for q in quarters:
-        q['suggested_payment'] = 0.0 if q['is_past'] else per_remaining
-        q['safe_harbor_quarter'] = float(harbor['per_quarter'] or 0)
 
     return {
         'tax_year': tax_year,
