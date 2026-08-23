@@ -391,6 +391,117 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
     }
 
 
+def build_year_sale_gains(user_id: int, tax_year: int) -> Dict[str, Any]:
+    """
+    Realized capital gain/loss on VestX sales in a calendar year.
+
+    Uses StockSale.capital_gain (proceeds − basis), never gross proceeds.
+    ST vs LT follows the sale row. ISO disqualifying ordinary is ignored here.
+    """
+    from datetime import date
+    from app.models.stock_sale import StockSale
+
+    start = date(tax_year, 1, 1)
+    end = date(tax_year, 12, 31)
+    try:
+        sales = (
+            StockSale.query
+            .filter(
+                StockSale.user_id == user_id,
+                StockSale.sale_date >= start,
+                StockSale.sale_date <= end,
+            )
+            .all()
+        )
+    except Exception:
+        sales = []
+
+    stcg = 0.0
+    ltcg = 0.0
+    for s in sales:
+        proceeds = float(
+            s.total_proceeds
+            if s.total_proceeds is not None
+            else float(s.shares_sold or 0) * float(s.sale_price or 0)
+        )
+        basis = float(s.total_cost_basis or 0)
+        gain = float(s.capital_gain if s.capital_gain is not None else proceeds - basis)
+        if s.is_long_term:
+            ltcg += gain
+        else:
+            stcg += gain
+    return {
+        'tax_year': tax_year,
+        'sale_count': len(sales),
+        'stcg': round(stcg, 2),
+        'ltcg': round(ltcg, 2),
+        'capital_gain': round(stcg + ltcg, 2),
+    }
+
+
+def year_income_stack(
+    user_id: int,
+    tax_year: int,
+    *,
+    cash_wages: float = 0.0,
+    other_stcg: float = 0.0,
+    other_ltcg: float = 0.0,
+) -> Dict[str, Any]:
+    """
+    Year income from VestX + the cash-wages field.
+
+      ordinary / FICA  = cash wages + RSU/cash vests (past @ vest FMV, rest of year @ live)
+      ST/LT CG         = recorded sale capital gains + optional non-VestX extras
+    """
+    cash = max(0.0, float(cash_wages or 0))
+    vest = build_year_vest_prefill(user_id, tax_year)
+    sales = build_year_sale_gains(user_id, tax_year)
+    eq_past = float(vest.get('equity_vested_ytd') or 0)
+    eq_fut = float(vest.get('equity_remaining_year') or 0)
+    ordinary = cash + eq_past + eq_fut
+    stcg = float(sales.get('stcg') or 0) + float(other_stcg or 0)
+    ltcg = float(sales.get('ltcg') or 0) + float(other_ltcg or 0)
+    return {
+        'cash_wages': round(cash, 2),
+        'equity_vested_ytd': round(eq_past, 2),
+        'equity_remaining_year': round(eq_fut, 2),
+        'sale_stcg': float(sales.get('stcg') or 0),
+        'sale_ltcg': float(sales.get('ltcg') or 0),
+        'sale_count': int(sales.get('sale_count') or 0),
+        'ordinary': round(ordinary, 2),
+        'fica_wages': round(ordinary, 2),
+        'stcg': round(stcg, 2),
+        'ltcg': round(ltcg, 2),
+        'tax_base': round(ordinary + stcg + ltcg, 2),
+        'vest': vest,
+        'sales': sales,
+    }
+
+
+def attach_computed_year_income(profile: dict, user_id: int, tax_year: int) -> dict:
+    """
+    Replace the old YTD-wages field with computed ordinary (cash wages + vests).
+
+    Sale capital gains stay off this dict so analyze_sales can add them as the
+    incremental event (no double count). Year-tax KPIs use year_income_stack.
+    """
+    cash = float(
+        profile.get('other_ordinary_income_raw')
+        if profile.get('other_ordinary_income_raw') is not None
+        else (profile.get('other_ordinary_income') or 0)
+    )
+    if cash <= 0:
+        cash = float(profile.get('ytd_wages') or 0)
+    stack = year_income_stack(user_id, tax_year, cash_wages=cash)
+    profile['other_ordinary_income_raw'] = stack['cash_wages']
+    profile['computed_ordinary'] = stack['ordinary']
+    profile['ytd_wages'] = stack['ordinary']
+    profile['stacking_ordinary_income'] = stack['ordinary']
+    profile['other_ordinary_income'] = stack['ordinary']
+    profile['year_income'] = stack
+    return profile
+
+
 def list_years_with_vests(user_id: int, *, back: int = 8) -> List[int]:
     """Years that have vest events, plus recent calendar years for the dropdown."""
     from datetime import date
@@ -410,6 +521,20 @@ def list_years_with_vests(user_id: int, *, back: int = 8) -> List[int]:
             .all()
         )
         for (y,) in rows:
+            if y:
+                years.add(int(y))
+    except Exception:
+        pass
+    try:
+        from app.models.stock_sale import StockSale
+        sale_years = (
+            StockSale.query
+            .filter(StockSale.user_id == user_id)
+            .with_entities(extract('year', StockSale.sale_date))
+            .distinct()
+            .all()
+        )
+        for (y,) in sale_years:
             if y:
                 years.add(int(y))
     except Exception:

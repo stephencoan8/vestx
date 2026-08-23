@@ -100,8 +100,6 @@ class TaxProfile(db.Model):
         use_state = g('use_state_engine', True)
         other_ord = float(g('other_ordinary_income', 0.0) or 0.0)
         ytd = float(g('ytd_wages', 0.0) or 0.0)
-        # Engine stacks max(other, ytd) so wages entered in either field count for brackets/LTCG
-        stacked = max(other_ord, ytd)
         return {
             'filing_status': g('filing_status') or 'single',
             'state_code': ((g('state_code') or '') or '').upper() or None,
@@ -111,8 +109,8 @@ class TaxProfile(db.Model):
             'state_cg_rate': state_cg,
             'use_bracket_engine': bool(g('use_bracket_engine', True)),
             'use_state_engine': bool(use_state if use_state is not None else True),
-            # Canonical stacking base (also keep raw fields for FICA / display)
-            'other_ordinary_income': stacked,
+            # Cash wages only — VestX vests + sale gains attach in resolve_engine_profile
+            'other_ordinary_income': other_ord,
             'other_ordinary_income_raw': other_ord,
             'other_long_term_gains': g('other_long_term_gains', 0.0) or 0.0,
             'other_short_term_gains': g('other_short_term_gains', 0.0) or 0.0,
@@ -123,5 +121,5 @@ class TaxProfile(db.Model):
             'amt_credit_carryforward': g('amt_credit_carryforward', 0.0) or 0.0,
             'ca_amt_credit_carryforward': g('ca_amt_credit_carryforward', 0.0) or 0.0,
             'tax_year': g('tax_year') or datetime.utcnow().year,
-            'stacking_ordinary_income': stacked,
+            'stacking_ordinary_income': other_ord,
         }

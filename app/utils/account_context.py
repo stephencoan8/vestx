@@ -70,7 +70,9 @@ def build_account_context(user_id: Optional[int] = None, *, max_lots: int = 500)
 
     try:
         profile = TaxProfile.for_user(user)
-        eng = profile.to_engine_dict() if profile else {}
+        from app.utils.tax_engine import resolve_engine_profile_for_year
+        yr = int((profile.tax_year if profile else None) or date.today().year)
+        eng = resolve_engine_profile_for_year(user, yr) if profile else {}
     except Exception:
         eng = {}
 
@@ -202,8 +204,8 @@ def _readable_summary(raw: dict, lots: Sequence[dict], eng: dict, price: float) 
         f"Recorded sales: **{ps.get('recorded_sales')}** · Exercises: **{ps.get('recorded_exercises')}**.",
         f"- Filing **{eng.get('filing_status') or '?'}** · State **{eng.get('state_code') or '-'}** · "
         f"Tax year **{eng.get('tax_year') or '?'}** · "
-        f"Other ordinary income **${_n(eng.get('other_ordinary_income'), 0)}** · "
-        f"YTD wages **${_n(eng.get('ytd_wages'), 0)}**.",
+        f"Cash wages **${_n(eng.get('other_ordinary_income_raw') or eng.get('other_ordinary_income'), 0)}** · "
+        f"ordinary (wages + vests) **${_n(eng.get('computed_ordinary') or eng.get('ytd_wages') or eng.get('other_ordinary_income'), 0)}**.",
     ]
     if not lots:
         lines.append(

@@ -462,14 +462,14 @@ def stacking_ordinary_income(profile: dict) -> float:
     """
     Ordinary income used for federal/CA brackets, LTCG bands, NIIT MAGI, and AMT base.
 
-    Tax Profile has two wage-ish fields that users confuse:
-      - other_ordinary_income: intended full-year ordinary (wages, bonus, …)
-      - ytd_wages: also often filled with annual wages (and used for FICA)
-
-    Using only other_ordinary_income silently ignored $500k YTD wages and kept
-    LTCG in the 15% band. We stack the **higher** of the two so wages count
-    once for planning (they are the same economic wages, not additive).
+    Prefer computed_ordinary (cash wages + VestX vests). Legacy profiles still
+    fall back to max(other_ordinary_income, ytd_wages).
     """
+    if profile.get('computed_ordinary') is not None:
+        try:
+            return max(0.0, float(profile.get('computed_ordinary') or 0.0))
+        except (TypeError, ValueError):
+            pass
     other = float(profile.get('other_ordinary_income') or 0.0)
     ytd = float(profile.get('ytd_wages') or 0.0)
     return max(other, ytd)
@@ -602,9 +602,17 @@ def resolve_engine_profile_for_year(user, tax_year: int) -> dict:
         d['federal_ordinary_rate'] = None
         d['federal_ltcg_rate'] = None
 
-    stacked = max(float(d.get('other_ordinary_income') or 0), float(d.get('ytd_wages') or 0))
-    d['other_ordinary_income'] = stacked
-    d['stacking_ordinary_income'] = stacked
+    cash = float(d.get('other_ordinary_income') or 0)
+    d['other_ordinary_income_raw'] = cash
+    d['stacking_ordinary_income'] = cash
+    try:
+        from app.utils.wage_year_tax import attach_computed_year_income
+        attach_computed_year_income(d, user.id, year)
+    except Exception:
+        stacked = max(cash, float(d.get('ytd_wages') or 0))
+        d['other_ordinary_income'] = stacked
+        d['ytd_wages'] = stacked
+        d['stacking_ordinary_income'] = stacked
     return d
 
 
@@ -1043,7 +1051,9 @@ def analyze_sales(
     other_lt = float(profile.get('other_long_term_gains') or 0.0)
     other_st = float(profile.get('other_short_term_gains') or 0.0)
 
-    if ytd_field > other_ord_field + 1.0 and other_ord_field > 0:
+    if profile.get('computed_ordinary') is not None:
+        pass
+    elif ytd_field > other_ord_field + 1.0 and other_ord_field > 0:
         warnings.append(
             f'Using ${other_ord:,.0f} ordinary for brackets (max of other ordinary '
             f'${other_ord_field:,.0f} and YTD wages ${ytd_field:,.0f}).'
@@ -1051,7 +1061,7 @@ def analyze_sales(
     elif ytd_field > other_ord_field + 1.0 and other_ord_field <= 0:
         warnings.append(
             f'YTD wages ${ytd_field:,.0f} used as ordinary stacking base '
-            f'(other ordinary income was $0). Put full-year wages in either field.'
+            f'(other ordinary income was $0).'
         )
 
     base_st, base_lt = _net_st_lt(other_st, other_lt)

@@ -105,10 +105,7 @@ def hub():
         current_user, tax_year=tax_year, sales=sales, profile=profile
     )
     inventory['tax_to_save'] = float(tax_calendar.get('still_to_save') or 0)
-    profile_ready = bool(
-        float(profile.other_ordinary_income or 0) > 0
-        or float(profile.ytd_wages or 0) > 0
-    )
+    profile_ready = bool(float(profile.other_ordinary_income or 0) > 0)
     return render_template(
         'tax/hub.html',
         profile=profile,
@@ -169,16 +166,9 @@ def _engine_profile_for_request(user, data: Optional[dict] = None) -> dict:
         try:
             v = float(data['other_ordinary_income'])
             eng['other_ordinary_income'] = v
-            eng['stacking_ordinary_income'] = max(v, float(eng.get('ytd_wages') or 0))
-        except (TypeError, ValueError):
-            pass
-    if data.get('ytd_wages') is not None:
-        try:
-            v = float(data['ytd_wages'])
-            eng['ytd_wages'] = v
-            eng['stacking_ordinary_income'] = max(
-                float(eng.get('other_ordinary_income') or 0), v
-            )
+            eng['other_ordinary_income_raw'] = v
+            from app.utils.wage_year_tax import attach_computed_year_income
+            attach_computed_year_income(eng, user.id, year)
         except (TypeError, ValueError):
             pass
     if data.get('filing_status'):
@@ -204,6 +194,7 @@ def api_year_tax():
             build_year_vest_prefill,
             compute_w2_year_tax,
             list_years_with_vests,
+            year_income_stack,
         )
         profile = TaxProfile.for_user(current_user)
         years = list_years_with_vests(current_user.id)
@@ -253,6 +244,8 @@ def api_year_tax():
             if profile.tax_year == year:
                 form['other_ordinary_income'] = float(profile.other_ordinary_income or 0)
                 form['ytd_wages'] = float(profile.ytd_wages or 0)
+                if form['other_ordinary_income'] <= 0 and form['ytd_wages'] > 0:
+                    form['other_ordinary_income'] = form['ytd_wages']
                 form['other_long_term_gains'] = float(profile.other_long_term_gains or 0)
                 form['other_short_term_gains'] = float(profile.other_short_term_gains or 0)
                 form['federal_ordinary_rate'] = profile.federal_ordinary_rate
@@ -280,8 +273,6 @@ def api_year_tax():
             wages = data.get('other_ordinary_income', data.get('wages', data.get('other_ordinary')))
             if wages is not None and wages != '':
                 out['other_ordinary_income'] = _money_float(wages, 0)
-            if 'ytd_wages' in data and data['ytd_wages'] is not None and data['ytd_wages'] != '':
-                out['ytd_wages'] = _money_float(data['ytd_wages'], 0)
             stcg = data.get('other_short_term_gains', data.get('stcg'))
             if stcg is not None and stcg != '':
                 out['other_short_term_gains'] = _money_float(stcg, 0)
@@ -308,43 +299,47 @@ def api_year_tax():
                     out[rk] = (v / 100.0) if v > 1 else v
             return out
 
-        def _wage_bases(form: dict, history: Optional[dict] = None) -> tuple:
+        def _wage_bases(form: dict, history: Optional[dict] = None, stack: Optional[dict] = None) -> tuple:
             """
-            Full-year stack for Tax Profile KPIs:
-              box-1 wages
-              + VestX RSU/cash already vested this year
-              + remaining scheduled vests this year @ live FMV
-            YTD wages is only a fallback when box 1 is empty (sale stacking).
+            Full-year stack: cash wages + VestX vests + sale capital gains.
+            FICA follows wages + vests only (gains are not FICA).
             """
+            if stack:
+                return (
+                    float(stack.get('ordinary') or 0),
+                    float(stack.get('fica_wages') or 0),
+                    float(stack.get('cash_wages') or 0),
+                    float(stack.get('equity_vested_ytd') or 0),
+                    float(stack.get('equity_remaining_year') or 0),
+                    float(stack.get('stcg') or 0),
+                    float(stack.get('ltcg') or 0),
+                )
             ordinary = float(form.get('other_ordinary_income') or 0)
-            ytd = float(form.get('ytd_wages') or 0)
-            if ordinary <= 0 and ytd > 0:
-                ordinary = ytd
             hist = history or {}
             equity_past = float(hist.get('equity_vested_ytd') or 0)
             equity_future = float(hist.get('equity_remaining_year') or 0)
-            # Box 1 should be non-equity wages (salary/cash). VestX adds equity
-            # already vested this year + remaining scheduled vests @ live FMV.
             stacked = ordinary + equity_past + equity_future
-            fica = stacked
-            return stacked, fica, ordinary, equity_past, equity_future
+            stcg = float(form.get('other_short_term_gains') or 0)
+            ltcg = float(form.get('other_long_term_gains') or 0)
+            return stacked, stacked, ordinary, equity_past, equity_future, stcg, ltcg
 
-        def _package(year: int, form: dict, source: str, history: dict, *, run: bool = True):
+        def _package(year: int, form: dict, source: str, history: dict, *, run: bool = True, stack: Optional[dict] = None):
             if year not in years:
                 years_out = sorted(set(years) | {year}, reverse=True)
             else:
                 years_out = years
-            wages, fica_wages, box1, eq_past, eq_fut = _wage_bases(form, history)
+            wages, fica_wages, box1, eq_past, eq_fut, stcg, ltcg = _wage_bases(form, history, stack)
             result = None
-            if run and wages > 0:
+            tax_base = wages + stcg + ltcg
+            if run and tax_base > 0:
                 result = compute_w2_year_tax(
                     tax_year=year,
                     filing_status=form.get('filing_status') or 'single',
                     state_code=form.get('state_code') or 'CA',
                     wages=wages,
                     other_ordinary=0,
-                    stcg=float(form.get('other_short_term_gains') or 0),
-                    ltcg=float(form.get('other_long_term_gains') or 0),
+                    stcg=stcg,
+                    ltcg=ltcg,
                     include_fica=bool(form.get('include_fica', True)),
                     ss_wage_base_maxed=bool(form.get('ss_wage_base_maxed')),
                     use_state_engine=bool(form.get('use_state_engine', True)),
@@ -354,7 +349,10 @@ def api_year_tax():
                 result['box1_wages'] = box1
                 result['equity_vested_ytd'] = eq_past
                 result['equity_remaining_year'] = eq_fut
+                result['sale_stcg'] = float((stack or {}).get('sale_stcg') or 0)
+                result['sale_ltcg'] = float((stack or {}).get('sale_ltcg') or 0)
                 result['stacked_wages'] = wages
+                result['tax_base'] = tax_base
             # Client-friendly form: rates as percent for override fields
             form_out = dict(form)
             form_out['tax_year'] = year
@@ -382,8 +380,8 @@ def api_year_tax():
                     'wages': wages,
                     'fica_wages': fica_wages,
                     'other_ordinary': 0,
-                    'stcg': float(form.get('other_short_term_gains') or 0),
-                    'ltcg': float(form.get('other_long_term_gains') or 0),
+                    'stcg': stcg,
+                    'ltcg': ltcg,
                     'filing_status': form.get('filing_status') or 'single',
                     'state_code': (form.get('state_code') or 'CA').upper(),
                     'include_fica': bool(form.get('include_fica', True)),
@@ -391,25 +389,40 @@ def api_year_tax():
                 },
             }
 
+        def _stack_form(yr: int, frm: dict) -> dict:
+            return year_income_stack(
+                current_user.id,
+                yr,
+                cash_wages=float(frm.get('other_ordinary_income') or 0),
+                other_stcg=float(frm.get('other_short_term_gains') or 0),
+                other_ltcg=float(frm.get('other_long_term_gains') or 0),
+            )
+
         if request.method == 'GET':
             year = int(request.args.get('year') or profile.tax_year or date.today().year)
             form, source = _seed_form(year)
-            history = build_year_vest_prefill(current_user.id, year)
-            # New year with no wages yet: leave 0 so user types full W-2 (equity shown as hint)
-            return _api_json(_package(year, form, source, history, run=True))
+            stack = _stack_form(year, form)
+            history = dict(stack.get('vest') or {})
+            history['sale_stcg'] = stack.get('sale_stcg')
+            history['sale_ltcg'] = stack.get('sale_ltcg')
+            history['sale_count'] = stack.get('sale_count')
+            return _api_json(_package(year, form, source, history, run=True, stack=stack))
 
         data = request.get_json(silent=True) or {}
         year = int(data.get('year') or data.get('tax_year') or date.today().year)
         form, source = _seed_form(year)
         form = _merge_inputs(form, data)
-        history = build_year_vest_prefill(current_user.id, year)
-        # Live recalc always uses posted values; mark source as draft if not saved-only
+        stack = _stack_form(year, form)
+        history = dict(stack.get('vest') or {})
+        history['sale_stcg'] = stack.get('sale_stcg')
+        history['sale_ltcg'] = stack.get('sale_ltcg')
+        history['sale_count'] = stack.get('sale_count')
         if any(k in data for k in (
-            'other_ordinary_income', 'wages', 'ytd_wages',
+            'other_ordinary_income', 'wages',
             'other_short_term_gains', 'other_long_term_gains', 'stcg', 'ltcg',
         )):
             source = 'draft' if source == 'new' else 'saved'
-        return _api_json(_package(year, form, source, history, run=True))
+        return _api_json(_package(year, form, source, history, run=True, stack=stack))
     except Exception as e:
         logger.error('year-tax failed: %s', e, exc_info=True)
         return _api_json({
@@ -431,6 +444,7 @@ def tax_profile():
         build_year_vest_prefill,
         compute_w2_year_tax,
         list_years_with_vests,
+        year_income_stack,
     )
 
     profile = TaxProfile.for_user(current_user)
@@ -461,7 +475,6 @@ def tax_profile():
                 'state_ordinary_rate': (_f('state_ordinary_rate', 0) or 0) / 100.0,
                 'state_cg_rate': (_f('state_cg_rate', 0) or 0) / 100.0,
                 'other_ordinary_income': _f('other_ordinary_income', 0) or 0,
-                'ytd_wages': _f('ytd_wages', 0) or 0,
                 'other_long_term_gains': _f('other_long_term_gains', 0) or 0,
                 'other_short_term_gains': _f('other_short_term_gains', 0) or 0,
                 'amt_credit_carryforward': _f('amt_credit_carryforward', 0) or 0,
@@ -470,6 +483,14 @@ def tax_profile():
                 'ss_wage_base_maxed': request.form.get('ss_wage_base_maxed') == 'on',
                 'include_niit': request.form.get('include_niit') == 'on',
             }
+            stack = year_income_stack(
+                current_user.id,
+                ty,
+                cash_wages=data['other_ordinary_income'],
+                other_stcg=data['other_short_term_gains'],
+                other_ltcg=data['other_long_term_gains'],
+            )
+            data['ytd_wages'] = float(data['other_ordinary_income'] or 0)
             year_row = TaxYearProfile.upsert_from_form(current_user.id, ty, data)
             year_row.apply_to_main_profile(profile)
 
@@ -547,17 +568,28 @@ def tax_profile():
             form['ca_amt_credit_carryforward'] = float(profile.ca_amt_credit_carryforward or 0)
         source = 'new'
 
-    history = build_year_vest_prefill(current_user.id, selected_year)
-    box1 = float(form.get('other_ordinary_income') or 0)
-    ytd = float(form.get('ytd_wages') or 0)
-    if box1 <= 0 and ytd > 0:
-        box1 = ytd
-    eq_past = float(history.get('equity_vested_ytd') or 0)
-    eq_fut = float(history.get('equity_remaining_year') or 0)
-    # Box 1 = non-equity wages; VestX stacks equity vested YTD + remaining @ live
-    stacked = box1 + eq_past + eq_fut
+    if float(form.get('other_ordinary_income') or 0) <= 0 and float(form.get('ytd_wages') or 0) > 0:
+        form['other_ordinary_income'] = float(form['ytd_wages'])
+
+    stack = year_income_stack(
+        current_user.id,
+        selected_year,
+        cash_wages=float(form.get('other_ordinary_income') or 0),
+        other_stcg=float(form.get('other_short_term_gains') or 0),
+        other_ltcg=float(form.get('other_long_term_gains') or 0),
+    )
+    history = dict(stack.get('vest') or {})
+    history['sale_stcg'] = stack.get('sale_stcg')
+    history['sale_ltcg'] = stack.get('sale_ltcg')
+    history['sale_count'] = stack.get('sale_count')
+    box1 = float(stack.get('cash_wages') or 0)
+    eq_past = float(stack.get('equity_vested_ytd') or 0)
+    eq_fut = float(stack.get('equity_remaining_year') or 0)
+    stacked = float(stack.get('ordinary') or 0)
+    stcg = float(stack.get('stcg') or 0)
+    ltcg = float(stack.get('ltcg') or 0)
     year_tax = None
-    if stacked > 0:
+    if stacked + stcg + ltcg > 0:
         try:
             year_tax = compute_w2_year_tax(
                 tax_year=selected_year,
@@ -565,18 +597,21 @@ def tax_profile():
                 state_code=form.get('state_code') or 'CA',
                 wages=stacked,
                 other_ordinary=0,
-                stcg=float(form.get('other_short_term_gains') or 0),
-                ltcg=float(form.get('other_long_term_gains') or 0),
+                stcg=stcg,
+                ltcg=ltcg,
                 include_fica=form['include_fica'],
                 ss_wage_base_maxed=form['ss_wage_base_maxed'],
                 use_state_engine=form['use_state_engine'],
                 vest_prefills=history,
-                fica_wages=stacked,
+                fica_wages=float(stack.get('fica_wages') or stacked),
             ).to_dict()
             year_tax['box1_wages'] = box1
             year_tax['equity_vested_ytd'] = eq_past
             year_tax['equity_remaining_year'] = eq_fut
+            year_tax['sale_stcg'] = float(stack.get('sale_stcg') or 0)
+            year_tax['sale_ltcg'] = float(stack.get('sale_ltcg') or 0)
             year_tax['stacked_wages'] = stacked
+            year_tax['tax_base'] = float(stack.get('tax_base') or 0)
         except Exception as e:
             logger.warning('year tax display failed: %s', e)
 

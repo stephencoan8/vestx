@@ -42,10 +42,12 @@
       <div class="tax-sit-label">All-in effective</div>
       <div class="tax-sit-value" data-k="effective_rate">{% if year_tax %}{{ "%.1f"|format(year_tax.effective_rate * 100) }}%{% else %}—{% endif %}</div>
       <div class="tax-sit-sub" data-k="stack_sub">
-        {% if year_tax and year_tax.stacked_wages %}
-        on ${{ "{:,.0f}".format(year_tax.stacked_wages) }} (wages + equity)
+        {% if year_tax and year_tax.tax_base %}
+        on ${{ "{:,.0f}".format(year_tax.tax_base) }}
+        {% elif year_tax and year_tax.stacked_wages %}
+        on ${{ "{:,.0f}".format(year_tax.stacked_wages) }}
         {% else %}
-        wages + VestX equity
+        wages + vests + sale gains
         {% endif %}
       </div>
     </div>
@@ -82,9 +84,10 @@
                  id="other_ordinary_income" name="other_ordinary_income"
                  value="{{ '{:,.2f}'.format(form.other_ordinary_income or 0) }}" required data-money>
         </div>
-        <div class="tax-equity-chip" id="equityChip" {% if not (history and (history.equity_vested_ytd or history.equity_remaining_year)) %}hidden{% endif %}>
-          Equity · vested <strong id="histEquityPast">{% if history %}${{ "{:,.0f}".format(history.equity_vested_ytd or 0) }}{% else %}$0{% endif %}</strong>
+        <div class="tax-equity-chip" id="equityChip" {% if not (history and (history.equity_vested_ytd or history.equity_remaining_year or history.sale_stcg or history.sale_ltcg)) %}hidden{% endif %}>
+          Vested <strong id="histEquityPast">{% if history %}${{ "{:,.0f}".format(history.equity_vested_ytd or 0) }}{% else %}$0{% endif %}</strong>
           · remaining <strong id="histEquityFuture">{% if history %}${{ "{:,.0f}".format(history.equity_remaining_year or 0) }}{% else %}$0{% endif %}</strong>
+          · sale gain <strong id="histSaleGain">{% if history %}${{ "{:,.0f}".format((history.sale_stcg or 0) + (history.sale_ltcg or 0)) }}{% else %}$0{% endif %}</strong>
         </div>
 
         <div class="form-row tax-profile-id-row">
@@ -107,37 +110,32 @@
           <button type="submit" class="btn btn-primary" id="saveYearBtn">Save <span class="year-label">{{ selected_year }}</span></button>
           <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Sales &amp; Tax</a>
         </div>
-        <details class="tax-hub-details" id="planningExtras" {% if (form.ytd_wages or 0)|float > 0 or (form.amt_credit_carryforward or 0)|float > 0 or (form.ca_amt_credit_carryforward or 0)|float > 0 or (form.other_long_term_gains or 0)|float > 0 or (form.other_short_term_gains or 0)|float > 0 %}open{% endif %}>
+        <details class="tax-hub-details" id="planningExtras" {% if (form.amt_credit_carryforward or 0)|float > 0 or (form.ca_amt_credit_carryforward or 0)|float > 0 or (form.other_long_term_gains or 0)|float > 0 or (form.other_short_term_gains or 0)|float > 0 %}open{% endif %}>
           <summary>Planning extras</summary>
           <div class="tax-details-body">
             <div class="form-row">
-              <div class="form-group">
-                <label for="ytd_wages">YTD wages (sale stacking)</label>
-                <input type="text" inputmode="decimal" class="money-input" id="ytd_wages" name="ytd_wages"
-                       value="{{ '{:,.2f}'.format(form.ytd_wages or 0) }}" data-money>
-              </div>
               <div class="form-group">
                 <label for="amt_credit_carryforward">Fed AMT credit</label>
                 <input type="text" inputmode="decimal" class="money-input" id="amt_credit_carryforward" name="amt_credit_carryforward"
                        value="{{ '{:,.2f}'.format(form.amt_credit_carryforward or 0) }}" data-money>
               </div>
-            </div>
-            <div class="form-row">
               <div class="form-group">
                 <label for="ca_amt_credit_carryforward">CA AMT credit</label>
                 <input type="text" inputmode="decimal" class="money-input" id="ca_amt_credit_carryforward" name="ca_amt_credit_carryforward"
                        value="{{ '{:,.2f}'.format(form.ca_amt_credit_carryforward or 0) }}" data-money>
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-group">
                 <label for="other_long_term_gains">Other LTCG</label>
                 <input type="text" inputmode="decimal" class="money-input" id="other_long_term_gains" name="other_long_term_gains"
                        value="{{ '{:,.2f}'.format(form.other_long_term_gains or 0) }}" data-money>
               </div>
-            </div>
-            <div class="form-group">
-              <label for="other_short_term_gains">Other STCG</label>
-              <input type="text" inputmode="decimal" class="money-input" id="other_short_term_gains" name="other_short_term_gains"
-                     value="{{ '{:,.2f}'.format(form.other_short_term_gains or 0) }}" data-money>
+              <div class="form-group">
+                <label for="other_short_term_gains">Other STCG</label>
+                <input type="text" inputmode="decimal" class="money-input" id="other_short_term_gains" name="other_short_term_gains"
+                       value="{{ '{:,.2f}'.format(form.other_short_term_gains or 0) }}" data-money>
+              </div>
             </div>
           </div>
         </details>
@@ -372,10 +370,13 @@
     if (chip) {
       var past = Number(h.equity_vested_ytd || 0);
       var fut = Number(h.equity_remaining_year || 0);
-      if (past > 0 || fut > 0) {
+      var saleG = Number(h.sale_stcg || 0) + Number(h.sale_ltcg || 0);
+      var saleEl = document.getElementById('histSaleGain');
+      if (past > 0 || fut > 0 || saleG) {
         chip.hidden = false;
         if (equityPast) equityPast.textContent = money(past);
         if (equityFuture) equityFuture.textContent = money(fut);
+        if (saleEl) saleEl.textContent = money(saleG);
       } else {
         chip.hidden = true;
       }
@@ -388,7 +389,6 @@
       filing_status: f.filing_status,
       state_code: f.state_code || '',
       other_ordinary_income: f.other_ordinary_income,
-      ytd_wages: f.ytd_wages,
       amt_credit_carryforward: f.amt_credit_carryforward,
       ca_amt_credit_carryforward: f.ca_amt_credit_carryforward,
       other_long_term_gains: f.other_long_term_gains,
@@ -428,7 +428,7 @@
       setText('[data-k="effective_rate"]', '—');
       setText('[data-k="marginal_display"]', '—');
       setText('[data-k="total_fica"]', '—');
-      setText('[data-k="stack_sub"]', 'wages + VestX equity');
+      setText('[data-k="stack_sub"]', 'wages + vests + sale gains');
       return;
     }
     setMoney(document.querySelector('[data-k="total_tax"]'), r.total_tax);
@@ -446,9 +446,12 @@
       (ficaM > 0 ? ' · FICA ' + (ficaM * 100).toFixed(1) + '%' : '')
     );
     setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
-    var stacked = Number(r.stacked_wages || r.wages || 0);
-    if (stacked > 0) {
-      setText('[data-k="stack_sub"]', 'on ' + money(stacked) + ' (wages + equity)');
+    var taxBase = Number(r.tax_base || 0);
+    if (!(taxBase > 0)) {
+      taxBase = Number(r.stacked_wages || r.wages || 0) + Number(r.stcg || 0) + Number(r.ltcg || 0);
+    }
+    if (taxBase > 0) {
+      setText('[data-k="stack_sub"]', 'on ' + money(taxBase));
     }
   }
 
@@ -527,7 +530,6 @@
       filing_status: (document.getElementById('filing_status') || {}).value,
       state_code: (document.getElementById('state_code') || {}).value,
       other_ordinary_income: parseMoney((document.getElementById('other_ordinary_income') || {}).value),
-      ytd_wages: parseMoney((document.getElementById('ytd_wages') || {}).value),
       other_long_term_gains: parseMoney((document.getElementById('other_long_term_gains') || {}).value),
       other_short_term_gains: parseMoney((document.getElementById('other_short_term_gains') || {}).value),
       amt_credit_carryforward: parseMoney((document.getElementById('amt_credit_carryforward') || {}).value),

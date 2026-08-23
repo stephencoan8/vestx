@@ -100,7 +100,8 @@ def run_advisor_turn(
     }
     try:
         profile = TaxProfile.for_user(user)
-        eng = profile.to_engine_dict()
+        from app.utils.tax_engine import resolve_engine_profile_for_year
+        eng = resolve_engine_profile_for_year(user, int(profile.tax_year or date.today().year))
     except Exception as e:
         logger.warning('tax profile load failed: %s', e)
 

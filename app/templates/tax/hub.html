@@ -931,7 +931,7 @@
       meta += '<div class="tax-stack-meta">Federal LTCG rate on last $: <strong>' +
         (100 * Number(rates.ltcg)).toFixed(0) + '%</strong>';
       if (a.other_ordinary != null) {
-        meta += ' · stacked wages/ordinary <strong>' + money(a.other_ordinary) + '</strong> (max of annual ordinary & YTD wages)';
+        meta += ' · stacked ordinary <strong>' + money(a.other_ordinary) + '</strong>';
       }
       if (a.ltcg != null) meta += ' · LT gain <strong>' + money(a.ltcg) + '</strong>';
       if (a.stcg != null && Number(a.stcg) > 0) meta += ' · ST gain <strong>' + money(a.stcg) + '</strong>';
