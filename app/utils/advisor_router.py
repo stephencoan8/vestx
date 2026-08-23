@@ -64,6 +64,11 @@ _NUANCE = re.compile(
     r'what if|opinion|in your (?:view|opinion))\b',
     re.I,
 )
+_INCOME_PROJ = re.compile(
+    r'\b(income|salary|wages|compensation|vest(?:ing|s| events)?)\b',
+    re.I,
+)
+_YEAR = re.compile(r'\b(20\d{2})\b')
 
 
 def _parse_money_from_match(m: re.Match) -> Optional[float]:
@@ -87,6 +92,18 @@ def _parse_money_from_match(m: re.Match) -> Optional[float]:
         if not suf and val < 1000:
             continue
         return val
+    return None
+
+
+def extract_income_year(text: str) -> Optional[int]:
+    """Calendar year for 'what will 2027 income be' / 'next year vests'."""
+    if not text or not _INCOME_PROJ.search(text):
+        return None
+    years = [int(y) for y in _YEAR.findall(text)]
+    if years:
+        return years[0]
+    if re.search(r'\bnext year\b', text, re.I):
+        return date.today().year + 1
     return None
 
 
@@ -140,6 +157,7 @@ def route_and_compute(
     sale_date: Optional[date] = None,
     plan: Optional[dict] = None,
     force_grok: bool = False,
+    user_id: Optional[int] = None,
 ) -> RouterResult:
     """
     Run deterministic tools when the question is computable.
@@ -376,6 +394,72 @@ def route_and_compute(
             mode='engine_only', intent='profile',
             engine_text=str(engine)[:1500], deterministic_reply=human, skip_grok=True,
         )
+
+    # --- Expected calendar-year income (salary + scheduled vests) ---
+    income_year = extract_income_year(text)
+    if income_year and user_id and not is_sell_plan:
+        try:
+            from app.utils.wage_year_tax import year_income_stack
+            cash = float(profile_dict.get('other_ordinary_income_raw') or 0)
+            if cash <= 0:
+                cash = float(profile_dict.get('other_ordinary_income') or 0)
+            stack = year_income_stack(user_id, income_year, cash_wages=cash)
+            vest = stack.get('vest') or {}
+            live = float(vest.get('live_price') or price or 0)
+            eq = float(stack.get('equity_vested_ytd') or 0) + float(
+                stack.get('equity_remaining_year') or 0
+            )
+            total = float(stack.get('ordinary') or 0)
+            iso_skip = int(vest.get('iso_vest_events_skipped') or 0)
+            events = list(vest.get('events') or [])
+            lines_h = [
+                f"**{income_year} expected ordinary (deterministic)** @ ${live:,.2f}/sh",
+                '',
+                f"- Cash wages (Tax Profile): **${cash:,.0f}**",
+                f"- RSU/cash vests: **${eq:,.0f}** ({len(events)} events @ live FMV)",
+            ]
+            if iso_skip:
+                lines_h.append(
+                    f"- ISO vests skipped: {iso_skip} (no W-2 at vest)"
+                )
+            lines_h.append('')
+            lines_h.append(f"**Total expected ordinary: ${total:,.0f}**")
+            if events:
+                lines_h.append('')
+                lines_h.append('| date | grant | shares | value |')
+                lines_h.append('| --- | --- | --- | --- |')
+                for ev in events[:24]:
+                    lines_h.append(
+                        f"| {ev.get('vest_date') or ''} | {ev.get('label') or ''} | "
+                        f"{float(ev.get('shares') or 0):,.2f} | "
+                        f"${float(ev.get('gross_value') or 0):,.0f} |"
+                    )
+            human = '\n'.join(lines_h)
+            engine = (
+                f"ENGINE_RESULT year_income year={income_year} cash={cash} "
+                f"vests={eq} total={total} live={live} iso_skipped={iso_skip} "
+                f"events={len(events)}"
+            )
+            if wants_nuance:
+                return RouterResult(
+                    mode='engine_then_grok', intent='year_income',
+                    engine_text=engine, deterministic_reply=human, skip_grok=False,
+                    engine_payload=stack,
+                )
+            return RouterResult(
+                mode='engine_only', intent='year_income',
+                engine_text=engine, deterministic_reply=human, skip_grok=True,
+                engine_payload=stack,
+                notes=['Year income from vest schedule + cash wages (0 Grok tokens)'],
+            )
+        except Exception as e:
+            return RouterResult(
+                mode='engine_only', intent='year_income',
+                engine_text=f'ENGINE_RESULT year_income error: {e}',
+                deterministic_reply=f'**Year income error**\n\n`{e}`',
+                skip_grok=True,
+                notes=[f'year_income_stack failed: {e}'],
+            )
 
     # --- Existing plan in session ---
     if plan and re.search(r'\b(this plan|my plan|the plan|those picks)\b', text, re.I):

@@ -89,6 +89,61 @@ def test_portfolio_engine_only():
     assert r.intent == 'portfolio'
 
 
+def test_extract_income_year():
+    from app.utils.advisor_router import extract_income_year
+    msg = (
+        "what do you expect my 2027 income to be when you include "
+        "current salary + expected vest events. Don't include ISO"
+    )
+    assert extract_income_year(msg) == 2027
+    assert extract_income_year('How many shares do I hold?') is None
+
+
+def test_2027_income_is_engine_only(monkeypatch):
+    fake = {
+        'cash_wages': 200_000,
+        'equity_vested_ytd': 0,
+        'equity_remaining_year': 150_000,
+        'ordinary': 350_000,
+        'sale_stcg': 0,
+        'sale_ltcg': 0,
+        'sale_count': 0,
+        'fica_wages': 350_000,
+        'stcg': 0,
+        'ltcg': 0,
+        'tax_base': 350_000,
+        'vest': {
+            'live_price': 137.0,
+            'iso_vest_events_skipped': 3,
+            'event_count': 1,
+            'events': [{
+                'vest_date': '2027-05-15',
+                'label': 'LTI rsu',
+                'shares': 165,
+                'gross_value': 22605,
+                'share_type': 'rsu',
+            }],
+        },
+        'sales': {},
+    }
+    monkeypatch.setattr('app.utils.wage_year_tax.year_income_stack', lambda *a, **k: fake)
+    r = route_and_compute(
+        user_message=(
+            "what do you expect my 2027 income to be when you include "
+            "current salary + expected vest events. Don't include ISO"
+        ),
+        profile_dict=_profile(),
+        inventory_lots=_lots(),
+        live_price=137.0,
+        user_id=2,
+    )
+    assert r.skip_grok is True
+    assert r.mode == 'engine_only'
+    assert r.intent == 'year_income'
+    assert '350,000' in r.deterministic_reply
+    assert 'ISO vests skipped' in r.deterministic_reply
+
+
 def test_open_uses_grok():
     r = route_and_compute(
         user_message='What are the main risks of exercising ISOs in a high-income year?',
@@ -154,6 +209,7 @@ if __name__ == '__main__':
     test_net_cash_is_engine_only()
     test_why_uses_grok_after_engine()
     test_portfolio_engine_only()
+    test_extract_income_year()
     test_open_uses_grok()
     test_should_i_sell_50k_engine_only()
     test_update_screen_300k_liquid_engine_only()

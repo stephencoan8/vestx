@@ -140,6 +140,7 @@ def run_advisor_turn(
             live_price=live,
             plan=plan,
             force_grok=bool(force_grok),
+            user_id=user_id,
         )
     except Exception as e:
         logger.error('route_and_compute failed: %s', e, exc_info=True)

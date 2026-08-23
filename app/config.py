@@ -48,6 +48,7 @@ class Config:
     XAI_API_KEY = os.getenv('XAI_API_KEY')  # optional single-tenant fallback
     XAI_MODEL = os.getenv('XAI_MODEL', 'grok-4.5')
     XAI_BASE_URL = os.getenv('XAI_BASE_URL', 'https://api.x.ai/v1')
+    XAI_REASONING_EFFORT = os.getenv('XAI_REASONING_EFFORT', 'low')  # grok-4.5 defaults to high
 
     # Session Security
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in prod

@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = os.getenv('XAI_MODEL', 'grok-4.5')
 BASE_URL = os.getenv('XAI_BASE_URL', 'https://api.x.ai/v1')
+# grok-4.5/4.6 default to "high" reasoning — chat Qs feel frozen without this.
+REASONING_EFFORT = (os.getenv('XAI_REASONING_EFFORT') or 'low').strip() or 'low'
 
 
 def _user_api_key(user) -> Optional[str]:
@@ -106,12 +108,21 @@ def _chat(
         )
     client = _client(api_key)
     model = _user_model(user) or DEFAULT_MODEL
+    effort = REASONING_EFFORT
+    create_kwargs = {
+        'model': model,
+        'messages': messages,
+        'temperature': temperature,
+    }
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-        )
+        try:
+            resp = client.chat.completions.create(
+                **create_kwargs, reasoning_effort=effort,
+            )
+        except TypeError:
+            resp = client.chat.completions.create(
+                **create_kwargs, extra_body={'reasoning_effort': effort},
+            )
         text = _message_text(resp)
         if text:
             return text
@@ -123,7 +134,18 @@ def _chat(
             parts = []
             for m in messages:
                 parts.append(f"{m.get('role', 'user').upper()}: {m.get('content', '')}")
-            resp = client.responses.create(model=model, input='\n\n'.join(parts))
+            try:
+                resp = client.responses.create(
+                    model=model,
+                    input='\n\n'.join(parts),
+                    reasoning={'effort': effort},
+                )
+            except TypeError:
+                resp = client.responses.create(
+                    model=model,
+                    input='\n\n'.join(parts),
+                    extra_body={'reasoning': {'effort': effort}},
+                )
             text = getattr(resp, 'output_text', None)
             if text:
                 return text.strip()
