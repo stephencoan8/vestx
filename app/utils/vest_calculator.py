@@ -116,14 +116,25 @@ def rsu_active_vesting_months(grant) -> int:
     """
     Months over which RSU/RSA shares actually deliver.
 
-    SpaceX multi-year grants are labeled vest_years=5 (lag/cliff structure
-    included) but LTI / new-hire delivery is 4 years = 48 months — same active
-    window as ISO_5Y. Shorter grants use vest_years × 12.
+    Annual-performance **LTI** (long_term): labeled vest_years=5 with 1y lag,
+    but share delivery is 4 years = **48 months** (8 semi-annual) — matches ISO_5Y
+    and Shareworks unavailable counts.
+
+    New hire / promotion / other multi-year RSUs: use full ``vest_years × 12``
+    (typically 60 months / 10 semi-annual for a 5y grant with 1y cliff). Applying
+    48 months here over-vests vs Shareworks (~1.5k shares too early on a 9.7k NH).
     """
     vy = int(getattr(grant, 'vest_years', None) or 1)
-    if vy >= 5:
+    freq = get_vest_frequency_months(getattr(grant, 'vest_frequency', None))
+    gt = (getattr(grant, 'grant_type', None) or '').lower()
+    bonus = (getattr(grant, 'bonus_type', None) or '').lower()
+    if (
+        gt == GrantType.ANNUAL_PERFORMANCE.value
+        and bonus == 'long_term'
+        and vy >= 5
+    ):
         return 48
-    return max(get_vest_frequency_months(getattr(grant, 'vest_frequency', None)), vy * 12)
+    return max(freq, vy * 12)
 
 
 def get_next_espp_date(grant_date: date) -> date:

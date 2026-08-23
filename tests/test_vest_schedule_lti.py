@@ -43,17 +43,18 @@ def test_lti_rsu_quarterly_is_sixteen_events():
     assert rsu_active_vesting_months(_grant()) == 48
 
 
-def test_new_hire_uses_forty_eight_months():
+def test_new_hire_uses_sixty_months_like_shareworks():
     g = _grant(
         grant_type=GrantType.NEW_HIRE.value,
         bonus_type=None,
         cliff_years=1.0,
     )
     events = calculate_vest_schedule(g)
-    # 48mo / 6 = 8 periods; cliff 12mo = 2 periods → 1 cliff + 6 remaining = 7 events
-    assert len(events) == 7
+    # 60mo / 6 = 10 periods; cliff 12mo = 2 periods → 1 cliff + 8 remaining = 9 events
+    assert rsu_active_vesting_months(g) == 60
+    assert len(events) == 9
     assert sum(e['shares'] for e in events) == 1000
-    assert events[0]['shares'] == 250  # 25% cliff
+    assert events[0]['shares'] == 200  # 20% cliff (2/10)
 
 
 def test_sti_still_single_period():

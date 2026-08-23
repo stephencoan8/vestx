@@ -55,8 +55,9 @@ def migrate_grant_vest_frequency(app):
             pass
         logger.warning('grant vest_frequency backfill skipped: %s', e)
 
-    # Resync multi-year RSU/RSA schedules so 60mo/10-event LTI becomes 48mo/8-event.
-    # Safe sync preserves tax/sale-linked vest rows.
+    # Resync multi-year RSU schedules:
+    # - LTI (annual_performance long_term): 48mo
+    # - new_hire / promotion: vest_years×12 (60mo for 5y) — Shareworks-aligned
     try:
         from app.models.grant import Grant, ShareType
         from app.utils.vest_calculator import calculate_vest_schedule
@@ -64,7 +65,7 @@ def migrate_grant_vest_frequency(app):
 
         grants = Grant.query.filter(
             Grant.share_type.in_([ShareType.RSU.value, 'rsa']),
-            Grant.vest_years >= 5,
+            Grant.vest_years >= 4,
         ).all()
         total = {'created': 0, 'updated': 0, 'deleted': 0, 'preserved': 0, 'grants': 0}
         for grant in grants:
@@ -80,7 +81,7 @@ def migrate_grant_vest_frequency(app):
                 logger.warning('schedule resync failed for grant %s: %s', grant.id, e)
         db.session.commit()
         logger.info(
-            'RSU schedule resync (48mo): grants=%s created=%s updated=%s deleted=%s preserved=%s column_added=%s',
+            'RSU schedule resync (LTI 48mo / NH 60mo): grants=%s created=%s updated=%s deleted=%s preserved=%s column_added=%s',
             total['grants'], total['created'], total['updated'], total['deleted'],
             total['preserved'], column_added,
         )
