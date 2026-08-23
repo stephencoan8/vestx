@@ -274,16 +274,31 @@ def compute_w2_year_tax(
 
 def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
     """
-    Sum historical RSU/cash vest gross value for a calendar year from VestX data.
-    Suggests a W-2 equity component the user can round into wages.
+    Sum RSU/cash vest gross for a calendar year from VestX data.
+
+    Splits:
+      - equity_vested_ytd: vest_date <= as_of (FMV at vest)
+      - equity_remaining_year: future vests still in this tax year @ live FMV
+    ISO vest events are skipped (no W-2 ordinary at vest for hold path).
     """
     from datetime import date
     from app.models.vest_event import VestEvent
     from app.models.grant import Grant, ShareType
+    from app.utils.price_utils import get_latest_user_price
     from sqlalchemy.orm import joinedload
 
     start = date(tax_year, 1, 1)
     end = date(tax_year, 12, 31)
+    today = date.today()
+    if tax_year < today.year:
+        as_of = end
+    elif tax_year > today.year:
+        as_of = start  # entire year still future
+    else:
+        as_of = today
+
+    live = float(get_latest_user_price(user_id) or 0.0)
+
     events = (
         VestEvent.query
         .options(joinedload(VestEvent.grant))
@@ -297,8 +312,10 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
         .all()
     )
 
-    rsu_gross = 0.0
-    cash_gross = 0.0
+    rsu_past = 0.0
+    rsu_future = 0.0
+    cash_past = 0.0
+    cash_future = 0.0
     iso_count = 0
     rows: List[dict] = []
     for ve in events:
@@ -307,37 +324,50 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
         st = ve.grant.share_type
         if st in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value):
             iso_count += 1
-            # ISO exercise AMT not W-2 ordinary at vest for pure ISO hold path
             continue
-        try:
-            gval = float(ve.value_at_vest or 0)
-        except Exception:
-            gval = 0.0
-        if st == ShareType.CASH.value:
-            cash_gross += gval
+        sh = float(ve.shares_vested or 0)
+        is_future = bool(ve.vest_date and ve.vest_date > as_of)
+        if is_future:
+            gval = sh * live if live > 0 else 0.0
         else:
-            rsu_gross += gval
+            try:
+                gval = float(ve.value_at_vest or 0)
+            except Exception:
+                gval = sh * live if live > 0 else 0.0
+        if st == ShareType.CASH.value:
+            if is_future:
+                cash_future += gval
+            else:
+                cash_past += gval
+        else:
+            if is_future:
+                rsu_future += gval
+            else:
+                rsu_past += gval
         rows.append({
             'vest_date': ve.vest_date.isoformat() if ve.vest_date else None,
             'label': f"{ve.grant.grant_type or 'grant'} · {st}",
-            'shares': float(ve.shares_vested or 0),
+            'shares': sh,
             'gross_value': round(gval, 2),
             'share_type': st,
+            'is_future': is_future,
         })
 
-    equity_w2 = rsu_gross + cash_gross
+    equity_past = rsu_past + cash_past
+    equity_future = rsu_future + cash_future
+    equity_w2 = equity_past + equity_future
     return {
         'tax_year': tax_year,
-        'rsu_vest_gross': round(rsu_gross, 2),
-        'cash_bonus_gross': round(cash_gross, 2),
+        'as_of': as_of.isoformat(),
+        'live_price': live,
+        'rsu_vest_gross': round(rsu_past + rsu_future, 2),
+        'cash_bonus_gross': round(cash_past + cash_future, 2),
+        'equity_vested_ytd': round(equity_past, 2),
+        'equity_remaining_year': round(equity_future, 2),
         'suggested_equity_in_w2': round(equity_w2, 2),
         'iso_vest_events_skipped': iso_count,
         'event_count': len(rows),
         'events': rows[:40],
-        'note': (
-            'RSU vest value is usually in W-2 box 1 already. '
-            'Enter total W-2 wages (salary + equity) as one number — do not add this on top twice.'
-        ),
     }
 
 

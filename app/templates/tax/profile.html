@@ -41,7 +41,13 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">All-in effective</div>
       <div class="tax-sit-value" data-k="effective_rate">{% if year_tax %}{{ "%.1f"|format(year_tax.effective_rate * 100) }}%{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">income-tax only <span data-k="income_tax_effective_rate">{% if year_tax %}{{ "%.1f"|format((year_tax.income_tax_effective_rate or 0) * 100) }}%{% else %}—{% endif %}</span></div>
+      <div class="tax-sit-sub" data-k="stack_sub">
+        {% if year_tax and year_tax.stacked_wages %}
+        on ${{ "{:,.0f}".format(year_tax.stacked_wages) }} (wages + equity)
+        {% else %}
+        wages + VestX equity
+        {% endif %}
+      </div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Next-dollar marginal</div>
@@ -62,7 +68,7 @@
         <input type="hidden" name="tax_year" id="tax_year" value="{{ selected_year }}">
 
         <label class="tax-box1-label" for="other_ordinary_income">
-          W-2 box 1 · <span class="year-label">{{ selected_year }}</span>
+          Wages (ex-equity) · <span class="year-label">{{ selected_year }}</span>
         </label>
         <div class="tax-box1-wrap">
           <span class="tax-box1-prefix">$</span>
@@ -70,8 +76,9 @@
                  id="other_ordinary_income" name="other_ordinary_income"
                  value="{{ '{:,.2f}'.format(form.other_ordinary_income or 0) }}" required data-money>
         </div>
-        <div class="tax-equity-chip" id="equityChip" {% if not (history and history.suggested_equity_in_w2) %}hidden{% endif %}>
-          VestX equity ordinary ≈ <strong id="histEquityVal">{% if history and history.suggested_equity_in_w2 %}${{ "{:,.0f}".format(history.suggested_equity_in_w2) }}{% else %}$0{% endif %}</strong>
+        <div class="tax-equity-chip" id="equityChip" {% if not (history and (history.equity_vested_ytd or history.equity_remaining_year)) %}hidden{% endif %}>
+          Equity · vested <strong id="histEquityPast">{% if history %}${{ "{:,.0f}".format(history.equity_vested_ytd or 0) }}{% else %}$0{% endif %}</strong>
+          · remaining <strong id="histEquityFuture">{% if history %}${{ "{:,.0f}".format(history.equity_remaining_year or 0) }}{% else %}$0{% endif %}</strong>
         </div>
 
         <div class="form-row tax-profile-id-row">
@@ -331,7 +338,8 @@
     var stats = document.getElementById('histStats');
     var events = document.getElementById('histEvents');
     var chip = document.getElementById('equityChip');
-    var equityVal = document.getElementById('histEquityVal');
+    var equityPast = document.getElementById('histEquityPast');
+    var equityFuture = document.getElementById('histEquityFuture');
     if (!h || !h.event_count) {
       if (card) card.style.display = 'none';
       if (chip) chip.hidden = true;
@@ -355,10 +363,13 @@
         events.appendChild(row);
       });
     }
-    if (chip && equityVal) {
-      if (h.suggested_equity_in_w2) {
+    if (chip) {
+      var past = Number(h.equity_vested_ytd || 0);
+      var fut = Number(h.equity_remaining_year || 0);
+      if (past > 0 || fut > 0) {
         chip.hidden = false;
-        equityVal.textContent = money(h.suggested_equity_in_w2);
+        if (equityPast) equityPast.textContent = money(past);
+        if (equityFuture) equityFuture.textContent = money(fut);
       } else {
         chip.hidden = true;
       }
@@ -409,24 +420,23 @@
     if (!r) {
       setText('[data-k="total_tax"]', '—');
       setText('[data-k="effective_rate"]', '—');
-      setText('[data-k="income_tax_effective_rate"]', '—');
       setText('[data-k="marginal_display"]', '—');
       setText('[data-k="total_fica"]', '—');
+      setText('[data-k="stack_sub"]', 'wages + VestX equity');
       return;
     }
     setMoney(document.querySelector('[data-k="total_tax"]'), r.total_tax);
     setText('[data-k="effective_rate"]', (Number(r.effective_rate || 0) * 100).toFixed(1) + '%');
-    var ir = r.income_tax_effective_rate;
-    if (ir == null && r.income_tax_total != null && r.wages) {
-      ir = Number(r.income_tax_total) / Math.max(1, Number(r.wages) + Number(r.stcg || 0) + Number(r.ltcg || 0));
-    }
-    setText('[data-k="income_tax_effective_rate"]', (Number(ir || 0) * 100).toFixed(1) + '%');
     setText(
       '[data-k="marginal_display"]',
       Math.round(Number(r.ordinary_marginal || 0) * 100) + '% · ' +
       (Number(r.state_marginal || 0) * 100).toFixed(1) + '%'
     );
     setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
+    var stacked = Number(r.stacked_wages || r.wages || 0);
+    if (stacked > 0) {
+      setText('[data-k="stack_sub"]', 'on ' + money(stacked) + ' (wages + equity)');
+    }
   }
 
   function applyPackage(data) {

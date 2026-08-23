@@ -308,26 +308,33 @@ def api_year_tax():
                     out[rk] = (v / 100.0) if v > 1 else v
             return out
 
-        def _wage_bases(form: dict) -> tuple:
+        def _wage_bases(form: dict, history: Optional[dict] = None) -> tuple:
             """
-            Box-1 ordinary drives federal/CA and FICA for full-year estimates.
-            YTD is only a fallback when box 1 is empty — never max() with a
-            leftover current-year YTD (that was inflating past-year tax).
+            Full-year stack for Tax Profile KPIs:
+              box-1 wages
+              + VestX RSU/cash already vested this year
+              + remaining scheduled vests this year @ live FMV
+            YTD wages is only a fallback when box 1 is empty (sale stacking).
             """
             ordinary = float(form.get('other_ordinary_income') or 0)
             ytd = float(form.get('ytd_wages') or 0)
             if ordinary <= 0 and ytd > 0:
                 ordinary = ytd
-            # Full-year: FICA tracks box 1. (YTD still saved for mid-year sale stacking.)
-            fica = ordinary
-            return ordinary, fica
+            hist = history or {}
+            equity_past = float(hist.get('equity_vested_ytd') or 0)
+            equity_future = float(hist.get('equity_remaining_year') or 0)
+            # Box 1 should be non-equity wages (salary/cash). VestX adds equity
+            # already vested this year + remaining scheduled vests @ live FMV.
+            stacked = ordinary + equity_past + equity_future
+            fica = stacked
+            return stacked, fica, ordinary, equity_past, equity_future
 
         def _package(year: int, form: dict, source: str, history: dict, *, run: bool = True):
             if year not in years:
                 years_out = sorted(set(years) | {year}, reverse=True)
             else:
                 years_out = years
-            wages, fica_wages = _wage_bases(form)
+            wages, fica_wages, box1, eq_past, eq_fut = _wage_bases(form, history)
             result = None
             if run and wages > 0:
                 result = compute_w2_year_tax(
@@ -344,6 +351,10 @@ def api_year_tax():
                     vest_prefills=history,
                     fica_wages=fica_wages,
                 ).to_dict()
+                result['box1_wages'] = box1
+                result['equity_vested_ytd'] = eq_past
+                result['equity_remaining_year'] = eq_fut
+                result['stacked_wages'] = wages
             # Client-friendly form: rates as percent for override fields
             form_out = dict(form)
             form_out['tax_year'] = year
@@ -537,19 +548,22 @@ def tax_profile():
         source = 'new'
 
     history = build_year_vest_prefill(current_user.id, selected_year)
-    ordinary = float(form.get('other_ordinary_income') or 0)
+    box1 = float(form.get('other_ordinary_income') or 0)
     ytd = float(form.get('ytd_wages') or 0)
-    if ordinary <= 0 and ytd > 0:
-        ordinary = ytd
-    fica_wages = ordinary  # full-year: don't let a stale high YTD inflate FICA
+    if box1 <= 0 and ytd > 0:
+        box1 = ytd
+    eq_past = float(history.get('equity_vested_ytd') or 0)
+    eq_fut = float(history.get('equity_remaining_year') or 0)
+    # Box 1 = non-equity wages; VestX stacks equity vested YTD + remaining @ live
+    stacked = box1 + eq_past + eq_fut
     year_tax = None
-    if ordinary > 0:
+    if stacked > 0:
         try:
             year_tax = compute_w2_year_tax(
                 tax_year=selected_year,
                 filing_status=form['filing_status'],
                 state_code=form.get('state_code') or 'CA',
-                wages=ordinary,
+                wages=stacked,
                 other_ordinary=0,
                 stcg=float(form.get('other_short_term_gains') or 0),
                 ltcg=float(form.get('other_long_term_gains') or 0),
@@ -557,8 +571,12 @@ def tax_profile():
                 ss_wage_base_maxed=form['ss_wage_base_maxed'],
                 use_state_engine=form['use_state_engine'],
                 vest_prefills=history,
-                fica_wages=fica_wages,
+                fica_wages=stacked,
             ).to_dict()
+            year_tax['box1_wages'] = box1
+            year_tax['equity_vested_ytd'] = eq_past
+            year_tax['equity_remaining_year'] = eq_fut
+            year_tax['stacked_wages'] = stacked
         except Exception as e:
             logger.warning('year tax display failed: %s', e)
 
