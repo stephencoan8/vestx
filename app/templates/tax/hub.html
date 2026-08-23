@@ -459,39 +459,28 @@
     </div>
 
     <div class="tax-ledger-block tax-reserve-block">
-      <h3 class="tax-subhead">Tax season reserve · {{ sold_year }}</h3>
-      <div class="tax-check-row" style="margin:0.75rem 0;">
-        <span>Stacked equity-sale tax est.: <strong>${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }}</strong>
-          (fed ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.federal) }}
-          · NIIT ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.niit) }}
-          · state ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.state) }})</span>
+      <h3 class="tax-subhead">Tax reserve · {{ sold_year }}</h3>
+      <div class="tax-situation tax-sold-kpis" style="margin-bottom:1rem;">
+        <div class="tax-sit-card">
+          <div class="tax-sit-label">Est. tax</div>
+          <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }}</div>
+        </div>
+        <div class="tax-sit-card">
+          <div class="tax-sit-label">Credits</div>
+          <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.credits.total) }}</div>
+        </div>
+        <div class="tax-sit-card accent">
+          <div class="tax-sit-label">Still to save</div>
+          <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
+        </div>
       </div>
-      <div class="tax-check-row" style="margin-bottom:0.75rem;">
-        <span>Credits on profile: withholding F/S ${{ "{:,.0f}".format(tax_calendar.credits.federal_withholding_ytd + tax_calendar.credits.state_withholding_ytd) }}
-          · estimated payments ${{ "{:,.0f}".format(tax_calendar.credits.estimated_payments_ytd) }}
-          · <a href="{{ url_for('tax_center.tax_profile') }}">Tax profile</a></span>
-      </div>
-
       <div class="tax-quarter-grid">
         {% for q in tax_calendar.quarters %}
         <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
-          <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_iso }}</div>
+          <div class="tax-quarter-label">{{ q.label }} · {{ q.due_iso }}</div>
           <div class="tax-quarter-pay">${{ "{:,.0f}".format(q.suggested_payment) }}</div>
         </div>
         {% endfor %}
-      </div>
-
-      <div class="tax-safe-harbor" style="margin-top:1rem;">
-        <h4 class="tax-subhead" style="font-size:0.95rem;">Safe harbor</h4>
-        {% set sh = tax_calendar.safe_harbor %}
-        <ul class="tax-notes-list">
-          <li>Prior-year tax safe harbor: <strong>${{ "{:,.0f}".format(sh.prior_year_safe_harbor) }}</strong>
-            ({% if sh.high_agi_110 %}110%{% else %}100%{% endif %} of prior-year tax
-            {% if sh.prior_year_agi %}· prior AGI ${{ "{:,.0f}".format(sh.prior_year_agi) }}{% endif %})</li>
-          <li>90% of current equity-tax estimate: <strong>${{ "{:,.0f}".format(sh.current_year_90pct) }}</strong></li>
-          <li>Lower bar: <strong>${{ "{:,.0f}".format(sh.required_annual) }}</strong>/yr
-            ≈ ${{ "{:,.0f}".format(sh.per_quarter) }}/quarter</li>
-        </ul>
       </div>
     </div>
   </section>
