@@ -83,6 +83,6 @@ class AdvisorJob(db.Model):
             'error': self.error,
             'async': True,
         }
-        if include_result and self.status == 'done':
+        if include_result and self.status in ('done', 'error'):
             d['result'] = self.get_result()
         return d

@@ -16,6 +16,65 @@ from app.models.advisor_job import AdvisorJob
 
 logger = logging.getLogger(__name__)
 
+# Gunicorn restarts (deploys) kill in-process daemon threads and leave rows
+# stuck at queued/running. Age these out so the chat UI can fail fast.
+STALE_QUEUED_SECONDS = 180
+STALE_RUNNING_SECONDS = 600
+
+
+def expire_stale_jobs(*, older_than_seconds: Optional[int] = None) -> int:
+    """Mark orphaned queued/running jobs as error. Returns count expired."""
+    now = datetime.utcnow()
+    try:
+        jobs = (
+            AdvisorJob.query
+            .filter(AdvisorJob.status.in_(('queued', 'running')))
+            .all()
+        )
+    except Exception as e:
+        logger.warning('expire_stale_jobs query failed: %s', e)
+        return 0
+
+    n = 0
+    for job in jobs:
+        ref = job.started_at or job.created_at
+        age = (now - ref).total_seconds() if ref else 10**9
+        limit = older_than_seconds
+        if limit is None:
+            limit = (
+                STALE_QUEUED_SECONDS if job.status == 'queued'
+                else STALE_RUNNING_SECONDS
+            )
+        if age < limit:
+            continue
+        job.status = 'error'
+        job.phase = 'stale'
+        job.error = (
+            'Advisor job timed out — the worker restarted or Grok took too long. '
+            'Send the question again.'
+        )
+        job.finished_at = now
+        try:
+            job.set_result({
+                'success': False,
+                'error': job.error,
+                'phase': 'stale',
+                'api_ok': False,
+                'code': 'stale_job',
+            })
+        except Exception:
+            pass
+        n += 1
+    if n:
+        try:
+            db.session.commit()
+            logger.info('expired %s stale advisor job(s)', n)
+        except Exception as e:
+            logger.warning('expire_stale_jobs commit failed: %s', e)
+            db.session.rollback()
+            return 0
+    return n
+
 
 def _purge_old_jobs(user_id: int, keep_hours: int = 24) -> None:
     try:
@@ -42,6 +101,7 @@ def enqueue_advisor_job(
     Create a job row and start a daemon thread. Returns immediately with status=queued.
     """
     _purge_old_jobs(user_id)
+    expire_stale_jobs()
 
     job = AdvisorJob(
         user_id=user_id,
@@ -79,6 +139,7 @@ def _thread_entry(app, job_id: str) -> None:
 def get_job_for_user(job_id: str, user_id: int) -> Optional[AdvisorJob]:
     if not job_id:
         return None
+    expire_stale_jobs()
     job = AdvisorJob.query.get(job_id)
     if not job or job.user_id != user_id:
         return None

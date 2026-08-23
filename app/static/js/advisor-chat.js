@@ -351,7 +351,7 @@
                     }
                     // Unknown — keep polling a bit
                     pollAttempt += 1;
-                    if (pollAttempt > 90) {
+                    if (pollAttempt > 240) {
                         finishError(jobId, { error: 'Job timed out waiting for status', status: st });
                         return;
                     }
@@ -362,7 +362,7 @@
                     if (activeJobId !== jobId) return;
                     // Transient network blip — keep polling
                     pollAttempt += 1;
-                    if (pollAttempt > 100) {
+                    if (pollAttempt > 240) {
                         finishError(jobId, { error: e.message || String(e), status: e.status });
                         return;
                     }

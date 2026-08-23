@@ -119,6 +119,13 @@ def create_app():
         from app.utils.migrate_advisor_jobs import migrate_advisor_jobs
         _safe_migrate('advisor_jobs', migrate_advisor_jobs)
 
+        # Orphaned queued/running rows after a deploy (daemon thread died)
+        try:
+            from app.utils.advisor_jobs import expire_stale_jobs
+            expire_stale_jobs(older_than_seconds=60)
+        except Exception as e:
+            _log.warning('expire_stale_jobs on boot failed: %s', e)
+
         from app.utils.migrate_tax_year_profiles import migrate_tax_year_profiles
         _safe_migrate('tax_year_profiles', migrate_tax_year_profiles)
 

@@ -65,9 +65,31 @@ def resolve_api_key(user=None) -> Optional[str]:
 
 def _client(api_key: str):
     from openai import OpenAI
+    import httpx
     if not api_key:
         raise RuntimeError('No xAI API key available for this user')
-    return OpenAI(api_key=api_key, base_url=BASE_URL)
+    # Reasoning models (grok-4.5+) can exceed the SDK default timeout.
+    return OpenAI(
+        api_key=api_key,
+        base_url=BASE_URL,
+        timeout=httpx.Timeout(600.0),
+    )
+
+
+def _message_text(resp) -> str:
+    """Pull assistant text from chat.completions (incl. reasoning-only replies)."""
+    try:
+        msg = resp.choices[0].message
+    except Exception:
+        return ''
+    text = (getattr(msg, 'content', None) or '').strip()
+    if text:
+        return text
+    for attr in ('reasoning_content',):
+        extra = getattr(msg, attr, None)
+        if extra:
+            return str(extra).strip()
+    return ''
 
 
 def _chat(
@@ -90,7 +112,11 @@ def _chat(
             messages=messages,
             temperature=temperature,
         )
-        return (resp.choices[0].message.content or '').strip()
+        text = _message_text(resp)
+        if text:
+            return text
+        logger.warning('chat.completions returned empty content; trying responses API')
+        raise RuntimeError('empty chat.completions content')
     except Exception as e1:
         logger.warning('chat.completions failed (%s); trying responses API', e1)
         try:

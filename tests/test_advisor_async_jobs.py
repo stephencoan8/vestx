@@ -54,7 +54,68 @@ def test_enqueue_and_complete_engine_only():
         assert result.get('phase') in ('engine_done', 'engine_done_no_key', 'grok_done')
 
 
+def test_expire_stale_running_job():
+    from datetime import datetime, timedelta
+    from app import create_app, db
+    from app.models.advisor_job import AdvisorJob
+    from app.models.user import User
+    from app.utils.advisor_jobs import expire_stale_jobs
+
+    app = create_app()
+    with app.app_context():
+        u = User.query.first()
+        if not u:
+            return
+        job = AdvisorJob(user_id=u.id, status='running', phase='engines')
+        job.set_messages([{'role': 'user', 'content': 'stale ping'}])
+        old = datetime.utcnow() - timedelta(minutes=20)
+        job.created_at = old
+        job.started_at = old
+        db.session.add(job)
+        db.session.commit()
+        jid = job.id
+        n = expire_stale_jobs()
+        assert n >= 1
+        db.session.expire_all()
+        j = AdvisorJob.query.get(jid)
+        assert j is not None
+        assert j.status == 'error'
+        assert j.phase == 'stale'
+        db.session.delete(j)
+        db.session.commit()
+
+
+def test_fresh_job_not_expired():
+    from datetime import datetime
+    from app import create_app, db
+    from app.models.advisor_job import AdvisorJob
+    from app.models.user import User
+    from app.utils.advisor_jobs import expire_stale_jobs
+
+    app = create_app()
+    with app.app_context():
+        u = User.query.first()
+        if not u:
+            return
+        job = AdvisorJob(user_id=u.id, status='running', phase='engines')
+        job.set_messages([{'role': 'user', 'content': 'fresh ping'}])
+        job.created_at = datetime.utcnow()
+        job.started_at = datetime.utcnow()
+        db.session.add(job)
+        db.session.commit()
+        jid = job.id
+        expire_stale_jobs()
+        db.session.expire_all()
+        j = AdvisorJob.query.get(jid)
+        assert j is not None
+        assert j.status == 'running'
+        db.session.delete(j)
+        db.session.commit()
+
+
 if __name__ == '__main__':
     test_slim_engine_plan()
+    test_expire_stale_running_job()
+    test_fresh_job_not_expired()
     test_enqueue_and_complete_engine_only()
     print('ADVISOR ASYNC JOB TESTS PASSED')

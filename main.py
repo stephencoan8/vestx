@@ -12,6 +12,12 @@ logging.basicConfig(
     level=_log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+# Never dump full Grok request bodies (account lots, prompts) to Railway logs
+for _noisy in (
+    'openai', 'openai._base_client',
+    'httpx', 'httpx2', 'httpcore', 'httpcore2', 'httpcore.http11',
+):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 app = create_app()
 
