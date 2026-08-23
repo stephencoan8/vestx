@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}VestX{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     {# Apply saved theme before paint to avoid flash #}
     <script>
     (function () {
@@ -23,51 +23,35 @@
 </head>
 <body class="{% if current_user.is_authenticated %}app-layout{% else %}guest-layout{% endif %}">
     {% if current_user.is_authenticated %}
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-            <a href="{{ url_for('main.dashboard') }}">VestX</a>
-        </div>
-
-        <nav class="sidebar-nav" aria-label="Main">
-            <div class="sidebar-section">
-                <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Dashboard</a>
-                <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('grants.') %} active{% endif %}">Holdings</a>
-                <a href="{{ url_for('tax_center.activity') }}" class="nav-link{% if request.endpoint == 'tax_center.activity' %} active{% endif %}">Activity</a>
-                <a href="{{ url_for('tax_center.hub') }}" class="nav-link{% if request.endpoint in ['tax_center.hub', 'tax_center.tax_profile'] %} active{% endif %}">Plan</a>
-            </div>
-
-            <div class="sidebar-section">
-                <span class="sidebar-label">Account</span>
-                <a href="{{ url_for('settings.profile') }}" class="nav-link{% if request.endpoint and (request.endpoint.startswith('settings.') or request.endpoint.startswith('prices.')) %} active{% endif %}">Settings</a>
-                {% if current_user.is_admin %}
-                <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link{% if request.endpoint and request.endpoint.startswith('admin.') %} active{% endif %}">Admin</a>
-                {% endif %}
-            </div>
+    <header class="running">
+        <a class="running-brand" href="{{ url_for('main.dashboard') }}">VestX · Private ledger</a>
+        <button type="button" class="running-toggle" id="sidebarToggle" aria-label="Open contents" aria-expanded="false" aria-controls="sidebar">Contents</button>
+        <nav class="running-nav" id="sidebar" aria-label="Main">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Position</a>
+            <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('grants.') %} active{% endif %}">Holdings</a>
+            <a href="{{ url_for('tax_center.activity') }}" class="nav-link{% if request.endpoint == 'tax_center.activity' %} active{% endif %}">Activity</a>
+            <a href="{{ url_for('tax_center.hub') }}" class="nav-link{% if request.endpoint in ['tax_center.hub', 'tax_center.tax_profile'] %} active{% endif %}">Plan</a>
+            <a href="{{ url_for('settings.profile') }}" class="nav-link{% if request.endpoint and (request.endpoint.startswith('settings.') or request.endpoint.startswith('prices.')) %} active{% endif %}">Settings</a>
+            {% if current_user.is_admin %}
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link{% if request.endpoint and request.endpoint.startswith('admin.') %} active{% endif %}">Admin</a>
+            {% endif %}
         </nav>
-
-        <div class="sidebar-footer">
-            <span class="user-badge">{{ current_user.username }}</span>
-            <a href="{{ url_for('auth.logout') }}" class="nav-link logout-link">Logout</a>
+        <div class="running-meta">
+            <span>{{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}">Close</a>
+            <span>{{ ledger_year_roman }}</span>
         </div>
-    </aside>
-
+    </header>
     <div class="app-main">
-        <header class="mobile-topbar">
-            <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
-            <a href="{{ url_for('main.dashboard') }}" class="mobile-brand">VestX</a>
-        </header>
     {% else %}
-    <nav class="navbar guest-navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <a href="/">VestX</a>
-            </div>
-            <div class="nav-menu">
-                <a href="{{ url_for('auth.login') }}" class="nav-link">Login</a>
-                <a href="{{ url_for('auth.register') }}" class="nav-link">Register</a>
-            </div>
-        </div>
-    </nav>
+    <header class="running running-guest">
+        <a class="running-brand" href="/">VestX · Private ledger</a>
+        <nav class="running-nav">
+            <a href="{{ url_for('auth.login') }}">Enter</a>
+            <a href="{{ url_for('auth.register') }}">Register</a>
+        </nav>
+        <div class="running-meta"><span>{{ ledger_year_roman }}</span></div>
+    </header>
     {% endif %}
 
         <div class="container">
@@ -91,14 +75,14 @@
     <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
 
     {# ——— Global app-shell Advisor (every page; history persists across navigation) ——— #}
-    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="VestX Advisor — works in background; navigate freely">
-      Ask Grok
+    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="Ask counsel — works in background; navigate freely">
+      Ask
     </button>
     <aside class="advisor-panel" id="advisorPanel" aria-label="VestX Advisor chat" hidden>
       <header class="advisor-header">
         <div>
-          <strong>VestX Advisor</strong>
-          <span class="advisor-sub" id="advisorStatus">Background jobs · navigate freely · history in this tab</span>
+          <strong>Counsel</strong>
+          <span class="advisor-sub" id="advisorStatus">Background jobs · history in this tab</span>
         </div>
         <div class="advisor-header-actions">
           <button type="button" class="advisor-cancel" id="advisorCancel" title="Cancel the running job" hidden>Cancel</button>
@@ -108,7 +92,7 @@
       </header>
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
         <div class="advisor-msg bot md-ready" data-welcome="1">
-          <p class="md-p">Ask about your equity, sales, or tax plan.</p>
+          <p class="md-p">Ask about holdings, a sale, or the year stack.</p>
         </div>
       </div>
       <div class="advisor-input-row">
@@ -125,22 +109,22 @@
         var sidebar = document.getElementById('sidebar');
         var toggle = document.getElementById('sidebarToggle');
         var backdrop = document.getElementById('sidebarBackdrop');
-        if (sidebar && toggle && backdrop) {
+        if (sidebar && toggle) {
             function openNav() {
                 document.body.classList.add('sidebar-open');
                 toggle.setAttribute('aria-expanded', 'true');
-                backdrop.hidden = false;
+                if (backdrop) backdrop.hidden = false;
             }
             function closeNav() {
                 document.body.classList.remove('sidebar-open');
                 toggle.setAttribute('aria-expanded', 'false');
-                backdrop.hidden = true;
+                if (backdrop) backdrop.hidden = true;
             }
             toggle.addEventListener('click', function () {
                 if (document.body.classList.contains('sidebar-open')) closeNav();
                 else openNav();
             });
-            backdrop.addEventListener('click', closeNav);
+            if (backdrop) backdrop.addEventListener('click', closeNav);
             sidebar.querySelectorAll('a').forEach(function (a) {
                 a.addEventListener('click', function () {
                     if (window.matchMedia('(max-width: 900px)').matches) closeNav();

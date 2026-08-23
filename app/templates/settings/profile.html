@@ -5,7 +5,11 @@
 {% block content %}
 <div class="page settings-page">
   <header class="page-header">
-    <h1>Settings</h1>
+    <div>
+      <p class="chap">Apparatus</p>
+      <h1>Settings.</h1>
+      <p class="lede">Appearance, counsel, and the pre-IPO marks that set vest FMV.</p>
+    </div>
   </header>
 
   <div class="detail-card">
@@ -23,15 +27,15 @@
   </div>
 
   <div class="detail-card">
-    <h2>Appearance</h2>
+    <h2>Paper</h2>
     <div class="theme-toggle-group" role="group" aria-label="Color theme">
       <button type="button" class="theme-option" data-theme-set="dark" id="themeDarkBtn">
         <span class="theme-option-swatch theme-swatch-dark" aria-hidden="true"></span>
-        Dark
+        Lamp
       </button>
       <button type="button" class="theme-option" data-theme-set="light" id="themeLightBtn">
         <span class="theme-option-swatch theme-swatch-light" aria-hidden="true"></span>
-        Light
+        Day
       </button>
     </div>
     <p class="form-hint" id="themeStatus" style="margin-top:0.75rem;"></p>
@@ -135,7 +139,7 @@
       var t = localStorage.getItem(STORAGE);
       if (t === 'light' || t === 'dark') return t;
     } catch (e) {}
-    return document.documentElement.getAttribute('data-theme') || 'dark';
+    return document.documentElement.getAttribute('data-theme') || 'light';
   }
 
   function applyTheme(theme) {
@@ -151,8 +155,8 @@
     var status = document.getElementById('themeStatus');
     if (status) {
       status.textContent = theme === 'light'
-        ? 'Light mode on — saved for this browser.'
-        : 'Dark mode on — saved for this browser.';
+        ? 'Day paper — saved for this browser.'
+        : 'Lamp (night paper) — saved for this browser.';
     }
   }
 

@@ -41,8 +41,29 @@ def create_app():
     # Make csrf_token available in all templates for manual forms
     @app.context_processor
     def inject_csrf_token():
+        from datetime import date
         from flask_wtf.csrf import generate_csrf
-        return dict(csrf_token=generate_csrf)
+
+        def _roman(n):
+            n = int(n)
+            out = []
+            for v, g in (
+                (1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'),
+                (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
+                (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I'),
+            ):
+                while n >= v:
+                    out.append(g)
+                    n -= v
+            return ''.join(out)
+
+        d = date.today()
+        return dict(
+            csrf_token=generate_csrf,
+            ledger_year=d.year,
+            ledger_year_roman=_roman(d.year),
+            ledger_today_long=d.strftime('%B ') + str(d.day) + d.strftime(', %Y'),
+        )
     
     # Initialize Talisman with security headers
     if app.config.get('TALISMAN_FORCE_HTTPS'):

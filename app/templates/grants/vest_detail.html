@@ -7,8 +7,9 @@
  <header class="page-header">
  <div class="header-content">
  <div>
- <h1> Vest Event Details</h1>
- <p class="subtitle">{{ vest_event.vest_date.strftime('%B %d, %Y') }}</p>
+ <p class="chap">Lot</p>
+ <h1>Vest of record.</h1>
+ <p class="lede">{{ vest_event.vest_date.strftime('%B %d, %Y') }}</p>
  </div>
  <a href="{{ url_for('grants.list_grants') }}" class="btn btn-secondary">Holdings</a>
  </div>

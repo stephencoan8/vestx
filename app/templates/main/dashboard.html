@@ -5,7 +5,11 @@
 {% block content %}
 <div class="dashboard page">
     <header class="page-header">
-        <h1>Dashboard</h1>
+        <div>
+            <p class="chap">Statement I</p>
+            <h1>Position<br>of record.</h1>
+            <p class="lede">As of {{ ledger_today_long }}. Available is what you still hold. Unavailable has not vested. A sale is a departure — the lot does not return.</p>
+        </div>
         <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">Add grant</a>
     </header>
 
@@ -33,7 +37,7 @@
 
     <div class="chart-section">
         <div class="chart-header">
-            <h2>Vesting timeline</h2>
+            <h2>Vesting course</h2>
         </div>
 
         <div class="chart-controls">
@@ -61,7 +65,7 @@
 
     <div class="dashboard-content">
         <div class="dashboard-section">
-            <h2>Upcoming vests</h2>
+            <h2>Forthcoming</h2>
             {% if upcoming_vests %}
             <div class="vest-list vest-list-scroll" role="list" aria-label="Upcoming vesting events">
                 {% for vest in upcoming_vests %}
@@ -79,7 +83,7 @@
 
         <div class="dashboard-section share-price-tile" id="sharePriceSection">
             <div class="share-price-tile-head">
-                <h2>Share price</h2>
+                <h2>The mark</h2>
                 <div class="price-display tile-price">
                     <div class="current-price" id="sharePriceHeadline">${{ "{:,.2f}".format(current_price) }}</div>
                     <div class="price-label">per share</div>
@@ -114,17 +118,22 @@
 <script>
 /* Shared palette — keep both charts independent so one failure cannot kill the other */
 const COLORS = {
-    green: '#2d6b52',
-    greenFill: 'rgba(45, 107, 82, 0.12)',
-    copper: '#b87333',
-    copperFill: 'rgba(184, 115, 51, 0.12)',
-    muted: '#6b665c',
-    grid: 'rgba(232, 228, 220, 0.06)',
-    text: '#9a958a',
-    tooltipBg: 'rgba(12, 13, 11, 0.95)',
-    tooltipBorder: 'rgba(184, 115, 51, 0.45)',
-    body: '#e8e4dc'
+    green: '#6e1c28',
+    greenFill: 'rgba(110, 28, 40, 0.10)',
+    copper: '#9a7a3a',
+    copperFill: 'rgba(154, 122, 58, 0.14)',
+    muted: '#7a6a52',
+    grid: 'rgba(36, 28, 20, 0.12)',
+    text: '#7a6a52',
+    tooltipBg: 'rgba(234, 223, 203, 0.96)',
+    tooltipBorder: 'rgba(154, 122, 58, 0.45)',
+    body: '#241c14'
 };
+if (typeof Chart !== 'undefined') {
+    Chart.defaults.font.family = '"Libre Baskerville", Georgia, serif';
+    Chart.defaults.color = COLORS.text;
+    Chart.defaults.borderColor = COLORS.grid;
+}
 const currentPrice = {{ current_price|default(0)|tojson }};
 
 /* ——— Vesting timeline (isolated) ——— */
