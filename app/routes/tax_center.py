@@ -61,25 +61,23 @@ def _slim_engine_plan(payload: Optional[dict]) -> Optional[dict]:
 __all__ = ['tax_center_bp']
 
 
-@tax_center_bp.route('/')
-@login_required
-def hub():
-    """Sales & tax hub: strategy cockpit — goal-first, advanced, activity."""
-    profile = TaxProfile.for_user(current_user)
-    lots = build_lots_for_user(current_user.id)
+def _tax_page_context(user, tax_year=None):
+    """Shared context for Plan (forward) and Activity (journal)."""
+    profile = TaxProfile.for_user(user)
+    lots = build_lots_for_user(user.id)
     sales = (
-        StockSale.query.filter_by(user_id=current_user.id)
+        StockSale.query.filter_by(user_id=user.id)
         .order_by(StockSale.sale_date.desc())
         .all()
     )
     exercises = (
-        ISOExercise.query.filter_by(user_id=current_user.id)
+        ISOExercise.query.filter_by(user_id=user.id)
         .order_by(ISOExercise.exercise_date.desc())
         .all()
     )
-    live = float(get_latest_user_price(current_user.id) or 0.0)
+    live = float(get_latest_user_price(user.id) or 0.0)
     from app.utils.portfolio_summary import summarize_held_portfolio
-    held = summarize_held_portfolio(current_user.id, live_price=live, lots=lots)
+    held = summarize_held_portfolio(user.id, live_price=live, lots=lots)
     rsu_held = held['rsu_held']
     iso_held = held['iso_held']
     iso_unex = held['iso_unexercised']
@@ -97,17 +95,16 @@ def hub():
         'st_lots': sum(1 for l in lots if not l.get('is_long_term') and float(l.get('shares_available') or 0) > 0),
         'shares_sold_market': held['shares_sold_market'],
     }
-    tax_year = int(request.args.get('sold_year') or date.today().year)
+    tax_year = int(tax_year or request.args.get('sold_year') or date.today().year)
     from app.utils.sold_portfolio import build_sold_portfolio
     from app.utils.estimated_tax_calendar import build_estimated_tax_calendar
-    sold = build_sold_portfolio(current_user, live_price=live, tax_year=tax_year, sales=sales)
+    sold = build_sold_portfolio(user, live_price=live, tax_year=tax_year, sales=sales)
     tax_calendar = build_estimated_tax_calendar(
-        current_user, tax_year=tax_year, sales=sales, profile=profile
+        user, tax_year=tax_year, sales=sales, profile=profile
     )
     inventory['tax_to_save'] = float(tax_calendar.get('still_to_save') or 0)
     profile_ready = bool(float(profile.other_ordinary_income or 0) > 0)
-    return render_template(
-        'tax/hub.html',
+    return dict(
         profile=profile,
         lots=lots,
         sales=sales,
@@ -120,8 +117,29 @@ def hub():
         sold_year=tax_year,
         profile_ready=profile_ready,
         today=date.today(),
-        grok_enabled=xai_advisor.is_configured(current_user),
+        grok_enabled=xai_advisor.is_configured(user),
     )
+
+
+@tax_center_bp.route('/')
+@login_required
+def hub():
+    """Plan: goal optimizer and advanced what-if."""
+    tab = (request.args.get('tab') or '').strip().lower()
+    sold_year = request.args.get('sold_year')
+    if tab in ('activity', 'sold') or (sold_year and tab not in ('optimize', 'scenario')):
+        kwargs = {}
+        if sold_year:
+            kwargs['sold_year'] = sold_year
+        return redirect(url_for('tax_center.activity', **kwargs))
+    return render_template('tax/hub.html', **_tax_page_context(current_user))
+
+
+@tax_center_bp.route('/activity')
+@login_required
+def activity():
+    """Journal: record sales/exercises, ledgers, tax reserve."""
+    return render_template('tax/activity.html', **_tax_page_context(current_user))
 
 
 def _money_float(val, default=0.0):

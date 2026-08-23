@@ -9,74 +9,16 @@ from app.utils.market_data import public_market_start, stock_ticker, sync_market
 prices_bp = Blueprint('prices', __name__, url_prefix='/user/prices')
 
 
+def _prices_home():
+    """Pre-IPO prices live on Settings — public marks are market-sourced."""
+    return url_for('settings.profile', _anchor='pre-ipo-prices')
+
+
 @prices_bp.route('/', methods=['GET'])
 @login_required
 def list_prices():
-    """Private pre-IPO entries + public market series from first trading day."""
-    from app.models.market_price import MarketPrice
-    from app.utils.price_utils import get_latest_user_price
-
-    # Refresh public series (throttled)
-    try:
-        sync_market_prices(force=False)
-    except Exception:
-        pass
-
-    cutover = public_market_start()
-    ticker = stock_ticker()
-    private = []
-    try:
-        user_key = current_user.get_decrypted_user_key()
-        for p in UserPrice.query.filter_by(user_id=current_user.id).order_by(UserPrice.valuation_date.desc()).all():
-            try:
-                price_val = float(decrypt_for_user(user_key, p.encrypted_price))
-            except Exception:
-                price_val = None
-            private.append({
-                'id': p.id,
-                'valuation_date': p.valuation_date,
-                'decrypted_price': price_val,
-                'source': 'private',
-                'editable': p.valuation_date < cutover,
-            })
-    except EncryptionError:
-        flash(
-            'Cannot unlock private price data. Server encryption key (VESTX_MASTER_KEY) may be wrong.',
-            'danger',
-        )
-
-    public_rows = (
-        MarketPrice.query
-        .filter_by(ticker=ticker)
-        .filter(MarketPrice.valuation_date >= cutover)
-        .order_by(MarketPrice.valuation_date.desc())
-        .limit(90)
-        .all()
-    )
-    public = [
-        {
-            'id': None,
-            'valuation_date': r.valuation_date,
-            'decrypted_price': r.price_per_share,
-            'source': r.source or 'public',
-            'editable': False,
-        }
-        for r in public_rows
-    ]
-
-    live = get_latest_user_price(current_user.id)
-    AuditLogger.log_security_event(
-        'USER_PRICE_LIST',
-        {'user_id': current_user.id, 'private': len(private), 'public': len(public)},
-    )
-    return render_template(
-        'prices/list.html',
-        private_prices=private,
-        public_prices=public,
-        cutover=cutover,
-        ticker=ticker,
-        live_price=live,
-    )
+    """Legacy Prices page — pre-IPO input now lives under Settings."""
+    return redirect(_prices_home())
 
 
 @prices_bp.route('/add', methods=['GET', 'POST'])
@@ -120,7 +62,7 @@ def add_price():
         if request.is_json:
             return jsonify({'error': msg}), 400
         flash(msg, 'danger')
-        return redirect(url_for('prices.list_prices'))
+        return redirect(_prices_home())
 
     try:
         user_key = current_user.get_decrypted_user_key()
@@ -131,7 +73,7 @@ def add_price():
             'Cannot unlock encryption key. Check VESTX_MASTER_KEY. Prices were not modified.',
             'danger',
         )
-        return redirect(url_for('prices.list_prices'))
+        return redirect(_prices_home())
 
     token = encrypt_for_user(user_key, str(price_float))
     up = UserPrice(user_id=current_user.id, valuation_date=valuation_date, encrypted_price=token)
@@ -150,7 +92,7 @@ def add_price():
     if request.is_json:
         return jsonify({'id': up.id, 'date': up.valuation_date.isoformat(), 'price': price_float}), 201
     flash('Price added successfully!', 'success')
-    return redirect(url_for('prices.list_prices'))
+    return redirect(_prices_home())
 
 
 @prices_bp.route('/<int:price_id>/delete', methods=['POST'])
@@ -159,12 +101,12 @@ def delete_price(price_id):
     p = UserPrice.query.filter_by(id=price_id, user_id=current_user.id).first_or_404()
     if p.valuation_date >= public_market_start():
         flash('Post-IPO prices are market-sourced and cannot be deleted here.', 'danger')
-        return redirect(url_for('prices.list_prices'))
+        return redirect(_prices_home())
     db.session.delete(p)
     db.session.commit()
     AuditLogger.log_security_event('USER_PRICE_DELETED', {'user_id': current_user.id, 'price_id': price_id})
     flash('Price deleted successfully!', 'success')
-    return redirect(url_for('prices.list_prices'))
+    return redirect(_prices_home())
 
 
 @prices_bp.route('/<int:price_id>/edit', methods=['GET', 'POST'])
@@ -178,7 +120,7 @@ def edit_price(price_id):
 
     if p.valuation_date >= cutover:
         flash('Post-IPO prices are market-sourced and cannot be edited.', 'danger')
-        return redirect(url_for('prices.list_prices'))
+        return redirect(_prices_home())
 
     if request.method == 'GET':
         try:
@@ -190,7 +132,7 @@ def edit_price(price_id):
                 'Cannot unlock price data. Check VESTX_MASTER_KEY. Existing prices were not modified.',
                 'danger',
             )
-            return redirect(url_for('prices.list_prices'))
+            return redirect(_prices_home())
         except Exception:
             price_val = None
         return render_template(
@@ -236,7 +178,7 @@ def edit_price(price_id):
             'Cannot unlock encryption key. Check VESTX_MASTER_KEY. Prices were not modified.',
             'danger',
         )
-        return redirect(url_for('prices.list_prices'))
+        return redirect(_prices_home())
 
     token = encrypt_for_user(user_key, str(price_float))
     p.valuation_date = valuation_date
@@ -251,7 +193,7 @@ def edit_price(price_id):
     if request.is_json:
         return jsonify({'id': p.id, 'date': p.valuation_date.isoformat(), 'price': price_float}), 200
     flash('Price updated successfully!', 'success')
-    return redirect(url_for('prices.list_prices'))
+    return redirect(_prices_home())
 
 
 @prices_bp.route('/sync-market', methods=['POST'])
@@ -270,4 +212,4 @@ def sync_market():
             )
     except Exception as e:
         flash(f'Market sync failed: {e}', 'danger')
-    return redirect(url_for('prices.list_prices'))
+    return redirect(_prices_home())

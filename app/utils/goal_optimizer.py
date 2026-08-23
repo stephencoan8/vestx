@@ -1455,7 +1455,7 @@ def _result_from_eval(
 
     notes = [
         'Lots ordered for tax efficiency: LTCG / high-basis first; ISO cashless (ordinary) last.',
-        'RSU cost basis = FMV on vest date (from your Prices history), not $0 — gain is (sale − vest FMV).',
+        'RSU cost basis = FMV on vest date (from pre-IPO prices in Settings), not $0 — gain is (sale − vest FMV).',
         'Tax is incremental vs Tax Profile wages only (upcoming unvested RSU income is not auto-included).',
         'Eff. rate = incremental tax ÷ economic gain (proceeds − basis), not ÷ gross proceeds.',
         'This is SpecID planning — execute the same vest lots when selling.',
@@ -1468,7 +1468,7 @@ def _result_from_eval(
         notes.insert(
             0,
             'WARNING: one or more RSU lots have ~$0 cost basis — usually missing pre-IPO '
-            'price history on the vest date. Check Prices for a valuation on/before each vest; '
+            'price history on the vest date. Add a pre-IPO mark in Settings on/before each vest; '
             'gain (and tax) may be overstated until fixed.',
         )
     iso_hold_n = sum(1 for p in picks if p.action == 'iso_exercise_hold')

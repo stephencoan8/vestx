@@ -906,7 +906,7 @@ def vest_detail(vest_id):
 @grants_bp.route('/sale-planning')
 @login_required
 def sale_planning():
-    """Legacy URL — redirect to Sales & Tax center."""
+    """Legacy URL — redirect to Plan."""
     from flask import redirect, url_for
     return redirect(url_for('tax_center.hub'))
 

@@ -139,7 +139,7 @@
  <h4> Estimated Tax (System Calculated)</h4>
  <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.85rem;">
  Incremental tax on this vest using <strong>{{ tax_breakdown.tax_year }}</strong> Tax Profile
- (progressive federal + CA + FICA) — same engine as Sales &amp; Tax / year W-2 estimate.
+ (progressive federal + CA + FICA) — same engine as Plan / year W-2 estimate.
  {% if tax_breakdown.year_wages is defined and tax_breakdown.year_wages %}
  Stacked on year wages ≈ <strong>${{ "{:,.0f}".format(tax_breakdown.year_wages) }}</strong>
  {% if tax_breakdown.base_ordinary is defined %}
@@ -340,7 +340,7 @@
  <div style="margin-top: 0.5rem;">
  <small style="color: var(--text-secondary);">
  {% if proj.method == 'engine' %}
- Same engine as Sales &amp; Tax — incremental vs {{ proj.tax_year or 'year' }} Tax Profile
+ Same engine as Plan — incremental vs {{ proj.tax_year or 'year' }} Tax Profile
  (progressive federal / CA / NIIT{% if proj.fica_tax %} / FICA{% endif %}).
  {% else %}
  Configure Tax profile for engine estimates.

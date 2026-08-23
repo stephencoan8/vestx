@@ -87,6 +87,33 @@ def _user_key_for_private_prices(user_id: int) -> Optional[bytes]:
         return None
 
 
+def list_private_user_prices(user_id: int) -> List[dict]:
+    """Pre-IPO valuation rows for Settings (newest first)."""
+    cutover = _public_start()
+    user_key = _user_key_for_private_prices(user_id)
+    entries = (
+        UserPrice.query.filter_by(user_id=user_id)
+        .filter(UserPrice.valuation_date < cutover)
+        .order_by(UserPrice.valuation_date.desc())
+        .all()
+    )
+    rows = []
+    for entry in entries:
+        price_val = None
+        if user_key:
+            try:
+                price_val = float(decrypt_for_user(user_key, entry.encrypted_price))
+            except Exception:
+                price_val = None
+        rows.append({
+            'id': entry.id,
+            'valuation_date': entry.valuation_date,
+            'decrypted_price': price_val,
+            'editable': True,
+        })
+    return rows
+
+
 def _load_private_history(user_id: int) -> List[Tuple[date, float]]:
     """Decrypt user-entered prices strictly before public market start."""
     user_key = _user_key_for_private_prices(user_id)

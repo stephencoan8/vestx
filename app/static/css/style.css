@@ -1520,7 +1520,10 @@ a.vest-item-link:focus-visible {
 
 /* ——— Settings ——— */
 .settings-page {
-    max-width: 40rem;
+    max-width: 48rem;
+}
+#pre-ipo-prices {
+    scroll-margin-top: 1.25rem;
 }
 .settings-account-row {
     display: grid;

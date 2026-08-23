@@ -41,7 +41,7 @@ def transactions_page():
         VestEvent.vest_date <= date.today()
     ).order_by(VestEvent.vest_date.desc()).all()
     
-    return redirect(url_for('tax_center.hub', tab='activity'))
+    return redirect(url_for('tax_center.activity'))
 
 
 @transactions_bp.route('/api/transactions/sales', methods=['POST'])

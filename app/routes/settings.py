@@ -1,7 +1,7 @@
 """
-User settings — account preferences (not tax planning).
+User settings — account, Grok key, and pre-IPO price marks.
 
-Tax profile (wages, filing, CA engine, AMT credits) lives under Sales & Tax.
+Tax profile (wages, filing, CA engine, AMT credits) lives under Plan.
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
@@ -14,7 +14,7 @@ settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 @settings_bp.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
-    """Account settings: appearance, Grok API key."""
+    """Account settings: appearance, Grok API key, pre-IPO prices."""
     if request.method == 'POST':
         try:
             # Theme is primarily client-side (localStorage); accept preference for future use
@@ -50,11 +50,22 @@ def profile():
             else None
         )
 
+    from app.utils.price_utils import list_private_user_prices
+    from app.utils.market_data import public_market_start, stock_ticker
+
+    try:
+        private_prices = list_private_user_prices(current_user.id)
+    except Exception:
+        private_prices = []
+
     return render_template(
         'settings/profile.html',
         user=current_user,
         xai_key_hint=xai_hint,
         xai_key_saved=current_user.has_xai_api_key(),
+        private_prices=private_prices,
+        price_cutover=public_market_start(),
+        ticker=stock_ticker(),
     )
 
 

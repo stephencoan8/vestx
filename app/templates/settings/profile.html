@@ -71,6 +71,55 @@
     </form>
   </div>
 
+  <div class="detail-card" id="pre-ipo-prices">
+    <h2>Pre-IPO prices</h2>
+    <p class="form-hint">
+      {{ ticker }} from {{ price_cutover.isoformat() }} onward is pulled from the public market automatically.
+      Add 409A / tender marks only for dates before that — they set vest FMV and RSU cost basis.
+    </p>
+    {% if private_prices %}
+    <div class="table-container" style="border: none; padding: 0; margin: 0 0 1rem;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Price (USD)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for price in private_prices %}
+          <tr>
+            <td>{{ price.valuation_date.strftime('%Y-%m-%d') }}</td>
+            <td>
+              {% if price.decrypted_price is not none %}
+              ${{ "{:,.2f}".format(price.decrypted_price) }}
+              {% else %}
+              N/A
+              {% endif %}
+            </td>
+            <td>
+              {% if price.editable %}
+              <div style="display: flex; gap: 0.5rem;">
+                <a href="{{ url_for('prices.edit_price', price_id=price.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                <form method="post" action="{{ url_for('prices.delete_price', price_id=price.id) }}" style="display:inline;" onsubmit="return confirm('Delete this price entry?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-state">No pre-IPO entries yet.</p>
+    {% endif %}
+    <a href="{{ url_for('prices.add_price') }}" class="btn btn-primary">Add pre-IPO price</a>
+  </div>
+
   <div class="detail-card settings-tax-pointer">
     <h2>Tax planning profile</h2>
     <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Open tax profile</a>

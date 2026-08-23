@@ -273,7 +273,7 @@
         } else {
             tip.innerHTML = '<strong>Plan ready</strong> (' + (n || 0) + ' picks)' +
                 (net != null ? ', net ~$' + Number(net).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '') +
-                '. Open <a href="' + taxUrl + '">Sales &amp; Tax</a> anytime — plan is saved for this tab.';
+                '. Open <a href="' + taxUrl + '">Plan</a> anytime — this result is saved for this tab.';
         }
         log.appendChild(tip);
         log.scrollTop = log.scrollHeight;

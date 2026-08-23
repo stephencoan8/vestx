@@ -108,7 +108,7 @@
 
         <div class="form-actions tax-profile-save-row">
           <button type="submit" class="btn btn-primary" id="saveYearBtn">Save <span class="year-label">{{ selected_year }}</span></button>
-          <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Sales &amp; Tax</a>
+          <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Back to Plan</a>
         </div>
         <details class="tax-hub-details" id="planningExtras" {% if (form.amt_credit_carryforward or 0)|float > 0 or (form.ca_amt_credit_carryforward or 0)|float > 0 or (form.other_long_term_gains or 0)|float > 0 or (form.other_short_term_gains or 0)|float > 0 %}open{% endif %}>
           <summary>Planning extras</summary>
