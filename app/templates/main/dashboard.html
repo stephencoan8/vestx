@@ -6,9 +6,7 @@
 <div class="dashboard page">
     <header class="page-header">
         <div>
-            <p class="chap">Statement I</p>
-            <h1>Position<br>of record.</h1>
-            <p class="lede">As of {{ ledger_today_long }}. Available is what you still hold. Unavailable has not vested. A sale is a departure — the lot does not return.</p>
+            <h1>Dashboard</h1>
         </div>
         <a href="{{ url_for('grants.add_grant') }}" class="btn btn-primary">Add grant</a>
     </header>
@@ -37,7 +35,7 @@
 
     <div class="chart-section">
         <div class="chart-header">
-            <h2>Vesting course</h2>
+            <h2>Vesting timeline</h2>
         </div>
 
         <div class="chart-controls">
@@ -65,7 +63,7 @@
 
     <div class="dashboard-content">
         <div class="dashboard-section">
-            <h2>Forthcoming</h2>
+            <h2>Upcoming vests</h2>
             {% if upcoming_vests %}
             <div class="vest-list vest-list-scroll" role="list" aria-label="Upcoming vesting events">
                 {% for vest in upcoming_vests %}
@@ -83,7 +81,7 @@
 
         <div class="dashboard-section share-price-tile" id="sharePriceSection">
             <div class="share-price-tile-head">
-                <h2>The mark</h2>
+                <h2>Share price</h2>
                 <div class="price-display tile-price">
                     <div class="current-price" id="sharePriceHeadline">${{ "{:,.2f}".format(current_price) }}</div>
                     <div class="price-label">per share</div>

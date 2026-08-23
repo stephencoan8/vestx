@@ -6,9 +6,7 @@
 <div class="page settings-page">
   <header class="page-header">
     <div>
-      <p class="chap">Apparatus</p>
-      <h1>Settings.</h1>
-      <p class="lede">Appearance, counsel, and the pre-IPO marks that set vest FMV.</p>
+      <h1>Settings</h1>
     </div>
   </header>
 
@@ -27,15 +25,15 @@
   </div>
 
   <div class="detail-card">
-    <h2>Paper</h2>
+    <h2>Appearance</h2>
     <div class="theme-toggle-group" role="group" aria-label="Color theme">
       <button type="button" class="theme-option" data-theme-set="dark" id="themeDarkBtn">
         <span class="theme-option-swatch theme-swatch-dark" aria-hidden="true"></span>
-        Lamp
+        Dark
       </button>
       <button type="button" class="theme-option" data-theme-set="light" id="themeLightBtn">
         <span class="theme-option-swatch theme-swatch-light" aria-hidden="true"></span>
-        Day
+        Light
       </button>
     </div>
     <p class="form-hint" id="themeStatus" style="margin-top:0.75rem;"></p>
@@ -155,8 +153,8 @@
     var status = document.getElementById('themeStatus');
     if (status) {
       status.textContent = theme === 'light'
-        ? 'Day paper — saved for this browser.'
-        : 'Lamp (night paper) — saved for this browser.';
+        ? 'Light mode — saved for this browser.'
+        : 'Dark mode — saved for this browser.';
     }
   }
 

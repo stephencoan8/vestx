@@ -24,10 +24,10 @@
 <body class="{% if current_user.is_authenticated %}app-layout{% else %}guest-layout{% endif %}">
     {% if current_user.is_authenticated %}
     <header class="running">
-        <a class="running-brand" href="{{ url_for('main.dashboard') }}">VestX · Private ledger</a>
-        <button type="button" class="running-toggle" id="sidebarToggle" aria-label="Open contents" aria-expanded="false" aria-controls="sidebar">Contents</button>
+        <a class="running-brand" href="{{ url_for('main.dashboard') }}">VestX</a>
+        <button type="button" class="running-toggle" id="sidebarToggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
         <nav class="running-nav" id="sidebar" aria-label="Main">
-            <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Position</a>
+            <a href="{{ url_for('main.dashboard') }}" class="nav-link{% if request.endpoint == 'main.dashboard' %} active{% endif %}">Dashboard</a>
             <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('grants.') %} active{% endif %}">Holdings</a>
             <a href="{{ url_for('tax_center.activity') }}" class="nav-link{% if request.endpoint == 'tax_center.activity' %} active{% endif %}">Activity</a>
             <a href="{{ url_for('tax_center.hub') }}" class="nav-link{% if request.endpoint in ['tax_center.hub', 'tax_center.tax_profile'] %} active{% endif %}">Plan</a>
@@ -38,19 +38,17 @@
         </nav>
         <div class="running-meta">
             <span>{{ current_user.username }}</span>
-            <a href="{{ url_for('auth.logout') }}">Close</a>
-            <span>{{ ledger_year_roman }}</span>
+            <a href="{{ url_for('auth.logout') }}">Log out</a>
         </div>
     </header>
     <div class="app-main">
     {% else %}
     <header class="running running-guest">
-        <a class="running-brand" href="/">VestX · Private ledger</a>
+        <a class="running-brand" href="/">VestX</a>
         <nav class="running-nav">
-            <a href="{{ url_for('auth.login') }}">Enter</a>
+            <a href="{{ url_for('auth.login') }}">Log in</a>
             <a href="{{ url_for('auth.register') }}">Register</a>
         </nav>
-        <div class="running-meta"><span>{{ ledger_year_roman }}</span></div>
     </header>
     {% endif %}
 
@@ -75,14 +73,14 @@
     <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
 
     {# ——— Global app-shell Advisor (every page; history persists across navigation) ——— #}
-    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="Ask counsel — works in background; navigate freely">
-      Ask
+    <button type="button" class="advisor-fab" id="advisorFab" aria-controls="advisorPanel" aria-expanded="false" title="Ask Grok">
+      Ask Grok
     </button>
     <aside class="advisor-panel" id="advisorPanel" aria-label="VestX Advisor chat" hidden>
       <header class="advisor-header">
         <div>
-          <strong>Counsel</strong>
-          <span class="advisor-sub" id="advisorStatus">Background jobs · history in this tab</span>
+          <strong>Grok</strong>
+          <span class="advisor-sub" id="advisorStatus">Works in the background</span>
         </div>
         <div class="advisor-header-actions">
           <button type="button" class="advisor-cancel" id="advisorCancel" title="Cancel the running job" hidden>Cancel</button>
@@ -92,11 +90,11 @@
       </header>
       <div class="advisor-messages" id="advisorMessages" role="log" aria-live="polite">
         <div class="advisor-msg bot md-ready" data-welcome="1">
-          <p class="md-p">Ask about holdings, a sale, or the year stack.</p>
+          <p class="md-p">Ask about your equity, sales, or tax.</p>
         </div>
       </div>
       <div class="advisor-input-row">
-        <textarea id="advisorInput" rows="3" placeholder="Ask anything about your equity… works on every page"></textarea>
+        <textarea id="advisorInput" rows="3" placeholder="Ask about your equity"></textarea>
         <button type="button" class="btn btn-secondary advisor-cancel-inline" id="advisorCancelInline" title="Cancel the running job" hidden>Cancel</button>
         <button type="button" class="btn btn-primary" id="advisorSend">Send</button>
       </div>
