@@ -10,26 +10,31 @@
     </header>
 
     <div class="hero-metrics">
-        <div class="hero-metric-card">
+        <div class="hero-metric-card hero-metric-card-triple">
             <div class="hero-metric">
-                <div class="hero-metric-label">Portfolio value</div>
-                <div class="hero-metric-value">${{ "{:,.2f}".format(total_value) }}</div>
-                <div class="hero-metric-note">Still held @ ${{ "{:,.2f}".format(current_price) }} · {{ "{:,.0f}".format(total_shares) }} sh</div>
+                <div class="hero-metric-label">Available</div>
+                <div class="hero-metric-value">${{ "{:,.0f}".format(available_value) }}</div>
+                <div class="hero-metric-note">Vested held @ ${{ "{:,.2f}".format(current_price) }} · {{ "{:,.0f}".format(total_shares) }} sh</div>
                 {% if unexercised_iso_shares and unexercised_iso_shares > 0 %}
-                <div class="hero-metric-subnote">incl. ${{ "{:,.0f}".format(unexercised_iso_value) }} unexercised ISO · {{ "{:,.0f}".format(unexercised_iso_shares) }} sh</div>
+                <div class="hero-metric-subnote">incl. ${{ "{:,.0f}".format(unexercised_iso_value) }} unexercised ISO intrinsic · {{ "{:,.0f}".format(unexercised_iso_shares) }} sh</div>
                 {% endif %}
                 {% if shares_sold_market and shares_sold_market > 0 %}
-                <div class="hero-metric-subnote">excludes {{ "{:,.0f}".format(shares_sold_market) }} sh sold · book if never sold ~${{ "{:,.0f}".format(grant_book_value) }}</div>
+                <div class="hero-metric-subnote">after {{ "{:,.0f}".format(shares_sold_market) }} sh sold in VestX</div>
                 {% endif %}
             </div>
             <div class="hero-metric-divider" aria-hidden="true"></div>
             <div class="hero-metric">
-                <div class="hero-metric-label">Held equity</div>
-                <div class="hero-metric-value">${{ "{:,.2f}".format(vested_value_net) }}</div>
-                <div class="hero-metric-note">Sellable shares only (after market sales)</div>
-                {% if unexercised_iso_shares and unexercised_iso_shares > 0 %}
-                <div class="hero-metric-subnote">unexercised ISO tracked separately above</div>
-                {% endif %}
+                <div class="hero-metric-label">Unavailable</div>
+                <div class="hero-metric-value">${{ "{:,.0f}".format(unavailable_value) }}</div>
+                <div class="hero-metric-note">Unvested schedule · {{ "{:,.0f}".format(unavailable_shares) }} sh</div>
+                <div class="hero-metric-subnote">RSU @ FMV · ISO @ intrinsic</div>
+            </div>
+            <div class="hero-metric-divider" aria-hidden="true"></div>
+            <div class="hero-metric">
+                <div class="hero-metric-label">Total</div>
+                <div class="hero-metric-value">${{ "{:,.0f}".format(total_value) }}</div>
+                <div class="hero-metric-note">Available + unavailable (Shareworks-style)</div>
+                <div class="hero-metric-subnote">Stock only ${{ "{:,.0f}".format(available_stock_value) }} · compare to Shareworks</div>
             </div>
         </div>
     </div>

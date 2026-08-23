@@ -1016,6 +1016,9 @@ body.advisor-open .app-main {
     position: relative;
     overflow: hidden;
 }
+.hero-metric-card-triple {
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+}
 
 .hero-metric-card::before {
     content: "";

@@ -33,11 +33,15 @@ def dashboard():
 
     total_grants = len(grants)
 
-    # Held portfolio after StockSale deductions (not full grant book)
+    # Shareworks-aligned: Available (vested held) + Unavailable (unvested)
     from app.utils.portfolio_summary import summarize_held_portfolio
     held = summarize_held_portfolio(current_user.id, live_price=current_price)
     total_shares = held['held_shares']
-    total_value = held['portfolio_value']  # held shares + unexercised ISO intrinsic
+    total_value = held['total_value']  # available + unavailable
+    available_value = held['available_value']
+    unavailable_value = held['unavailable_value']
+    unavailable_shares = held['unavailable_shares']
+    available_stock_value = held['available_stock_value']
     grant_book_value = held['grant_book_value']
     grant_book_shares = held['grant_book_shares']
     unexercised_iso_shares = held['iso_unexercised']
@@ -71,7 +75,7 @@ def dashboard():
     # Actually still held (sellable RSU + exercised ISO held)
     vested_shares_net = held['held_shares']
     vested_value_gross = vested_shares_gross * current_price
-    vested_value_net = held['held_value']
+    vested_value_net = held['available_stock_value']
     needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
 
     # Merged private pre-IPO + public SPCX history for timeline price points
@@ -163,6 +167,10 @@ def dashboard():
         total_grants=total_grants,
         total_shares=total_shares,
         total_value=total_value,
+        available_value=available_value,
+        available_stock_value=available_stock_value,
+        unavailable_value=unavailable_value,
+        unavailable_shares=unavailable_shares,
         grant_book_value=grant_book_value,
         grant_book_shares=grant_book_shares,
         shares_sold_market=shares_sold_market,
