@@ -214,9 +214,4 @@ def build_estimated_tax_calendar(
         'still_to_save': still_to_save,
         'safe_harbor': harbor,
         'quarters': quarters,
-        'disclaimer': (
-            'Simplified estimated-tax guidance for equity sales. Does not run Form 2210 '
-            'annualization. Large mid-year gains can create quarterly estimated tax risk '
-            'before April filing. Confirm with a tax professional.'
-        ),
     }

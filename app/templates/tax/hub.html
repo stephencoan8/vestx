@@ -5,7 +5,6 @@
   <header class="page-header tax-hub-header">
     <div>
       <h1>Sales &amp; tax</h1>
-      <p class="tax-hub-tagline">Decide SpecIDs · see incremental tax · execute. Everything else is one click away.</p>
     </div>
     <div class="tax-hub-header-actions">
       <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Tax profile</a>
@@ -80,7 +79,6 @@
     <div class="tax-panel-head">
       <div>
         <h2>Goal planner</h2>
-        <p class="tax-panel-lead">Net cash target → SpecID picks ranked for tax efficiency (federal + {{ (profile.state_code or 'state')|upper }}).</p>
       </div>
     </div>
 
@@ -110,7 +108,7 @@
         <input type="checkbox" id="goalExerciseAllIso">
         <span class="tax-goal-iso-text">
           <strong>Exercise ALL ISOs</strong>
-          <span class="tax-muted-sm">Hold (do not sell ISO stock). RSU sales fund strike + AMT tax, then your target net cash.</span>
+
         </span>
       </label>
     </div>
@@ -198,7 +196,6 @@
     <div class="tax-panel-head">
       <div>
         <h2>Scenario planner</h2>
-        <p class="tax-panel-lead">Manual strategies for ISO paths, sell-to-cover, and multi-year AMT. Exercise and sale stay separate events.</p>
       </div>
     </div>
 
@@ -380,7 +377,6 @@
     <div class="tax-panel-head">
       <div>
         <h2>Sold shares</h2>
-        <p class="tax-panel-lead">Realized sales · what they’d be worth now · tax to set aside before filing (or quarterly).</p>
       </div>
       <form method="get" class="tax-sold-year-form" action="{{ url_for('tax_center.hub') }}">
         <label for="soldYear">Tax year</label>
@@ -419,7 +415,7 @@
     </div>
 
     <div class="tax-ledger-block">
-      <h3 class="tax-subhead">Sales ({{ sold_year }} highlighted in KPIs · table shows all)</h3>
+      <h3 class="tax-subhead">Sales</h3>
       {% if sold.rows %}
       <div class="table-container tax-table-wrap">
         <table class="data-table">
@@ -457,7 +453,6 @@
           </tbody>
         </table>
       </div>
-      <p class="tax-muted-sm">Worth now = shares × live price. Δ is mark-to-market since sale (not tax advice). Edit/delete sales on Activity.</p>
       {% else %}
       <p class="empty-state">No sales recorded yet. Log one on the <button type="button" class="btn btn-secondary btn-sm" onclick="showTaxTab('activity')">Activity</button> tab.</p>
       {% endif %}
@@ -465,7 +460,6 @@
 
     <div class="tax-ledger-block tax-reserve-block">
       <h3 class="tax-subhead">Tax season reserve · {{ sold_year }}</h3>
-      <p class="tax-muted-sm">{{ tax_calendar.disclaimer }}</p>
       <div class="tax-check-row" style="margin:0.75rem 0;">
         <span>Stacked equity-sale tax est.: <strong>${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }}</strong>
           (fed ${{ "{:,.0f}".format(tax_calendar.tax_breakdown.federal) }}
@@ -475,7 +469,7 @@
       <div class="tax-check-row" style="margin-bottom:0.75rem;">
         <span>Credits on profile: withholding F/S ${{ "{:,.0f}".format(tax_calendar.credits.federal_withholding_ytd + tax_calendar.credits.state_withholding_ytd) }}
           · estimated payments ${{ "{:,.0f}".format(tax_calendar.credits.estimated_payments_ytd) }}
-          · <a href="{{ url_for('tax_center.tax_profile') }}">update in Tax profile</a></span>
+          · <a href="{{ url_for('tax_center.tax_profile') }}">Tax profile</a></span>
       </div>
 
       <div class="tax-quarter-grid">
@@ -483,24 +477,21 @@
         <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
           <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_iso }}</div>
           <div class="tax-quarter-pay">${{ "{:,.0f}".format(q.suggested_payment) }}</div>
-          <div class="tax-muted-sm">Suggested from remaining set-aside
-            {% if q.is_past %}(due date passed){% elif q.is_next %}(next){% endif %}</div>
         </div>
         {% endfor %}
       </div>
 
       <div class="tax-safe-harbor" style="margin-top:1rem;">
-        <h4 class="tax-subhead" style="font-size:0.95rem;">Safe harbor (simplified)</h4>
+        <h4 class="tax-subhead" style="font-size:0.95rem;">Safe harbor</h4>
         {% set sh = tax_calendar.safe_harbor %}
         <ul class="tax-notes-list">
           <li>Prior-year tax safe harbor: <strong>${{ "{:,.0f}".format(sh.prior_year_safe_harbor) }}</strong>
             ({% if sh.high_agi_110 %}110%{% else %}100%{% endif %} of prior-year tax
             {% if sh.prior_year_agi %}· prior AGI ${{ "{:,.0f}".format(sh.prior_year_agi) }}{% endif %})</li>
           <li>90% of current equity-tax estimate: <strong>${{ "{:,.0f}".format(sh.current_year_90pct) }}</strong></li>
-          <li>Lower bar (binding): <strong>${{ "{:,.0f}".format(sh.required_annual) }}</strong>/yr
-            ≈ ${{ "{:,.0f}".format(sh.per_quarter) }}/quarter — rule: {{ sh.binding_rule }}</li>
+          <li>Lower bar: <strong>${{ "{:,.0f}".format(sh.required_annual) }}</strong>/yr
+            ≈ ${{ "{:,.0f}".format(sh.per_quarter) }}/quarter</li>
         </ul>
-        <p class="tax-muted-sm">Enter <strong>prior-year total tax</strong> and withholding on Tax profile so this isn’t $0. Large mid-year gains can require estimated payments before April.</p>
       </div>
     </div>
   </section>
@@ -510,7 +501,6 @@
     <div class="tax-panel-head">
       <div>
         <h2>Activity</h2>
-        <p class="tax-panel-lead">Log real sales and ISO exercises so inventory and basis stay accurate.</p>
       </div>
     </div>
 
@@ -561,7 +551,7 @@
 
       <div class="tax-activity-block">
         <h3 class="tax-subhead">Record ISO exercise</h3>
-        <p class="tax-muted-sm">Creates AMT bargain element and basis for later sales.</p>
+
         <div class="form-row">
           <div class="form-group">
             <label for="exVest">ISO lot</label>

@@ -143,78 +143,6 @@ def summarize_held_portfolio(
 
     sold_total = sum(float(s.shares_sold or 0) for s in StockSale.query.filter_by(user_id=user_id).all())
 
-    # ——— Shareworks-style buckets (for reconciliation) ———
-    # Common / RSU stock held (excl. ESPP) · ESPP held · ISO stock held · ISO unexercised
-    sw_common_sh = 0.0
-    sw_espp_sh = 0.0
-    sw_iso_stock_sh = 0.0
-    for lot in lots or []:
-        avail = float(lot.get('shares_available') or 0)
-        if avail <= 0:
-            continue
-        gt = (lot.get('grant_type') or '').lower()
-        if lot.get('is_iso'):
-            sw_iso_stock_sh += avail  # exercised → shows as Common in Shareworks
-        elif gt in ('espp', 'nqespp'):
-            sw_espp_sh += avail
-        else:
-            sw_common_sh += avail  # RSU/RSA released stock (Common + Non-Transferable lumped)
-
-    buckets = {
-        'available': {
-            'common_stock': {
-                'label': 'Common / released RSU (incl. Non-Transferable)',
-                'shares': whole_shares(sw_common_sh + sw_iso_stock_sh),
-                'shares_rsu_only': whole_shares(sw_common_sh),
-                'shares_from_iso_exercise': whole_shares(sw_iso_stock_sh),
-                'value': float((sw_common_sh + sw_iso_stock_sh) * price),
-                'note': 'VestX cannot split Shareworks “Common” vs “Common – Non-Transferable” yet',
-            },
-            'espp': {
-                'label': 'ESPP / nqESPP',
-                'shares': whole_shares(sw_espp_sh),
-                'value': float(sw_espp_sh * price),
-            },
-            'iso_unexercised': {
-                'label': 'Options (ISO) — vested unexercised',
-                'shares': whole_shares(iso_unex),
-                'value': float(iso_unex_value),
-                'note': 'Intrinsic (FMV − strike), same as Shareworks Options line',
-            },
-        },
-        'unavailable': {
-            'rsu': {
-                'label': 'Stock Awards (RSU) — unvested',
-                'shares': whole_shares(unavail_shares_rsu),
-                'value': float(unavail_shares_rsu * price),
-            },
-            'iso': {
-                'label': 'Options (ISO) — unvested',
-                'shares': whole_shares(unavail_shares_iso),
-                'value': float(
-                    # recompute from value_unvested already aggregated; use unavailable iso portion
-                    # approximate: if only ISO contrib to unavailable besides RSU:
-                    max(0.0, unavailable_value - unavail_shares_rsu * price)
-                ),
-                'note': 'Intrinsic on unvested options',
-            },
-        },
-        'shareworks_reference': {
-            # User-reported Shareworks snapshot (for on-page delta); price ~$136.97
-            'as_of_note': 'Shareworks snapshot you shared (FMV ≈ $136.97)',
-            'available': {
-                'common': {'shares': 4005, 'value': 548564.85},
-                'common_nt': {'shares': 2500, 'value': 342425.00},
-                'espp': {'shares': 4400, 'value': 602668.00},
-                'iso': {'shares': 1055, 'value': 124036.35},
-            },
-            'unavailable': {
-                'rsu': {'shares': 8371, 'value': 1146575.87},
-                'iso': {'shares': 4565, 'value': 536707.05},
-            },
-        },
-    }
-
     return {
         'live_price': price,
         'as_of': as_of.isoformat(),
@@ -240,6 +168,5 @@ def summarize_held_portfolio(
         'grant_book_shares': whole_shares(grant_book_shares),
         'grant_book_value': float(grant_book_value),
         'shares_sold_market': whole_shares(sold_total),
-        'buckets': buckets,
         'lots': lots,
     }

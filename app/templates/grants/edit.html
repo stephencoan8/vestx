@@ -88,7 +88,6 @@
  <option value="semiannual" {% if (grant.vest_frequency or 'semiannual') == 'semiannual' %}selected{% endif %}>Semi-annual (May / Nov)</option>
  <option value="quarterly" {% if grant.vest_frequency == 'quarterly' %}selected{% endif %}>Quarterly (Feb / May / Aug / Nov)</option>
  </select>
- <small class="form-help">Default semi-annual. Quarterly for newer public-company style grants. Saving rebuilds the schedule (tax/sale rows preserved).</small>
  </div>
 
  <!-- Notes -->
@@ -99,28 +98,12 @@
  </div>
 
  <div class="form-actions">
- <button type="submit" class="btn btn-primary" onclick="console.log('Button clicked!'); console.log('Form action:', this.form.action); console.log('Form method:', this.form.method);">💾 Update Grant</button>
+ <button type="submit" class="btn btn-primary">Update Grant</button>
  <a href="{{ url_for('grants.view_grant', grant_id=grant.id) }}" class="btn btn-secondary">Cancel</a>
  </div>
  </form>
 </div>
 
-<div class="info-box" style="margin-top: 2rem;">
- <h3>ℹ Grant Structure Reference</h3>
- <ul>
- <li><strong>New Hire / Promotion:</strong> labeled 5y, 1y cliff, <strong>48 months</strong> RSU delivery (8 semi-annual or 16 quarterly)</li>
- <li><strong>Annual Performance:</strong>
- <ul>
- <li>Short Term (STI): ~1 period payout</li>
- <li>Long Term RSU (LTI): 1y lag + <strong>48 months</strong> delivery (8 semi-annual events), cliff at 1.5y</li>
- <li>Long Term ISO 5Y / 6Y: monthly over 48 months after lag</li>
- </ul>
- </li>
- <li><strong>Kickass:</strong> 1-5 years, 1 year cliff, RSU cadence as selected</li>
- <li><strong>ESPP:</strong> Immediate, 15% discount</li>
- <li><strong>nqESPP:</strong> Immediate, no discount</li>
- </ul>
-</div>
 
 <script>
  // Show/hide conditional fields based on grant type

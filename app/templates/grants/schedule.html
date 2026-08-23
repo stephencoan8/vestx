@@ -5,10 +5,7 @@
 {% block content %}
 <div class="page">
  <header class="page-header">
- <div>
  <h1>Complete Vesting Schedule</h1>
- <p class="tax-muted-sm" style="margin:0.35rem 0 0;">Toggle columns to focus on held vs sold. Market sales ≠ tax withholding at vest.</p>
- </div>
  </header>
 
  {% if vest_events %}
@@ -83,9 +80,6 @@
  </table>
  </div>
 
- <div class="alert-bar" style="margin-top: 1rem;">
- <strong>Note:</strong> <em>Sold (market)</em> = recorded stock sales. <em>Withheld at vest</em> = sell-to-cover / tax shares at vest. Taxes with * are estimated for future vests.
- </div>
  {% else %}
  <div class="empty-state-large">
  <div class="empty-icon"></div>

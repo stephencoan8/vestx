@@ -19,8 +19,8 @@
  <th data-sort="text">Share Type</th>
  <th data-sort="number">Quantity</th>
  <th data-sort="number">Price at Grant</th>
- <th data-sort="number">Value at Grant**</th>
- <th data-sort="number">Current Value*</th>
+ <th data-sort="number">Value at Grant</th>
+ <th data-sort="number">Current Value</th>
  </tr>
  </thead>
  <tbody>
@@ -37,10 +37,6 @@
  {% endfor %}
  </tbody>
  </table>
- <p style="margin-top: 1rem; font-size: 0.9em; color: var(--text-muted);">
- <strong>*Current Value:</strong> For ISOs (stock options), this is the spread value: shares × (current price - strike price). For RSUs/RSAs, this is the full value: shares × current price.<br>
- <strong>**Value at Grant:</strong> For ISOs, value at grant is $0 (options have no intrinsic value at grant, only strike price). For RSUs/RSAs, this is shares × price at grant.
- </p>
  </div>
  {% else %}
  <div class="empty-state-large">
