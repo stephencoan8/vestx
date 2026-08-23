@@ -39,6 +39,79 @@
         </div>
     </div>
 
+    {% if portfolio_buckets %}
+    <div class="detail-card" style="margin-bottom:1.5rem;">
+      <h2 style="margin-top:0;">Shareworks reconciliation</h2>
+      <p class="tax-muted-sm">Line up VestX buckets with your Shareworks Available / Unavailable. VestX lumps transferable Common + Non-Transferable; ESPP and ISO are separate.</p>
+      <div class="table-container tax-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>VestX shares</th>
+              <th>VestX value</th>
+              <th>Shareworks shares</th>
+              <th>Shareworks value</th>
+              <th>Δ shares</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set b = portfolio_buckets %}
+            {% set sw = b.shareworks_reference %}
+            {% set vx_common = b.available.common_stock.shares %}
+            {% set sw_common = sw.available.common.shares + sw.available.common_nt.shares %}
+            <tr>
+              <td>Available · Common (+ Non-Transferable)</td>
+              <td>{{ "{:,.0f}".format(vx_common) }}</td>
+              <td>${{ "{:,.0f}".format(b.available.common_stock.value) }}</td>
+              <td>{{ "{:,.0f}".format(sw_common) }} <span class="tax-muted-sm">({{ sw.available.common.shares }} + {{ sw.available.common_nt.shares }} NT)</span></td>
+              <td>${{ "{:,.0f}".format(sw.available.common.value + sw.available.common_nt.value) }}</td>
+              <td>{{ "{:+,.0f}".format(vx_common - sw_common) }}</td>
+            </tr>
+            <tr>
+              <td>Available · ESPP</td>
+              <td>{{ "{:,.0f}".format(b.available.espp.shares) }}</td>
+              <td>${{ "{:,.0f}".format(b.available.espp.value) }}</td>
+              <td>{{ "{:,.0f}".format(sw.available.espp.shares) }}</td>
+              <td>${{ "{:,.0f}".format(sw.available.espp.value) }}</td>
+              <td>{{ "{:+,.0f}".format(b.available.espp.shares - sw.available.espp.shares) }}</td>
+            </tr>
+            <tr>
+              <td>Available · ISO (unexercised)</td>
+              <td>{{ "{:,.0f}".format(b.available.iso_unexercised.shares) }}</td>
+              <td>${{ "{:,.0f}".format(b.available.iso_unexercised.value) }}</td>
+              <td>{{ "{:,.0f}".format(sw.available.iso.shares) }}</td>
+              <td>${{ "{:,.0f}".format(sw.available.iso.value) }}</td>
+              <td>{{ "{:+,.0f}".format(b.available.iso_unexercised.shares - sw.available.iso.shares) }}</td>
+            </tr>
+            <tr>
+              <td>Unavailable · RSU</td>
+              <td>{{ "{:,.0f}".format(b.unavailable.rsu.shares) }}</td>
+              <td>${{ "{:,.0f}".format(b.unavailable.rsu.value) }}</td>
+              <td>{{ "{:,.0f}".format(sw.unavailable.rsu.shares) }}</td>
+              <td>${{ "{:,.0f}".format(sw.unavailable.rsu.value) }}</td>
+              <td>{{ "{:+,.0f}".format(b.unavailable.rsu.shares - sw.unavailable.rsu.shares) }}</td>
+            </tr>
+            <tr>
+              <td>Unavailable · ISO</td>
+              <td>{{ "{:,.0f}".format(b.unavailable.iso.shares) }}</td>
+              <td>${{ "{:,.0f}".format(b.unavailable.iso.value) }}</td>
+              <td>{{ "{:,.0f}".format(sw.unavailable.iso.shares) }}</td>
+              <td>${{ "{:,.0f}".format(sw.unavailable.iso.value) }}</td>
+              <td>{{ "{:+,.0f}".format(b.unavailable.iso.shares - sw.unavailable.iso.shares) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tax-muted-sm" style="margin-top:0.65rem;">
+        Shareworks FMV ≈ ${{ "{:,.2f}".format((sw.available.common.value / sw.available.common.shares) if sw.available.common.shares else 0) }}
+        · VestX live ${{ "{:,.2f}".format(current_price) }}.
+        If ESPP Δ is about −4,400, those purchases aren’t in VestX grants yet.
+        If Common Δ is large, check logged sales and whether exercised ISO stock is counted.
+      </p>
+    </div>
+    {% endif %}
+
     <div class="chart-section">
         <div class="chart-header">
             <h2>Vesting timeline</h2>

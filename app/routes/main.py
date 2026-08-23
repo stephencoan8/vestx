@@ -174,6 +174,7 @@ def dashboard():
         grant_book_value=grant_book_value,
         grant_book_shares=grant_book_shares,
         shares_sold_market=shares_sold_market,
+        portfolio_buckets=held.get('buckets'),
         vested_shares_gross=vested_shares_gross,
         vested_shares_net=vested_shares_net,
         vested_shares_net_received=vested_shares_net_received,
