@@ -31,7 +31,7 @@ def test_unavailable_includes_future_rsu_at_fmv():
          patch('app.utils.portfolio_summary.VestEvent') as VEMock:
         GrantMock.query.filter_by.return_value.all.return_value = []
         SaleMock.query.filter_by.return_value.all.return_value = []
-        VEMock.query.options.return_value.join.return_value.filter.return_value.all.return_value = [future_ve]
+        VEMock.query.join.return_value.filter.return_value.all.return_value = [future_ve]
 
         s = summarize_held_portfolio(1, live_price=100.0, lots=lots, as_of=today)
 

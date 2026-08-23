@@ -13,8 +13,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.orm import joinedload
-
 from app.models.grant import Grant, ShareType
 from app.models.stock_sale import StockSale
 from app.models.vest_event import VestEvent
@@ -82,7 +80,7 @@ def summarize_held_portfolio(
 
     # ——— Unavailable: future (unvested) schedule ———
     future_vests = (
-        VestEvent.query.options(joinedload(VestEvent.grant))
+        VestEvent.query
         .join(Grant)
         .filter(Grant.user_id == user_id, VestEvent.vest_date > as_of)
         .all()
