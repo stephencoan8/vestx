@@ -27,7 +27,7 @@
         <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
       </select>
-      <span id="yearSwitchStatus" class="past-year-loading" hidden>Loading…</span>
+
     </div>
   </header>
 
@@ -94,7 +94,6 @@
         <div class="form-actions tax-profile-save-row">
           <button type="submit" class="btn btn-primary" id="saveYearBtn">Save <span class="year-label">{{ selected_year }}</span></button>
           <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Sales &amp; Tax</a>
-          <span id="recalcStatus" class="past-year-loading" hidden>Updating…</span>
         </div>
         <details class="tax-hub-details" id="planningExtras" {% if (form.ytd_wages or 0)|float > 0 or (form.amt_credit_carryforward or 0)|float > 0 or (form.ca_amt_credit_carryforward or 0)|float > 0 or (form.other_long_term_gains or 0)|float > 0 or (form.other_short_term_gains or 0)|float > 0 %}open{% endif %}>
           <summary>Planning extras</summary>
@@ -334,8 +333,6 @@
   var yearSel = document.getElementById('tax_year_nav');
   var yearHidden = document.getElementById('tax_year');
   var form = document.getElementById('taxProfileForm');
-  var statusEl = document.getElementById('yearSwitchStatus');
-  var recalcEl = document.getElementById('recalcStatus');
   var currentYear = parseInt(page.getAttribute('data-year'), 10);
   var switchSeq = 0;
   var recalcTimer = null;
@@ -595,7 +592,6 @@
     y = parseInt(y, 10);
     var seq = ++switchSeq;
     switching = true;
-    if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Loading ' + y + '…'; }
     fade(true, function () {
       var loader = (typeof window.vestxFetchJson === 'function')
         ? window.vestxFetchJson(api + '?year=' + encodeURIComponent(y), { credentials: 'same-origin' })
@@ -612,7 +608,6 @@
             history.replaceState({ year: y }, '', profileUrl + '?year=' + encodeURIComponent(y));
           } catch (e) {}
           fade(false);
-          if (statusEl) statusEl.hidden = true;
           switching = false;
         })
         .catch(function (err) {
@@ -652,7 +647,6 @@
   function runRecalc() {
     if (switching) return;
     var payload = collectPayload();
-    if (recalcEl) recalcEl.hidden = false;
     var card = document.getElementById('yearTaxCard');
     if (card) card.classList.add('is-recalc');
     if (kpis) kpis.classList.add('is-recalc');
@@ -675,7 +669,6 @@
       })
       .catch(function (err) { console.warn('recalc', err); })
       .finally(function () {
-        if (recalcEl) recalcEl.hidden = true;
         if (card) card.classList.remove('is-recalc');
         if (kpis) kpis.classList.remove('is-recalc');
       });

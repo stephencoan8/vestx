@@ -2297,12 +2297,7 @@ a.vest-item-link:focus-visible {
     margin-top: 0.5rem;
     padding-top: 0.25rem;
 }
-.past-year-loading {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-top: 0.25rem;
-    min-height: 1rem;
-}
+
 .tax-profile-body {
     opacity: 1;
     transform: translateY(0);
@@ -2485,11 +2480,7 @@ a.vest-item-link:focus-visible {
 .past-history-summary .past-history-stats {
     font-weight: 500;
 }
-.form-actions .past-year-loading {
-    margin: 0 0 0 0.75rem;
-    display: inline-block;
-    vertical-align: middle;
-}
+
 .past-year-history {
     background: var(--bg-primary);
     border: 1px solid var(--border-subtle);
