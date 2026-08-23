@@ -52,7 +52,7 @@ class User(UserMixin, db.Model):
     # Optional per-user xAI / Grok API key (encrypted with the user's Fernet key)
     # Never store plaintext; never return full key to the client after save.
     encrypted_xai_api_key = db.Column(db.LargeBinary, nullable=True)
-    xai_model = db.Column(db.String(64), nullable=True)  # e.g. grok-4.5; null = default
+    xai_model = db.Column(db.String(64), nullable=True)  # e.g. grok-4.6; null = current flagship
     
     # Tax preferences (simplified approach)
     federal_tax_rate = db.Column(db.Float, default=0.22)  # Default to 22% bracket

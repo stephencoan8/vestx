@@ -21,10 +21,11 @@ from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv('XAI_MODEL', 'grok-4.5')
+DEFAULT_MODEL = os.getenv('XAI_MODEL', 'grok-4.6')
 BASE_URL = os.getenv('XAI_BASE_URL', 'https://api.x.ai/v1')
-# grok-4.5/4.6 default to "high" reasoning — chat Qs feel frozen without this.
-REASONING_EFFORT = (os.getenv('XAI_REASONING_EFFORT') or 'low').strip() or 'low'
+REASONING_EFFORT = (os.getenv('XAI_REASONING_EFFORT') or 'medium').strip() or 'medium'
+# Leftover Settings pins that should follow the current flagship instead.
+_STALE_MODELS = frozenset({'grok-4.5', 'grok-4.5-latest', 'grok-4', 'grok-4-latest'})
 
 
 def _user_api_key(user) -> Optional[str]:
@@ -44,8 +45,10 @@ def _user_api_key(user) -> Optional[str]:
 def _user_model(user) -> Optional[str]:
     if user is None:
         return None
-    m = getattr(user, 'xai_model', None)
-    return (m or '').strip() or None
+    m = (getattr(user, 'xai_model', None) or '').strip()
+    if not m or m.lower() in _STALE_MODELS:
+        return None
+    return m
 
 
 def is_configured(user=None) -> bool:
@@ -69,7 +72,7 @@ def _client(api_key: str):
     from openai import OpenAI
     if not api_key:
         raise RuntimeError('No xAI API key available for this user')
-    # Seconds. Reasoning models (grok-4.5+) can exceed the SDK default.
+    # Seconds. Reasoning models (grok-4.6+) can exceed the SDK default.
     # Use a float — do not import httpx; Railway's openai wheel vendors httpx2.
     return OpenAI(
         api_key=api_key,

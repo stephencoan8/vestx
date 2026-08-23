@@ -46,9 +46,9 @@ class Config:
     # SpaceXAI / xAI Grok — optional server fallback only.
     # Preferred: each user stores an encrypted key on their profile (Settings).
     XAI_API_KEY = os.getenv('XAI_API_KEY')  # optional single-tenant fallback
-    XAI_MODEL = os.getenv('XAI_MODEL', 'grok-4.5')
+    XAI_MODEL = os.getenv('XAI_MODEL', 'grok-4.6')  # current xAI flagship
     XAI_BASE_URL = os.getenv('XAI_BASE_URL', 'https://api.x.ai/v1')
-    XAI_REASONING_EFFORT = os.getenv('XAI_REASONING_EFFORT', 'low')  # grok-4.5 defaults to high
+    XAI_REASONING_EFFORT = os.getenv('XAI_REASONING_EFFORT', 'medium')
 
     # Session Security
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in prod
