@@ -35,6 +35,34 @@ def _iso_types():
     return {ShareType.ISO_5Y.value, ShareType.ISO_6Y.value}
 
 
+def value_unvested_events(events, price: float) -> Dict[str, float]:
+    """Mark unvested vest rows at live FMV (RSU) or intrinsic (ISO)."""
+    unavail_shares_rsu = 0.0
+    unavail_shares_iso = 0.0
+    unavailable_value = 0.0
+    for ve in events or []:
+        grant = getattr(ve, 'grant', None)
+        if not grant or getattr(grant, 'share_type', None) == ShareType.CASH.value:
+            continue
+        sh = float(getattr(ve, 'shares_vested', 0) or 0)
+        if sh <= 0:
+            continue
+        st = grant.share_type
+        if st in _iso_types():
+            unavail_shares_iso += sh
+            strike = float(getattr(grant, 'share_price_at_grant', 0) or 0)
+            unavailable_value += sh * max(0.0, float(price) - strike)
+        else:
+            unavail_shares_rsu += sh
+            unavailable_value += sh * float(price)
+    return {
+        'unavailable_value': float(unavailable_value),
+        'unavailable_shares_rsu': float(unavail_shares_rsu),
+        'unavailable_shares_iso': float(unavail_shares_iso),
+        'unavailable_shares': float(unavail_shares_rsu + unavail_shares_iso),
+    }
+
+
 def summarize_held_portfolio(
     user_id: int,
     *,
@@ -85,26 +113,11 @@ def summarize_held_portfolio(
         .filter(Grant.user_id == user_id, VestEvent.vest_date > as_of)
         .all()
     )
-    unavail_shares_rsu = 0.0
-    unavail_shares_iso = 0.0
-    unavailable_value = 0.0
-    for ve in future_vests:
-        grant = ve.grant
-        if not grant or grant.share_type == ShareType.CASH.value:
-            continue
-        sh = float(ve.shares_vested or 0)
-        if sh <= 0:
-            continue
-        if grant.share_type in _iso_types():
-            unavail_shares_iso += sh
-            strike = float(grant.share_price_at_grant or 0)
-            # Options: intrinsic only (not full FMV × unvested options)
-            unavailable_value += sh * max(0.0, price - strike)
-        else:
-            unavail_shares_rsu += sh
-            unavailable_value += sh * price
-
-    unavail_shares = unavail_shares_rsu + unavail_shares_iso
+    unavail = value_unvested_events(future_vests, price)
+    unavailable_value = unavail['unavailable_value']
+    unavail_shares_rsu = unavail['unavailable_shares_rsu']
+    unavail_shares_iso = unavail['unavailable_shares_iso']
+    unavail_shares = unavail['unavailable_shares']
 
     # Shareworks-style Available ≈ stock you can sell + exercisable option intrinsic
     available_value = available_stock_value + iso_unex_value
