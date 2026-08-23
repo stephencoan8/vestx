@@ -12,6 +12,7 @@ from app.models.market_price import MarketPrice
 from app.models.tax_profile import TaxProfile
 from app.models.tax_year_profile import TaxYearProfile
 from app.models.advisor_job import AdvisorJob
+from app.models.tax_lot import TaxLot, LedgerEntry
 
 __all__ = [
     'User',
@@ -30,4 +31,6 @@ __all__ = [
     'TaxProfile',
     'TaxYearProfile',
     'AdvisorJob',
+    'TaxLot',
+    'LedgerEntry',
 ]

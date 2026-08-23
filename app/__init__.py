@@ -93,6 +93,7 @@ def create_app():
             from app.models import market_price as _market_price  # noqa: F401
             from app.models import tax_profile as _tax_profile  # noqa: F401
             from app.models import advisor_job as _advisor_job  # noqa: F401
+            from app.models import tax_lot as _tax_lot  # noqa: F401
             from app.models import tax_year_profile as _tax_year_profile  # noqa: F401
             db.create_all()
         except Exception as e:
@@ -137,6 +138,9 @@ def create_app():
 
         from app.utils.migrate_estimated_tax_fields import migrate_estimated_tax_fields
         _safe_migrate('estimated_tax_fields', migrate_estimated_tax_fields)
+
+        from app.utils.migrate_ledger import migrate_ledger
+        _safe_migrate('ledger', migrate_ledger)
 
         try:
             from app.utils.init_db import init_admin_user
