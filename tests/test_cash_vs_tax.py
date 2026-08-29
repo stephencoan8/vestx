@@ -115,10 +115,50 @@ def test_safe_harbor_line_no_penalty_april_bill():
 
 
 def test_grant_type_labels_not_enums():
-    from app.utils.share_labels import grant_type_label
+    from app.utils.share_labels import grant_type_label, lot_kind_line
     assert grant_type_label('kickass') == 'Special'
     assert grant_type_label('new_hire') == 'New hire'
     assert grant_type_label('annual_performance') == 'Annual performance'
+    assert lot_kind_line('espp', 'rsu') == 'ESPP'
+    assert lot_kind_line('new_hire', 'rsu') == 'New hire RSU'
+    assert 'ESPP ESPP' not in lot_kind_line('espp', 'espp')
+
+
+def test_set_aside_recon_adds_ledger_sales_to_true_up():
+    from app.utils.cash_vs_tax import set_aside_recon
+    r = set_aside_recon(13_228, 55_766)
+    assert r['sales'] == 13228
+    assert r['vest_true_up'] == 42538
+    assert r['total'] == 55766
+    assert r['sales'] + r['vest_true_up'] == r['total']
+
+
+def test_remaining_quarters_sum_to_april_due():
+    from app.utils.cash_vs_tax import allocate_remaining_quarters
+    qs = allocate_remaining_quarters(
+        april_balance=55_766,
+        federal_tax=160_000,
+        state_tax=60_000,
+        expected_tax=220_000,
+        as_of=date(2026, 8, 29),
+        tax_year=2026,
+    )
+    remaining = [q for q in qs if not q['is_past']]
+    assert {q['label'] for q in remaining} == {'Q3', 'Q4'}
+    assert sum(q['suggested_payment'] for q in remaining) == pytest.approx(55_766, abs=0.02)
+    assert qs[0]['suggested_payment'] == 0
+    assert qs[1]['suggested_payment'] == 0
+    assert qs[2]['ca_payment'] == 0  # Q3 is 0% CA
+    assert qs[2]['suggested_payment'] > 0
+    assert qs[3]['ca_payment'] > 0
+    assert qs[2]['suggested_payment'] + qs[3]['suggested_payment'] == pytest.approx(55_766, abs=0.02)
+
+
+def test_withholding_stub_prompt_when_blank():
+    from app.utils.cash_vs_tax import withholding_stub_prompt
+    p = withholding_stub_prompt(False, False)
+    assert p and 'not a guess' in p
+    assert withholding_stub_prompt(True, True) is None
 
 
 def test_espp_disqualifying_if_sold_early():

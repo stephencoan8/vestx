@@ -88,6 +88,149 @@ def _safe_harbor_line(
     )
 
 
+def set_aside_recon(sales_tax: float, total: float) -> Dict[str, float]:
+    """sales + vest true-up = tax to set aside (April / still-to-save)."""
+    sales = round(max(0.0, float(sales_tax or 0)), 2)
+    tot = round(max(0.0, float(total or 0)), 2)
+    return {
+        'sales': sales,
+        'vest_true_up': round(tot - sales, 2),
+        'total': tot,
+    }
+
+
+def _ledger_sales_tax(user, tax_year: int) -> float:
+    """Sum EST. TAX on recorded sales for the year — same footing as the sale ledger."""
+    try:
+        from app.models.stock_sale import StockSale
+        sales = StockSale.query.filter_by(user_id=user.id).all()
+    except Exception:
+        return 0.0
+    total = 0.0
+    for s in sales:
+        if not s.sale_date or s.sale_date.year != int(tax_year):
+            continue
+        try:
+            est = s.get_estimated_tax(user=user) or {}
+            total += float(est.get('estimated_tax') or est.get('estimated_total') or 0)
+        except Exception:
+            continue
+    return total
+
+
+def allocate_remaining_quarters(
+    *,
+    april_balance: float,
+    federal_tax: float,
+    state_tax: float,
+    expected_tax: float,
+    as_of: date,
+    tax_year: int,
+) -> List[Dict[str, Any]]:
+    """
+    Remaining installment suggestions that *sum to April due*.
+
+    Federal remainder is split across open due dates. CA leftover lands on the
+    next 540-ES-positive quarter (30/40/0/30 — Q3 is 0%).
+    """
+    target = max(0.0, round(float(april_balance or 0), 2))
+    dues = federal_estimated_due_dates(tax_year)
+    expected = max(0.0, float(expected_tax or 0))
+    state = max(0.0, float(state_tax or 0))
+    if expected > 0:
+        ca_share = round(target * (state / expected), 2)
+        fed_share = round(target - ca_share, 2)
+    else:
+        fed_share = target
+        ca_share = 0.0
+
+    remaining_idx = [i for i, q in enumerate(dues) if q['due'] > as_of]
+    n_fed = len(remaining_idx)
+    fed_each = (fed_share / n_fed) if n_fed else 0.0
+
+    ca_payments = [0.0, 0.0, 0.0, 0.0]
+    leftover = ca_share
+    for i, q in enumerate(dues):
+        if q['due'] <= as_of or CA_ES_FRACTIONS[i] <= 0:
+            continue
+        ca_payments[i] = leftover
+        leftover = 0.0
+        break
+    if leftover > 0:
+        for i in reversed(range(len(dues))):
+            if dues[i]['due'] > as_of:
+                ca_payments[i] += leftover
+                leftover = 0.0
+                break
+
+    quarters: List[Dict[str, Any]] = []
+    marked_next = False
+    remaining_slots: List[Dict[str, Any]] = []
+    for i, q in enumerate(dues):
+        due = q['due']
+        past = due <= as_of
+        fed_pay = fed_each if (not past and i in remaining_idx) else 0.0
+        ca_pay = 0.0 if past else ca_payments[i]
+        total_pay = fed_pay + ca_pay
+        is_next = (not past) and (not marked_next)
+        if is_next:
+            marked_next = True
+        if past:
+            why = 'Due date passed. Remaining federal ES is on Sep 15 and Jan 15.'
+        elif CA_ES_FRACTIONS[i] <= 0:
+            why = 'CA 540-ES is 0% this quarter. Federal remainder of April due only.'
+        elif total_pay <= 0:
+            why = 'Nothing left on this installment.'
+        else:
+            why = (
+                'Federal remainder split across remaining due dates. '
+                'CA leftover on the next 540-ES installment. These add to April due.'
+            )
+        row = {
+            **q,
+            'due_iso': due.isoformat(),
+            'due_label': due.strftime('%b %d, %Y').replace(' 0', ' '),
+            'is_past': past,
+            'is_next': is_next,
+            'federal_payment': round(fed_pay, 2),
+            'ca_payment': round(ca_pay, 2),
+            'ca_fraction': CA_ES_FRACTIONS[i],
+            'suggested_payment': round(total_pay, 2),
+            'why': why,
+        }
+        quarters.append(row)
+        if not past:
+            remaining_slots.append(row)
+
+    if remaining_slots:
+        actual = round(sum(r['suggested_payment'] for r in remaining_slots), 2)
+        delta = round(target - actual, 2)
+        if abs(delta) >= 0.01:
+            last = remaining_slots[-1]
+            last['suggested_payment'] = round(last['suggested_payment'] + delta, 2)
+            last['federal_payment'] = round(last['federal_payment'] + delta, 2)
+    return quarters
+
+
+def withholding_stub_prompt(fed_entered: bool, state_entered: bool) -> Optional[str]:
+    if fed_entered and state_entered:
+        return None
+    if not fed_entered and not state_entered:
+        return (
+            'Withholding is modeled, not from a stub. '
+            'Enter federal and CA YTD from your last paystub on Tax profile so this is not a guess.'
+        )
+    if not fed_entered:
+        return (
+            'Federal withholding is modeled. '
+            'Enter box 2 YTD from your last paystub on Tax profile so this is not a guess.'
+        )
+    return (
+        'CA withholding is modeled. '
+        'Enter state YTD from your last paystub on Tax profile so this is not a guess.'
+    )
+
+
 def _iso_bargain_for_year(user_id: int, tax_year: int) -> float:
     try:
         from app.models.stock_sale import ISOExercise
@@ -271,99 +414,26 @@ def build_cash_vs_tax(
     if eq_fut > 0 and still_to_pay_es > 0:
         extra_per_vest = still_to_pay_es  # dollars to add on remaining vests (W-4 extra)
 
-    # --- Quarters: federal remaining equal among remaining due dates;
-    # CA 30/40/0/30, skip Q3, roll unpaid past CA to next CA-positive quarter. ---
-    fed_remain = max(0.0, fed_tax - fed_locked - fed_coming - est_paid * 0.7)
-    ca_remain = max(0.0, state_tax - state_locked - state_coming - est_paid * 0.3)
-    # If we can't split estimates, put them all against combined remain
-    if est_paid_entered:
-        combined_remain = max(0.0, expected_tax - expected_wh)
-        fed_remain = combined_remain * (fed_tax / expected_tax) if expected_tax else 0.0
-        ca_remain = combined_remain - fed_remain
-
-    dues = federal_estimated_due_dates(tax_year)
-    remaining_fed_idx = [i for i, q in enumerate(dues) if q['due'] > as_of]
-    n_fed = max(1, len(remaining_fed_idx))
-    fed_each = fed_remain / n_fed if remaining_fed_idx else 0.0
-
-    ca_annual = max(0.0, state_tax)
-    ca_targets = [ca_annual * f for f in CA_ES_FRACTIONS]
-    # Amount already "due" in past CA-positive quarters — if unpaid, roll forward
-    ca_paid_or_locked = state_locked + (est_paid * 0.3 if est_paid_entered else 0)
-    ca_allocated = 0.0
-    ca_payments = [0.0, 0.0, 0.0, 0.0]
-    leftover = max(0.0, ca_annual - ca_paid_or_locked)
-    for i, q in enumerate(dues):
-        frac = CA_ES_FRACTIONS[i]
-        if frac <= 0:
-            ca_payments[i] = 0.0
-            continue
-        if q['due'] <= as_of:
-            # past — don't bill again; leftover still rolls
-            continue
-        take = leftover  # dump remaining CA onto next positive installment
-        ca_payments[i] = take
-        leftover = 0.0
-        break
-    if leftover > 0:
-        # last CA-positive slot
-        for i in (3, 1, 0):
-            if CA_ES_FRACTIONS[i] > 0:
-                ca_payments[i] += leftover
-                leftover = 0.0
-                break
-
-    quarters: List[Dict[str, Any]] = []
-    marked_next = False
-    for i, q in enumerate(dues):
-        due = q['due']
-        past = due <= as_of
-        fed_pay = fed_each if (not past and i in remaining_fed_idx) else 0.0
-        ca_pay = 0.0 if past else ca_payments[i]
-        total_pay = fed_pay + ca_pay
-        is_next = (not past) and (not marked_next)
-        if is_next:
-            marked_next = True
-        if past:
-            why = 'Due date passed. Remaining federal ES is on Sep 15 and Jan 15.'
-        elif CA_ES_FRACTIONS[i] <= 0:
-            why = 'CA 540-ES is 0% this quarter. Federal remainder only.'
-        elif total_pay <= 0:
-            why = 'Nothing left on this installment.'
-        else:
-            why = 'Federal remainder split across remaining due dates. CA is 30/40/0/30.'
-        quarters.append({
-            **q,
-            'due_iso': due.isoformat(),
-            'due_label': due.strftime('%b %d, %Y').replace(' 0', ' '),
-            'is_past': past,
-            'is_next': is_next,
-            'federal_payment': round(fed_pay, 2),
-            'ca_payment': round(ca_pay, 2),
-            'ca_fraction': CA_ES_FRACTIONS[i],
-            'suggested_payment': round(total_pay, 2),
-            'why': why,
-        })
+    quarters = allocate_remaining_quarters(
+        april_balance=april_balance,
+        federal_tax=fed_tax,
+        state_tax=state_tax,
+        expected_tax=expected_tax,
+        as_of=as_of,
+        tax_year=tax_year,
+    )
 
     remaining_events = [
         e for e in (vest.get('events') or [])
         if e.get('is_future')
     ]
 
-    sales_tax = 0.0
-    try:
-        from app.utils.estimated_tax_calendar import stacked_tax_on_sales
-        stacked = stacked_tax_on_sales(user, None, tax_year)
-        # Income tax on sales only (not FICA) — this is the per-lot EST. TAX total
-        sales_tax = (
-            float(stacked.get('federal_tax') or 0)
-            + float(stacked.get('state_tax') or 0)
-            + float(stacked.get('niit') or 0)
-            + float(stacked.get('amt_due') or 0)
-        )
-    except Exception:
-        sales_tax = 0.0
-    vest_true_up = still_to_pay_es - sales_tax
+    sales_tax = _ledger_sales_tax(user, tax_year)
+    recon = set_aside_recon(sales_tax, still_to_pay_es)
+    vest_true_up = recon['vest_true_up']
+    stub_prompt = withholding_stub_prompt(
+        fed_wh_entered is not None, state_wh_entered is not None
+    )
 
     return {
         'tax_year': tax_year,
@@ -416,13 +486,11 @@ def build_cash_vs_tax(
             april_balance=april_balance,
         ),
         'ytd_credits_for_harbor': round(ytd_for_harbor, 2),
-        'sales_tax': round(sales_tax, 2),
-        'vest_true_up': round(vest_true_up, 2),
-        'set_aside_recon': {
-            'sales': round(sales_tax, 2),
-            'vest_true_up': round(vest_true_up, 2),
-            'total': round(still_to_pay_es, 2),
-        },
+        'sales_tax': recon['sales'],
+        'vest_true_up': vest_true_up,
+        'set_aside_recon': recon,
+        'withholding_is_modeled': stub_prompt is not None,
+        'withholding_prompt': stub_prompt,
         'prior_tax': round(prior_tax, 2),
         'prior_tax_source': prior_tax_source,
         'extra_withholding_on_remaining_vests': round(extra_per_vest, 2),

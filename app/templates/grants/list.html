@@ -102,7 +102,7 @@
           {% for ve in upcoming %}
           <tr class="clickable-row" onclick="window.location='{{ url_for('grants.vest_detail', vest_id=ve.id) }}';">
             <td>{{ ve.vest_date.strftime('%Y-%m-%d') }}</td>
-            <td>{{ grant_type_label(ve.grant.grant_type) }} {{ share_kind_label(ve.grant.grant_type, ve.grant.share_type) }}</td>
+            <td>{{ lot_kind_line(ve.grant.grant_type, ve.grant.share_type) }}</td>
             <td>{{ "{:,.0f}".format(ve.shares_vested) }}</td>
             <td>${{ "{:,.0f}".format(ve.shares_vested * (live_price or 0)) }}</td>
           </tr>

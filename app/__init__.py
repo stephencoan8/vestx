@@ -58,7 +58,7 @@ def create_app():
             return ''.join(out)
 
         d = date.today()
-        from app.utils.share_labels import grant_type_label, share_kind_label, action_label
+        from app.utils.share_labels import grant_type_label, share_kind_label, lot_kind_line, action_label
         return dict(
             csrf_token=generate_csrf,
             ledger_year=d.year,
@@ -66,6 +66,7 @@ def create_app():
             ledger_today_long=d.strftime('%B ') + str(d.day) + d.strftime(', %Y'),
             grant_type_label=grant_type_label,
             share_kind_label=share_kind_label,
+            lot_kind_line=lot_kind_line,
             action_label=action_label,
         )
     

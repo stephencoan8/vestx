@@ -42,6 +42,17 @@ def grant_type_label(grant_type: str = '') -> str:
     return GRANT_TYPE_LABELS.get(raw.lower(), raw.replace('_', ' ') or '—')
 
 
+def lot_kind_line(grant_type: str = '', share_type: str = '') -> str:
+    """Grant + share kind without repeating 'ESPP ESPP'."""
+    g = grant_type_label(grant_type)
+    k = share_kind_label(grant_type, share_type)
+    if not g or g == '—':
+        return k or '—'
+    if not k or k == '—' or g == k:
+        return g
+    return f'{g} {k}'
+
+
 def action_label(action: str = '') -> str:
     return ACTION_LABELS.get(action or '', (action or '').replace('_', ' '))
 

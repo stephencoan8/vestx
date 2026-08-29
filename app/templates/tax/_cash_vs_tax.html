@@ -16,14 +16,11 @@
       <div class="tax-sit-label">Expected withholding</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.expected_withholding) }}</div>
       <div class="tax-sit-sub">
-        {% if c.withholding.federal_entered and c.withholding.state_entered %}
-        from paystub YTD
-        {% elif c.withholding.federal_entered %}
-        fed from stub · CA modeled
-        {% elif c.withholding.state_entered %}
-        CA from stub · fed modeled
+        {% if c.withholding_prompt %}
+        {{ c.withholding_prompt }}
+        <a href="{{ url_for('tax_center.tax_profile') }}">Open Tax profile</a>
         {% else %}
-        Modeled — enter YTD from your last stub on <a href="{{ url_for('tax_center.tax_profile') }}">Tax profile</a>
+        from paystub YTD
         {% endif %}
       </div>
     </div>

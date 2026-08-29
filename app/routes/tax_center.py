@@ -20,6 +20,7 @@ from app.utils.equity_planner import LotSpec, run_plan
 from app.utils.goal_optimizer import GoalRequest, optimize_goal, parse_goal_heuristic
 from app.utils import xai_advisor
 from app.utils.price_utils import get_latest_user_price
+from app.utils.tax_constants import TAX_TABLE_VERSION
 import json
 import logging
 import traceback
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 tax_center_bp = Blueprint('tax_center', __name__, url_prefix='/tax')
 
-ADVISOR_API_VERSION = '2026-08-29-v6-withholding'
+ADVISOR_API_VERSION = TAX_TABLE_VERSION
 
 
 def _iso(share_type: str) -> bool:
@@ -55,6 +56,48 @@ def _api_json(payload: dict, status: int = 200) -> Response:
 def _slim_engine_plan(payload: Optional[dict]) -> Optional[dict]:
     from app.utils.advisor_service import slim_engine_plan
     return slim_engine_plan(payload)
+
+
+def _cash_vs_tax_api(cvt: Optional[dict]) -> Optional[dict]:
+    """JSON-safe cash-vs-tax panel for /tax/api/year-tax."""
+    if not cvt:
+        return None
+    out = dict(cvt)
+    out.pop('year_tax', None)
+    qs = []
+    for q in out.get('quarters') or []:
+        row = dict(q)
+        due = row.get('due')
+        if hasattr(due, 'isoformat'):
+            row['due'] = due.isoformat()
+        pe = row.get('period_end')
+        if hasattr(pe, 'isoformat'):
+            row['period_end'] = pe.isoformat()
+        qs.append(row)
+    out['quarters'] = qs
+    return out
+
+
+def _attach_year_tax_cash_vs_tax(payload: dict, year: int) -> dict:
+    try:
+        from app.utils.cash_vs_tax import build_cash_vs_tax
+        cvt = _cash_vs_tax_api(build_cash_vs_tax(current_user, tax_year=year))
+        payload['cash_vs_tax'] = cvt
+        if cvt:
+            payload['withholding'] = cvt.get('withholding')
+            payload['under_over'] = cvt.get('under_over')
+            payload['april_balance'] = cvt.get('april_balance')
+            payload['safe_harbor'] = cvt.get('safe_harbor')
+            payload['safe_harbor_line'] = cvt.get('safe_harbor_line')
+            payload['set_aside_recon'] = cvt.get('set_aside_recon')
+            payload['withholding_prompt'] = cvt.get('withholding_prompt')
+            payload['withholding_is_modeled'] = cvt.get('withholding_is_modeled')
+            payload['expected_tax'] = cvt.get('expected_tax')
+            payload['expected_withholding'] = cvt.get('expected_withholding')
+    except Exception as e:
+        logger.warning('year-tax cash_vs_tax failed: %s', e)
+        payload['cash_vs_tax'] = None
+    return payload
 
 
 # ensure date is available in template helpers
@@ -426,7 +469,9 @@ def api_year_tax():
             history['sale_stcg'] = stack.get('sale_stcg')
             history['sale_ltcg'] = stack.get('sale_ltcg')
             history['sale_count'] = stack.get('sale_count')
-            return _api_json(_package(year, form, source, history, run=True, stack=stack))
+            return _api_json(_attach_year_tax_cash_vs_tax(
+                _package(year, form, source, history, run=True, stack=stack), year
+            ))
 
         data = request.get_json(silent=True) or {}
         year = int(data.get('year') or data.get('tax_year') or date.today().year)
@@ -442,7 +487,9 @@ def api_year_tax():
             'other_short_term_gains', 'other_long_term_gains', 'stcg', 'ltcg',
         )):
             source = 'draft' if source == 'new' else 'saved'
-        return _api_json(_package(year, form, source, history, run=True, stack=stack))
+        return _api_json(_attach_year_tax_cash_vs_tax(
+            _package(year, form, source, history, run=True, stack=stack), year
+        ))
     except Exception as e:
         logger.error('year-tax failed: %s', e, exc_info=True)
         return _api_json({
