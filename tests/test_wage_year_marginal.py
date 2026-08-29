@@ -52,6 +52,15 @@ def test_stacking_prefers_computed_ordinary():
     }) == 350_000
 
 
+def test_stacking_ignores_stale_ytd_wages():
+    from app.utils.tax_engine import stacking_ordinary_income
+    assert stacking_ordinary_income({
+        'other_ordinary_income': 136_000,
+        'other_ordinary_income_raw': 136_000,
+        'ytd_wages': 200_000,
+    }) == 136_000
+
+
 def test_combined_marginal_includes_ss_below_wage_base():
     r = compute_w2_year_tax(
         tax_year=2026,

@@ -261,9 +261,12 @@ def profile_ytd_before_equity(
         tax-at-vest against annual box 1. False (default) for sale planning where
         profile wages are non-equity and equity ordinary stacks on top — do not peel.
     """
-    other = float(profile.get('other_ordinary_income') or 0.0)
-    ytd = float(profile.get('ytd_wages') or 0.0)
-    stacked = max(other, ytd)
+    other = float(
+        profile.get('other_ordinary_income_raw')
+        if profile.get('other_ordinary_income_raw') is not None
+        else (profile.get('other_ordinary_income') or 0.0)
+    )
+    stacked = max(0.0, other)
     equity = max(0.0, float(equity_ordinary or 0.0))
     if wages_include_equity and equity > 0 and stacked + 0.01 >= equity:
         return max(0.0, stacked - equity)

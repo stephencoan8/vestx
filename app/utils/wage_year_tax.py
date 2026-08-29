@@ -714,24 +714,24 @@ def year_tax_snapshot(
 
 def attach_computed_year_income(profile: dict, user_id: int, tax_year: int) -> dict:
     """
-    Replace the old YTD-wages field with computed ordinary (cash wages + vests).
+    Attach computed ordinary (cash + RSU/cash vests) without destroying cash wages.
 
-    Sale capital gains stay off this dict so analyze_sales can add them as the
-    incremental event (no double count). Year-tax KPIs use year_income_stack.
+    other_ordinary_income / other_ordinary_income_raw stay salary (ex-equity).
+    computed_ordinary is the W-2 stack for analyze_sales. ytd_wages is not a
+    second income field — keep it equal to cash so leftover 200k stacks cannot
+    impersonate salary.
     """
     cash = float(
         profile.get('other_ordinary_income_raw')
         if profile.get('other_ordinary_income_raw') is not None
         else (profile.get('other_ordinary_income') or 0)
     )
-    if cash <= 0:
-        cash = float(profile.get('ytd_wages') or 0)
     stack = year_income_stack(user_id, tax_year, cash_wages=cash)
     profile['other_ordinary_income_raw'] = stack['cash_wages']
+    profile['other_ordinary_income'] = stack['cash_wages']
     profile['computed_ordinary'] = stack['ordinary']
-    profile['ytd_wages'] = stack['ordinary']
     profile['stacking_ordinary_income'] = stack['ordinary']
-    profile['other_ordinary_income'] = stack['ordinary']
+    profile['ytd_wages'] = stack['cash_wages']
     profile['year_income'] = stack
     return profile
 

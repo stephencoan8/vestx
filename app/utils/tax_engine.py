@@ -527,17 +527,21 @@ def stacking_ordinary_income(profile: dict) -> float:
     """
     Ordinary income used for federal/CA brackets, LTCG bands, NIIT MAGI, and AMT base.
 
-    Prefer computed_ordinary (cash wages + VestX vests). Legacy profiles still
-    fall back to max(other_ordinary_income, ytd_wages).
+    Prefer computed_ordinary (cash wages + VestX vests). Never max() with
+    ytd_wages — that column used to hold leftover stacked income and impersonated salary.
     """
     if profile.get('computed_ordinary') is not None:
         try:
             return max(0.0, float(profile.get('computed_ordinary') or 0.0))
         except (TypeError, ValueError):
             pass
-    other = float(profile.get('other_ordinary_income') or 0.0)
-    ytd = float(profile.get('ytd_wages') or 0.0)
-    return max(other, ytd)
+    raw = profile.get('other_ordinary_income_raw')
+    if raw is not None:
+        try:
+            return max(0.0, float(raw or 0.0))
+        except (TypeError, ValueError):
+            pass
+    return max(0.0, float(profile.get('other_ordinary_income') or 0.0))
 
 
 def compute_fica_components(ordinary_equity: float, profile: dict) -> Dict[str, float]:
@@ -674,10 +678,10 @@ def resolve_engine_profile_for_year(user, tax_year: int) -> dict:
         from app.utils.wage_year_tax import attach_computed_year_income
         attach_computed_year_income(d, user.id, year)
     except Exception:
-        stacked = max(cash, float(d.get('ytd_wages') or 0))
-        d['other_ordinary_income'] = stacked
-        d['ytd_wages'] = stacked
-        d['stacking_ordinary_income'] = stacked
+        d['other_ordinary_income'] = cash
+        d['ytd_wages'] = cash
+        d['stacking_ordinary_income'] = cash
+        d['computed_ordinary'] = cash
     return d
 
 

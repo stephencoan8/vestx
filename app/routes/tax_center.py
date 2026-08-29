@@ -327,9 +327,7 @@ def api_year_tax():
             # profile money as a starting point (same calendar year only).
             if profile.tax_year == year:
                 form['other_ordinary_income'] = float(profile.other_ordinary_income or 0)
-                form['ytd_wages'] = float(profile.ytd_wages or 0)
-                if form['other_ordinary_income'] <= 0 and form['ytd_wages'] > 0:
-                    form['other_ordinary_income'] = form['ytd_wages']
+                form['ytd_wages'] = float(profile.other_ordinary_income or 0)
                 form['other_long_term_gains'] = float(profile.other_long_term_gains or 0)
                 form['other_short_term_gains'] = float(profile.other_short_term_gains or 0)
                 form['federal_ordinary_rate'] = profile.federal_ordinary_rate
@@ -664,7 +662,7 @@ def tax_profile():
         }
         if profile.tax_year == selected_year:
             form['other_ordinary_income'] = float(profile.other_ordinary_income or 0)
-            form['ytd_wages'] = float(profile.ytd_wages or 0)
+            form['ytd_wages'] = float(profile.other_ordinary_income or 0)
             form['other_long_term_gains'] = float(profile.other_long_term_gains or 0)
             form['other_short_term_gains'] = float(profile.other_short_term_gains or 0)
             form['federal_ordinary_rate'] = profile.federal_ordinary_rate
@@ -678,8 +676,7 @@ def tax_profile():
             form['ca_amt_credit_carryforward'] = float(profile.ca_amt_credit_carryforward or 0)
         source = 'new'
 
-    if float(form.get('other_ordinary_income') or 0) <= 0 and float(form.get('ytd_wages') or 0) > 0:
-        form['other_ordinary_income'] = float(form['ytd_wages'])
+    form['ytd_wages'] = float(form.get('other_ordinary_income') or 0)
 
     if year_row:
         form['itemize_salt'] = float(getattr(year_row, 'itemize_salt', 0) or 0)

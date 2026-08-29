@@ -181,16 +181,17 @@ def test_ltcg_rate_brackets():
     assert r == 0.15
 
 
-def test_ytd_wages_stack_into_ordinary_for_ltcg_band():
-    """YTD wages alone must push LTCG into 20% when high enough (not ignored)."""
+def test_ytd_wages_do_not_impersonate_salary():
+    """Stale ytd_wages leftover must not become ordinary."""
     assert stacking_ordinary_income({
         'other_ordinary_income': 0,
         'ytd_wages': 500_000,
-    }) == 500_000
+    }) == 0
     assert stacking_ordinary_income({
         'other_ordinary_income': 136_000,
+        'other_ordinary_income_raw': 136_000,
         'ytd_wages': 500_000,
-    }) == 500_000
+    }) == 136_000
 
     # $500k ordinary + $100k LTCG → $45.5k @15% + $54.5k @20% (2026 single 20% @ 545500)
     tax, marg = preferential_ltcg_tax(100_000, 500_000, 'single', 2026)
@@ -205,8 +206,9 @@ def test_ytd_wages_stack_into_ordinary_for_ltcg_band():
         'use_state_engine': True,
         'federal_ordinary_rate': None,
         'federal_ltcg_rate': None,
-        'other_ordinary_income': 0,  # empty — only YTD set (user mistake we must handle)
-        'ytd_wages': 500_000,
+        'other_ordinary_income': 500_000,
+        'other_ordinary_income_raw': 500_000,
+        'ytd_wages': 0,
         'other_long_term_gains': 0,
         'other_short_term_gains': 0,
         'include_fica': False,
