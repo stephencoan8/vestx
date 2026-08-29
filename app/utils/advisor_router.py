@@ -400,7 +400,16 @@ def route_and_compute(
     if income_year and user_id and not is_sell_plan:
         try:
             from app.utils.wage_year_tax import year_income_stack
-            cash = float(profile_dict.get('other_ordinary_income_raw') or 0)
+            cash = 0.0
+            try:
+                from app.models.tax_year_profile import TaxYearProfile
+                year_row = TaxYearProfile.get_for(user_id, income_year)
+                if year_row:
+                    cash = float(year_row.other_ordinary_income or 0)
+            except Exception:
+                year_row = None
+            if cash <= 0:
+                cash = float(profile_dict.get('other_ordinary_income_raw') or 0)
             if cash <= 0:
                 cash = float(profile_dict.get('other_ordinary_income') or 0)
             stack = year_income_stack(user_id, income_year, cash_wages=cash)
