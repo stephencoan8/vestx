@@ -56,7 +56,7 @@
       <div class="tax-sit-value tax-sit-value-sm" data-k="marginal_display">{% if year_tax %}{{ "%.1f"|format((year_tax.combined_ordinary_marginal or ((year_tax.ordinary_marginal or 0)+(year_tax.state_marginal or 0))) * 100) }}%{% else %}—{% endif %}</div>
       <div class="tax-sit-sub" data-k="marginal_sub">
         {% if year_tax %}
-        fed {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}% · CA {{ "%.1f"|format(year_tax.state_marginal * 100) }}%{% if year_tax.fica_marginal %} · FICA {{ "%.1f"|format(year_tax.fica_marginal * 100) }}%{% endif %}{% if year_tax.sdi_marginal %} · SDI {{ "%.1f"|format(year_tax.sdi_marginal * 100) }}%{% endif %}
+        fed {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}% · CA {{ "%.1f"|format(year_tax.state_marginal * 100) }}%{% if year_tax.fica_marginal %} · FICA {{ "%.1f"|format(year_tax.fica_marginal * 100) }}%{% endif %}{% if year_tax.sdi_marginal %} · VPDI {{ "%.1f"|format(year_tax.sdi_marginal * 100) }}%{% endif %}
         {% else %}
         fed · CA · FICA
         {% endif %}
@@ -65,7 +65,7 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Payroll</div>
       <div class="tax-sit-value" data-k="total_fica">{% if year_tax %}${{ "{:,.0f}".format((year_tax.total_fica or 0) + (year_tax.sdi or 0)) }}{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">SS + Medicare + Add’l{% if year_tax and year_tax.sdi %} + CA SDI{% endif %}</div>
+      <div class="tax-sit-sub">SS + Medicare + Add’l{% if year_tax and year_tax.sdi %} + CA VPDI{% endif %}</div>
     </div>
   </div>
 
@@ -183,13 +183,13 @@
                 <label for="federal_withholding_ytd">Federal withholding YTD</label>
                 <input type="text" inputmode="decimal" class="money-input" id="federal_withholding_ytd" name="federal_withholding_ytd"
                        value="{% if est_tax_form.federal_withholding_ytd %}{{ '{:,.2f}'.format(est_tax_form.federal_withholding_ytd) }}{% endif %}"
-                       placeholder="box 2 from last stub" data-money>
+                       placeholder="7/31 stub box 2 — $42,110.89" data-money>
               </div>
               <div class="form-group">
                 <label for="state_withholding_ytd">State withholding YTD</label>
                 <input type="text" inputmode="decimal" class="money-input" id="state_withholding_ytd" name="state_withholding_ytd"
                        value="{% if est_tax_form.state_withholding_ytd %}{{ '{:,.2f}'.format(est_tax_form.state_withholding_ytd) }}{% endif %}"
-                       placeholder="CA from last stub" data-money>
+                       placeholder="7/31 stub CA — $19,257.25" data-money>
               </div>
             </div>
             <div class="form-group">
@@ -271,8 +271,10 @@
         {% if history and history.event_count %}
         {{ history.event_count }} event(s)
         · RSU ~${{ "{:,.0f}".format(history.rsu_vest_gross or 0) }}
+        {% if history.espp_purchase_gross %} · ESPP (not Box 1) ~${{ "{:,.0f}".format(history.espp_purchase_gross) }}{% endif %}
         {% if history.cash_bonus_gross %} · cash ~${{ "{:,.0f}".format(history.cash_bonus_gross) }}{% endif %}
-        {% if history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO skipped{% endif %}
+        {% if history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO vest skipped{% endif %}
+        {% if history.iso_bargain %} · ISO AMT bargain ${{ "{:,.0f}".format(history.iso_bargain) }}{% elif history.iso_vest_events_skipped %} · no recorded exercise{% endif %}
         {% endif %}
       </span>
     </summary>
@@ -378,8 +380,11 @@
     if (card) card.style.display = '';
     if (title) title.innerHTML = '<span class="year-label">' + y + '</span> vest history';
     var parts = [h.event_count + ' event(s)', 'RSU ~' + money(h.rsu_vest_gross || 0)];
+    if (h.espp_purchase_gross) parts.push('ESPP (not Box 1) ~' + money(h.espp_purchase_gross));
     if (h.cash_bonus_gross) parts.push('cash ~' + money(h.cash_bonus_gross));
-    if (h.iso_vest_events_skipped) parts.push(h.iso_vest_events_skipped + ' ISO skipped');
+    if (h.iso_vest_events_skipped) parts.push(h.iso_vest_events_skipped + ' ISO vest skipped');
+    if (h.iso_bargain) parts.push('ISO AMT bargain ' + money(h.iso_bargain));
+    else if (h.iso_vest_events_skipped) parts.push('no recorded exercise');
     if (stats) stats.textContent = parts.join(' · ');
     if (events) {
       events.innerHTML = '';

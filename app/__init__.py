@@ -165,6 +165,9 @@ def create_app():
         from app.utils.migrate_estimated_tax_fields import migrate_estimated_tax_fields
         _safe_migrate('estimated_tax_fields', migrate_estimated_tax_fields)
 
+        from app.utils.migrate_stub_withholding import migrate_stub_withholding
+        _safe_migrate('stub_withholding', migrate_stub_withholding)
+
         from app.utils.migrate_ledger import migrate_ledger
         _safe_migrate('ledger', migrate_ledger)
         try:

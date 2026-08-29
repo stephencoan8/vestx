@@ -34,13 +34,13 @@ def test_sdi_on_ca_wages_and_marginal():
     r = compute_w2_year_tax(
         tax_year=2026, filing_status='single', state_code='CA', wages=400_000, include_fica=True
     )
-    assert r.sdi == pytest.approx(400_000 * 0.013)
+    assert r.sdi == pytest.approx(400_000 * CA_SDI_RATE)
     # SS maxed; Medicare 1.45 + Add'l 0.9 = 2.35; SDI 1.3
     assert abs(r.fica_marginal - 0.0235) < 1e-6
     assert abs(r.sdi_marginal - CA_SDI_RATE) < 1e-9
     assert abs(
         r.combined_ordinary_marginal
-        - (r.ordinary_marginal + r.state_marginal + 0.0235 + 0.013)
+        - (r.ordinary_marginal + r.state_marginal + 0.0235 + CA_SDI_RATE)
     ) < 1e-6
 
 
@@ -55,7 +55,7 @@ def test_fed_supplemental_22_then_37():
 
 def test_ca_supplemental_and_sdi():
     assert ca_supplemental_withholding(100_000) == pytest.approx(10_230)
-    assert ca_sdi(100_000) == pytest.approx(1_300)
+    assert ca_sdi(100_000) == pytest.approx(100_000 * CA_SDI_RATE)
 
 
 def test_ca_es_fractions():
@@ -103,6 +103,7 @@ def test_safe_harbor_line_no_penalty_april_bill():
             'prior_year_safe_harbor': 39_000,
             'current_year_90pct': 50_000,
             'required_annual': 39_000,
+            'high_agi_110': True,
         },
         ytd_credits=141_674,
         no_penalty=True,
@@ -152,6 +153,41 @@ def test_remaining_quarters_sum_to_april_due():
     assert qs[2]['suggested_payment'] > 0
     assert qs[3]['ca_payment'] > 0
     assert qs[2]['suggested_payment'] + qs[3]['suggested_payment'] == pytest.approx(55_766, abs=0.02)
+
+
+def test_vpdi_rate_is_1_1_not_statutory_sdi():
+    from app.utils.tax_constants import CA_SDI_RATE, CA_SDI_RATE_STATUTORY, CA_SDI_LABEL
+    assert CA_SDI_RATE == pytest.approx(0.011)
+    assert CA_SDI_RATE_STATUTORY == pytest.approx(0.013)
+    assert CA_SDI_LABEL == 'VPDI'
+
+
+def test_espp_not_box1_kind():
+    from app.utils.wage_year_tax import vest_w2_kind
+    assert vest_w2_kind('espp', 'rsu') == 'espp'
+    assert vest_w2_kind('nqespp', 'rsu') == 'espp'
+    assert vest_w2_kind('new_hire', 'rsu') == 'rsu'
+    assert vest_w2_kind('new_hire', 'iso_5y') == 'iso'
+
+
+def test_safe_harbor_line_says_100_when_not_high_agi():
+    from app.utils.cash_vs_tax import _safe_harbor_line
+    line = _safe_harbor_line(
+        tax_year=2026,
+        prior_tax=32_570,
+        prior_source='computed',
+        harbor={
+            'prior_year_safe_harbor': 32_570,
+            'current_year_90pct': 50_000,
+            'required_annual': 32_570,
+            'high_agi_110': False,
+        },
+        ytd_credits=141_674,
+        no_penalty=True,
+        april_balance=55_766,
+    )
+    assert '100% of 2025 tax' in line
+    assert '110%' not in line
 
 
 def test_withholding_stub_prompt_when_blank():

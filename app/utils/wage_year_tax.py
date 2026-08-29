@@ -235,8 +235,9 @@ def compute_w2_year_tax(
     if (state_code or '').upper() == 'CA' and include_fica and fwages > 0:
         sdi_amt = fwages * CA_SDI_RATE
         sdi_m = CA_SDI_RATE
+        from app.utils.tax_constants import CA_SDI_LABEL, CA_SDI_SOURCE
         notes.append(
-            f'CA SDI {CA_SDI_RATE*100:.1f}% uncapped on ${fwages:,.0f} = ${sdi_amt:,.0f} (EDD 2026).'
+            f'CA {CA_SDI_LABEL} {CA_SDI_RATE*100:.1f}% uncapped on ${fwages:,.0f} = ${sdi_amt:,.0f}. {CA_SDI_SOURCE}'
         )
     total_tax = income_tax_total + total_fica + sdi_amt
     tax_base = wages + other_ordinary + stcg + ltcg
@@ -302,6 +303,75 @@ def compute_w2_year_tax(
     )
 
 
+def vest_w2_kind(grant_type: str = '', share_type: str = '') -> str:
+    """How a vest event hits the annual W-2 stack. ESPP/ISO are not Box 1 at vest."""
+    from app.models.grant import ShareType
+    from app.utils.share_labels import is_espp_grant
+    st = (share_type or '').lower()
+    if st in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value, 'iso'):
+        return 'iso'
+    if is_espp_grant(grant_type, share_type):
+        return 'espp'
+    if st == ShareType.CASH.value:
+        return 'cash'
+    return 'rsu'
+
+
+def iso_bargain_for_year(user_id: int, tax_year: int) -> Dict[str, Any]:
+    """
+    ISO AMT preference for the calendar year.
+
+    Vest is not an AMT event. Recorded ISOExercise rows are SSOT; iso_stock lots
+    acquired this year fill in Shareworks/exercise paths that never wrote ISOExercise.
+    """
+    total = 0.0
+    n_ex = 0
+    exercised_vests = set()
+    try:
+        from app.models.stock_sale import ISOExercise
+        rows = ISOExercise.query.filter_by(user_id=user_id).all()
+    except Exception:
+        rows = []
+    for e in rows:
+        if not e.exercise_date or e.exercise_date.year != int(tax_year):
+            continue
+        barg = e.total_bargain_element
+        if barg is None:
+            sh = float(e.shares_exercised or 0)
+            barg = sh * max(0.0, float(e.fmv_at_exercise or 0) - float(e.strike_price or 0))
+        total += float(barg or 0)
+        n_ex += 1
+        if e.vest_event_id:
+            exercised_vests.add(int(e.vest_event_id))
+
+    n_lots = 0
+    try:
+        from app.models.tax_lot import TaxLot
+        lots = TaxLot.query.filter_by(user_id=user_id, kind='iso_stock').all()
+    except Exception:
+        lots = []
+    for lot in lots:
+        if not lot.acquired_date or lot.acquired_date.year != int(tax_year):
+            continue
+        if lot.vest_event_id and int(lot.vest_event_id) in exercised_vests:
+            continue
+        qty = float(lot.original_qty or 0)
+        fmv = float(lot.fmv_at_open or 0)
+        strike = float(lot.strike_price or lot.cost_basis_per_share or 0)
+        barg = qty * max(0.0, fmv - strike)
+        if barg <= 0:
+            continue
+        total += barg
+        n_lots += 1
+
+    return {
+        'iso_bargain': round(total, 2),
+        'exercise_count': n_ex,
+        'iso_stock_lot_count': n_lots,
+        'source': 'iso_exercise' if n_ex else ('iso_stock' if n_lots else 'none'),
+    }
+
+
 def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
     """
     Sum RSU/cash vest gross for a calendar year from VestX data.
@@ -310,11 +380,13 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
       - equity_vested_ytd: vest_date <= as_of (FMV at vest)
       - equity_remaining_year: future vests still in this tax year @ live FMV
     ISO vest events are skipped (no W-2 ordinary at vest for hold path).
+    ESPP purchase/vest is not Box 1 — ordinary is on sale (§423).
     """
     from datetime import date
     from app.models.vest_event import VestEvent
     from app.models.grant import Grant, ShareType
     from app.utils.price_utils import get_latest_user_price
+    from app.utils.share_labels import lot_kind_line
     from sqlalchemy.orm import joinedload
 
     start = date(tax_year, 1, 1)
@@ -346,15 +418,17 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
     rsu_future = 0.0
     cash_past = 0.0
     cash_future = 0.0
+    espp_past = 0.0
+    espp_future = 0.0
     iso_count = 0
+    espp_count = 0
     rows: List[dict] = []
     for ve in events:
         if not ve.grant:
             continue
         st = ve.grant.share_type
-        if st in (ShareType.ISO_5Y.value, ShareType.ISO_6Y.value):
-            iso_count += 1
-            continue
+        gt = ve.grant.grant_type or ''
+        kind = vest_w2_kind(gt, st)
         sh = float(ve.shares_vested or 0)
         is_future = bool(ve.vest_date and ve.vest_date > as_of)
         if is_future:
@@ -364,7 +438,17 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
                 gval = float(ve.value_at_vest or 0)
             except Exception:
                 gval = sh * live if live > 0 else 0.0
-        if st == ShareType.CASH.value:
+
+        in_w2 = kind in ('rsu', 'cash')
+        if kind == 'iso':
+            iso_count += 1
+        elif kind == 'espp':
+            espp_count += 1
+            if is_future:
+                espp_future += gval
+            else:
+                espp_past += gval
+        elif kind == 'cash':
             if is_future:
                 cash_future += gval
             else:
@@ -374,28 +458,41 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
                 rsu_future += gval
             else:
                 rsu_past += gval
+
         rows.append({
             'vest_date': ve.vest_date.isoformat() if ve.vest_date else None,
-            'label': f"{ve.grant.grant_type or 'grant'} · {st}",
+            'label': lot_kind_line(gt, st),
             'shares': sh,
             'gross_value': round(gval, 2),
             'share_type': st,
+            'grant_type': gt,
+            'kind': kind,
+            'in_w2': in_w2,
             'is_future': is_future,
         })
 
     equity_past = rsu_past + cash_past
     equity_future = rsu_future + cash_future
     equity_w2 = equity_past + equity_future
+    bargain = iso_bargain_for_year(user_id, tax_year)
     return {
         'tax_year': tax_year,
         'as_of': as_of.isoformat(),
         'live_price': live,
         'rsu_vest_gross': round(rsu_past + rsu_future, 2),
+        'rsu_vested_ytd': round(rsu_past, 2),
+        'rsu_remaining_year': round(rsu_future, 2),
         'cash_bonus_gross': round(cash_past + cash_future, 2),
+        'espp_purchase_gross': round(espp_past + espp_future, 2),
+        'espp_not_box1': True,
         'equity_vested_ytd': round(equity_past, 2),
         'equity_remaining_year': round(equity_future, 2),
         'suggested_equity_in_w2': round(equity_w2, 2),
         'iso_vest_events_skipped': iso_count,
+        'espp_events_excluded_from_w2': espp_count,
+        'iso_bargain': bargain['iso_bargain'],
+        'iso_exercise_count': bargain['exercise_count'],
+        'iso_bargain_source': bargain['source'],
         'event_count': len(rows),
         'events': rows[:40],
     }
@@ -461,6 +558,7 @@ def year_income_stack(
     Year income from VestX + the cash-wages field.
 
       ordinary / FICA  = cash wages + RSU/cash vests (past @ vest FMV, rest of year @ live)
+      ESPP purchase is not Box 1 (ordinary at sale). ISO vest is not W-2; AMT is on exercise.
       ST/LT CG         = recorded sale capital gains + optional non-VestX extras
     """
     cash = max(0.0, float(cash_wages or 0))
@@ -483,6 +581,7 @@ def year_income_stack(
         'stcg': round(stcg, 2),
         'ltcg': round(ltcg, 2),
         'tax_base': round(ordinary + stcg + ltcg, 2),
+        'iso_bargain': float(vest.get('iso_bargain') or 0),
         'vest': vest,
         'sales': sales,
     }

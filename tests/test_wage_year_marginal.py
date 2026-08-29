@@ -18,7 +18,7 @@ def test_combined_marginal_includes_medicare_when_ss_maxed():
     assert abs(r.fica_marginal - 0.0235) < 1e-6
     assert abs(
         r.combined_ordinary_marginal
-        - (r.ordinary_marginal + r.state_marginal + 0.0235 + 0.013)
+        - (r.ordinary_marginal + r.state_marginal + 0.0235 + 0.011)
     ) < 1e-6
 
 

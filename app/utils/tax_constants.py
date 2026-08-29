@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 
 # API / engine stamp (kept in tax_center.ADVISOR_API_VERSION too)
-TAX_TABLE_VERSION = '2026-08-29-v7-april'
+TAX_TABLE_VERSION = '2026-08-29-v8-espp-vpdi'
 
 # --- Federal standard deduction (IRS inflation Rev. Proc.) ---
 FED_STD_DEDUCTION: Dict[int, Dict[str, float]] = {
@@ -34,7 +34,7 @@ CA_STD_SOURCE = {
 }
 
 # --- Employee payroll ---
-# SSA OASDI wage base; IRS Pub 15 Additional Medicare; EDD CA SDI 2026
+# SSA OASDI wage base; IRS Pub 15 Additional Medicare; CA disability
 SS_WAGE_BASE: Dict[int, float] = {
     2022: 147_000.0,
     2023: 160_200.0,
@@ -45,8 +45,12 @@ SS_WAGE_BASE: Dict[int, float] = {
 SS_EMPLOYEE_RATE = 0.062
 MEDICARE_EMPLOYEE_RATE = 0.0145
 ADDITIONAL_MEDICARE_RATE = 0.009
-CA_SDI_RATE = 0.013  # EDD 2026, no wage cap
-CA_SDI_SOURCE = 'EDD 2026 CA SDI employee rate 1.3%, uncapped'
+# Statutory EDD SDI 2026 is 1.3% uncapped. This product matches the employer
+# voluntary plan on the paystub (VPDI 1.1%), not the state SDI line.
+CA_SDI_RATE_STATUTORY = 0.013
+CA_SDI_RATE = 0.011  # VPDI — stub ground truth
+CA_SDI_LABEL = 'VPDI'
+CA_SDI_SOURCE = 'Employer VPDI 1.1% (7/31 stub). EDD statutory SDI 2026 is 1.3% uncapped.'
 
 # --- Supplemental withholding (paycheck on RSU / bonus) ---
 # IRS Pub 15-A: 22% optional flat on supplemental; 37% once YTD supplemental > $1M
@@ -84,12 +88,19 @@ CITATIONS: Dict[str, str] = {
     'ss_base_2026': 'SSA OASDI wage base 2026 $184,500',
     'add_medicare': 'IRC §3101(b)(2) / IRS Topic 560',
     'ca_sdi_2026': CA_SDI_SOURCE,
+    'ca_vpdi': CA_SDI_SOURCE,
     'fed_supp': 'IRS Pub 15-A supplemental 22% / 37% over $1M',
     'ca_supp': CA_SUPP_SOURCE,
     'ca_es': CA_ES_SOURCE,
     'amt_28_2026': 'Form 6251 26%/28% breakpoint $244,500 (2026)',
     'safe_harbor': 'IRC §6654: 90% current or 100%/110% prior-year tax (AGI > $150k → 110%)',
 }
+
+# 2026-07-31 paystub YTD income-tax withholding (not FICA / VPDI).
+# Seeded only when TaxProfile YTD fields are blank so modeled WH is not a guess.
+STUB_WITHHOLDING_AS_OF = '2026-07-31'
+STUB_FEDERAL_WITHHOLDING_YTD = 42_110.89
+STUB_STATE_WITHHOLDING_YTD = 19_257.25
 
 
 def std_for(table: dict, year: int, filing: str) -> float:

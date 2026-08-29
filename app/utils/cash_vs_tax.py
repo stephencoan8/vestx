@@ -74,15 +74,17 @@ def _safe_harbor_line(
     c90 = float(harbor.get('current_year_90pct') or 0)
     required = float(harbor.get('required_annual') or 0)
     src = 'entered' if prior_source == 'entered' else ('computed from %s return' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
+    high = bool(harbor.get('high_agi_110'))
+    prior_pct = '110%' if high else '100%'
     if prior_tax <= 0:
         return (
-            f'Enter {prior_y} total tax to test 110% safe harbor. '
+            f'Enter {prior_y} total tax to test the 100%/110% safe harbor. '
             f'90% of {tax_year} ≈ ${c90:,.0f}. YTD credits ${ytd_credits:,.0f}. '
             f'April bill ${april_balance:,.0f}.'
         )
     penalty = 'No penalty' if no_penalty else 'Penalty risk — YTD credits are under the safe harbor'
     return (
-        f'110% of {prior_y} tax ({src}) = ${h110:,.0f} vs 90% of {tax_year} = ${c90:,.0f}. '
+        f'{prior_pct} of {prior_y} tax ({src}) = ${h110:,.0f} vs 90% of {tax_year} = ${c90:,.0f}. '
         f'Need ${required:,.0f}. YTD credits ${ytd_credits:,.0f}. '
         f'{penalty}. April bill ${april_balance:,.0f}.'
     )
@@ -232,21 +234,8 @@ def withholding_stub_prompt(fed_entered: bool, state_entered: bool) -> Optional[
 
 
 def _iso_bargain_for_year(user_id: int, tax_year: int) -> float:
-    try:
-        from app.models.stock_sale import ISOExercise
-        rows = ISOExercise.query.filter_by(user_id=user_id).all()
-    except Exception:
-        return 0.0
-    total = 0.0
-    for e in rows:
-        if not e.exercise_date or e.exercise_date.year != tax_year:
-            continue
-        barg = e.total_bargain_element
-        if barg is None:
-            sh = float(e.shares_exercised or 0)
-            barg = sh * max(0.0, float(e.fmv_at_exercise or 0) - float(e.strike_price or 0))
-        total += float(barg or 0)
-    return total
+    from app.utils.wage_year_tax import iso_bargain_for_year
+    return float(iso_bargain_for_year(user_id, tax_year).get('iso_bargain') or 0)
 
 
 def _year_amt_due(profile: dict, bargain: float) -> float:
@@ -334,6 +323,8 @@ def build_cash_vs_tax(
         prior_agi = float(prior_agi) if prior_agi is not None else None
     except (TypeError, ValueError):
         prior_agi = None
+    if prior_agi is not None and prior_agi < 1:
+        prior_agi = None  # $0 AGI = not entered
 
     wage_wh = wages_only_income_tax(
         cash_wages=cash, tax_year=tax_year, filing_status=filing, state_code=state
@@ -409,11 +400,6 @@ def build_cash_vs_tax(
     no_penalty = required > 0 and ytd_for_harbor + 0.5 >= required
     april_balance = max(0.0, expected_tax - expected_wh)
 
-    # Extra withholding per remaining vest $ of gross
-    extra_per_vest = 0.0
-    if eq_fut > 0 and still_to_pay_es > 0:
-        extra_per_vest = still_to_pay_es  # dollars to add on remaining vests (W-4 extra)
-
     quarters = allocate_remaining_quarters(
         april_balance=april_balance,
         federal_tax=fed_tax,
@@ -427,10 +413,27 @@ def build_cash_vs_tax(
         e for e in (vest.get('events') or [])
         if e.get('is_future')
     ]
+    remaining_rsu = [
+        e for e in remaining_events
+        if e.get('kind') == 'rsu' and e.get('in_w2', True)
+    ]
+    remaining_rsu_gross = sum(float(e.get('gross_value') or 0) for e in remaining_rsu)
+    rsu_date_labels = [
+        e.get('vest_date') for e in remaining_rsu if e.get('vest_date')
+    ]
 
     sales_tax = _ledger_sales_tax(user, tax_year)
     recon = set_aside_recon(sales_tax, still_to_pay_es)
     vest_true_up = recon['vest_true_up']
+    # Extra W-4 is vest true-up on remaining RSUs only — not sales tax, not ESPP/ISO.
+    extra_per_vest = 0.0
+    extra_note = ''
+    if remaining_rsu_gross > 0 and vest_true_up > 0:
+        extra_per_vest = min(vest_true_up, remaining_rsu_gross)
+        when = ', '.join(rsu_date_labels[:3]) if rsu_date_labels else 'remaining RSUs'
+        extra_note = (
+            f'On {when} RSUs only. Sales tax ${recon["sales"]:,.0f} is set aside, not extra W-4.'
+        )
     stub_prompt = withholding_stub_prompt(
         fed_wh_entered is not None, state_wh_entered is not None
     )
@@ -467,9 +470,10 @@ def build_cash_vs_tax(
         },
         'still_coming': {
             'vest_gross': round(eq_fut, 2),
+            'rsu_gross': round(remaining_rsu_gross, 2),
             'withholding': round(fed_coming + state_coming, 2),
-            'events': remaining_events[:12],
-            'note': 'Remaining vests at live price, supplemental withholding. Not cash due today.',
+            'events': remaining_rsu[:12] or remaining_events[:12],
+            'note': 'Remaining RSUs at live price, supplemental withholding. ESPP is not Box 1. Not cash due today.',
         },
         'under_over': round(under_over, 2),
         'still_to_save': round(still_to_pay_es, 2),
@@ -494,6 +498,9 @@ def build_cash_vs_tax(
         'prior_tax': round(prior_tax, 2),
         'prior_tax_source': prior_tax_source,
         'extra_withholding_on_remaining_vests': round(extra_per_vest, 2),
+        'extra_withhold_on': 'remaining_rsu',
+        'extra_withhold_note': extra_note,
+        'remaining_rsu_gross': round(remaining_rsu_gross, 2),
         'quarters': quarters,
         'ca_es_note': CA_ES_SOURCE,
         'citations': CITATIONS,

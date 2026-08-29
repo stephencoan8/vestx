@@ -94,6 +94,17 @@ def _attach_year_tax_cash_vs_tax(payload: dict, year: int) -> dict:
             payload['withholding_is_modeled'] = cvt.get('withholding_is_modeled')
             payload['expected_tax'] = cvt.get('expected_tax')
             payload['expected_withholding'] = cvt.get('expected_withholding')
+            payload['iso_bargain'] = cvt.get('iso_bargain')
+            payload['amt_due'] = (cvt.get('tax_breakdown') or {}).get('amt')
+            result = payload.get('result')
+            if isinstance(result, dict):
+                result['iso_bargain'] = cvt.get('iso_bargain')
+                result['amt_due'] = payload['amt_due']
+                result['espp_purchase_gross'] = (cvt.get('year_tax') or {}).get('vest_prefills', {}).get('espp_purchase_gross')
+                if result.get('espp_purchase_gross') in (None, 0):
+                    hist = payload.get('history') or {}
+                    result['espp_purchase_gross'] = hist.get('espp_purchase_gross')
+                    result.setdefault('rsu_vest_gross', hist.get('rsu_vest_gross'))
     except Exception as e:
         logger.warning('year-tax cash_vs_tax failed: %s', e)
         payload['cash_vs_tax'] = None
@@ -416,6 +427,9 @@ def api_year_tax():
                 result['sale_ltcg'] = float((stack or {}).get('sale_ltcg') or 0)
                 result['stacked_wages'] = wages
                 result['tax_base'] = tax_base
+                result['iso_bargain'] = float((history or {}).get('iso_bargain') or 0)
+                result['espp_purchase_gross'] = float((history or {}).get('espp_purchase_gross') or 0)
+                result['rsu_vest_gross'] = float((history or {}).get('rsu_vest_gross') or 0)
             # Client-friendly form: rates as percent for override fields
             form_out = dict(form)
             form_out['tax_year'] = year
