@@ -411,28 +411,83 @@ def route_and_compute(
             )
             total = float(stack.get('ordinary') or 0)
             iso_skip = int(vest.get('iso_vest_events_skipped') or 0)
+            espp_gross = float(vest.get('espp_purchase_gross') or 0)
             events = list(vest.get('events') or [])
+            def _is_w2(ev):
+                if ev.get('in_w2') is False:
+                    return False
+                kind = (ev.get('kind') or '').lower()
+                if kind in ('espp', 'iso'):
+                    return False
+                return True
+            w2_events = [e for e in events if _is_w2(e)]
+            other_events = [e for e in events if not _is_w2(e)]
             lines_h = [
                 f"**{income_year} expected ordinary (deterministic)** @ ${live:,.2f}/sh",
                 '',
-                f"- Cash wages (Tax Profile): **${cash:,.0f}**",
-                f"- RSU/cash vests: **${eq:,.0f}** ({len(events)} events @ live FMV)",
+                f"- Cash wages (Tax Profile field, not a sale-net goal): **${cash:,.0f}**",
+                f"- RSU/cash vests in Box 1: **${eq:,.0f}** "
+                f"({len(w2_events)} events; past @ vest FMV, remaining @ live)",
             ]
+            if espp_gross:
+                lines_h.append(
+                    f"- ESPP purchases: **${espp_gross:,.0f}** (not Box 1; ordinary on sale)"
+                )
             if iso_skip:
                 lines_h.append(
-                    f"- ISO vests skipped: {iso_skip} (no W-2 at vest)"
+                    f"- ISO vests skipped: {iso_skip} (no W-2 at vest; AMT only if exercised)"
                 )
             lines_h.append('')
-            lines_h.append(f"**Total expected ordinary: ${total:,.0f}**")
-            if events:
+            lines_h.append(f"**Total expected ordinary (W-2 stack): ${total:,.0f}**")
+            stcg = float(stack.get('sale_stcg') or 0)
+            ltcg = float(stack.get('sale_ltcg') or 0)
+            if stcg or ltcg:
+                lines_h.append(
+                    f"- Recorded sale CG (not ordinary): ST ${stcg:,.0f} · LT ${ltcg:,.0f}"
+                )
+            iso_barg = float(vest.get('iso_bargain') or 0)
+            iso_unex = float(vest.get('iso_vest_unexercised_bargain') or 0)
+            from app.utils.amt import (
+                FED_AMT_EXEMPTION, FED_AMT_PHASEOUT_START, FED_AMT_PHASEOUT_RATE,
+                compute_federal_tmt,
+            )
+            amti = total + stcg + ltcg + iso_barg
+            filing = (profile_dict.get('filing_status') or 'single')
+            tmt, ex_used = compute_federal_tmt(amti, filing, income_year, ltcg=ltcg)
+            ex0 = float(FED_AMT_EXEMPTION.get(income_year, FED_AMT_EXEMPTION[2026]).get(filing, 90100))
+            ph0 = float(FED_AMT_PHASEOUT_START.get(income_year, FED_AMT_PHASEOUT_START[2026]).get(filing, 500_000))
+            pr = float(FED_AMT_PHASEOUT_RATE.get(income_year, 0.50))
+            lines_h.append('')
+            lines_h.append(
+                f"**Federal AMT {income_year} ({filing}):** exemption ${ex0:,.0f}; "
+                f"phaseout starts ${ph0:,.0f} AMTI at {pr:.0%}. "
+                f"AMTI ≈ ${amti:,.0f} → exemption used ${ex_used:,.0f}. "
+                f"Recorded ISO bargain ${iso_barg:,.0f} "
+                f"(unexercised vest bargain ${iso_unex:,.0f} is not AMT due)."
+            )
+            if w2_events:
                 lines_h.append('')
+                lines_h.append('Box 1 events (in ordinary):')
                 lines_h.append('| date | grant | shares | value |')
                 lines_h.append('| --- | --- | --- | --- |')
-                for ev in events[:24]:
+                for ev in w2_events[:24]:
                     lines_h.append(
                         f"| {ev.get('vest_date') or ''} | {ev.get('label') or ''} | "
                         f"{float(ev.get('shares') or 0):,.2f} | "
                         f"${float(ev.get('gross_value') or 0):,.0f} |"
+                    )
+            if other_events:
+                lines_h.append('')
+                lines_h.append('Not Box 1 (ESPP / ISO vest):')
+                lines_h.append('| date | grant | shares | value | note |')
+                lines_h.append('| --- | --- | --- | --- | --- |')
+                for ev in other_events[:24]:
+                    kind = ev.get('kind') or ''
+                    note = 'ESPP not W-2' if kind == 'espp' else 'ISO vest not W-2'
+                    lines_h.append(
+                        f"| {ev.get('vest_date') or ''} | {ev.get('label') or ''} | "
+                        f"{float(ev.get('shares') or 0):,.2f} | "
+                        f"${float(ev.get('gross_value') or 0):,.0f} | {note} |"
                     )
             human = '\n'.join(lines_h)
             engine = (
