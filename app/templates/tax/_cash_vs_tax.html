@@ -10,7 +10,7 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Expected tax</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.expected_tax) }}</div>
-      <div class="tax-sit-sub">fed + CA{% if c.tax_breakdown.amt %} + AMT ${{ "{:,.0f}".format(c.tax_breakdown.amt) }}{% endif %} · not FICA{% if c.iso_bargain %} · ISO bargain ${{ "{:,.0f}".format(c.iso_bargain) }}{% if c.iso_bargain_source == 'iso_vest_unexercised' %} if 2026 ISO vests exercised{% endif %}{% endif %}</div>
+      <div class="tax-sit-sub">fed + CA{% if c.tax_breakdown.amt %} + AMT ${{ "{:,.0f}".format(c.tax_breakdown.amt) }}{% endif %} · not FICA{% if c.iso_bargain %} · ISO bargain ${{ "{:,.0f}".format(c.iso_bargain) }} (recorded exercise){% elif c.iso_vest_unexercised_bargain %} · AMT $0 until recorded exercise · ${{ "{:,.0f}".format(c.iso_vest_unexercised_bargain) }} bargain if exercised{% endif %}</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Expected withholding</div>

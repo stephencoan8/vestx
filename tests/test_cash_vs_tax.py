@@ -162,6 +162,24 @@ def test_vpdi_rate_is_1_1_not_statutory_sdi():
     assert CA_SDI_LABEL == 'VPDI'
 
 
+def test_iso_bargain_recorded_is_not_unexercised_vest():
+    """AMT tax due key is iso_bargain; unexercised vest is a separate planning field."""
+    from app.utils.wage_year_tax import iso_bargain_for_year
+    # No DB user — empty recorded path
+    out = {
+        'iso_bargain': 0.0,
+        'iso_vest_unexercised_bargain': 50_000.0,
+        'exercise_count': 0,
+        'source': 'none',
+    }
+    assert out['exercise_count'] == 0
+    assert out['iso_bargain'] == 0
+    assert out['iso_vest_unexercised_bargain'] > 0
+    # tax due must not use the unexercised field
+    recorded = float(out['iso_bargain'] or 0)
+    assert recorded == 0
+
+
 def test_espp_not_box1_kind():
     from app.utils.wage_year_tax import vest_w2_kind
     assert vest_w2_kind('espp', 'rsu') == 'espp'

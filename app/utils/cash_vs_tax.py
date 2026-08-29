@@ -298,6 +298,7 @@ def build_cash_vs_tax(
         fica_wages=ordinary,
     )
     bargain = _iso_bargain_for_year(user.id, tax_year)
+    vest_unex_bargain = float(vest.get('iso_vest_unexercised_bargain') or 0)
     amt_due = _year_amt_due(eng, bargain) if bargain > 0 else 0.0
 
     # Income tax + AMT (FICA/SDI are paycheck, not 1040 ES)
@@ -442,7 +443,8 @@ def build_cash_vs_tax(
         },
         'iso_bargain': round(bargain, 2),
         'iso_bargain_source': vest.get('iso_bargain_source') or 'none',
-        'iso_vest_unexercised_bargain': round(float(vest.get('iso_vest_unexercised_bargain') or 0), 2),
+        'iso_vest_unexercised_bargain': round(vest_unex_bargain, 2),
+        'iso_exercise_count': int(vest.get('iso_exercise_count') or 0),
         'expected_withholding': round(expected_wh, 2),
         'withholding': {
             'federal_locked': round(fed_locked, 2),

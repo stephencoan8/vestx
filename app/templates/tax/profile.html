@@ -277,7 +277,7 @@
         {% if history.espp_purchase_gross %} · ESPP (not Box 1) ~${{ "{:,.0f}".format(history.espp_purchase_gross) }}{% endif %}
         {% if history.cash_bonus_gross %} · cash ~${{ "{:,.0f}".format(history.cash_bonus_gross) }}{% endif %}
         {% if history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO vest skipped{% endif %}
-        {% if history.iso_bargain %} · ISO AMT bargain ${{ "{:,.0f}".format(history.iso_bargain) }}{% if history.iso_bargain_source == 'iso_vest_unexercised' %} (unexercised 2026 vests){% endif %}{% elif history.iso_vest_events_skipped %} · no recorded exercise{% endif %}
+        {% if history.iso_bargain %} · ISO AMT bargain ${{ "{:,.0f}".format(history.iso_bargain) }} (recorded){% elif history.iso_vest_events_skipped %} · {{ history.iso_vest_events_skipped }} ISO vest skipped · no recorded exercise{% endif %}
         {% endif %}
       </span>
     </summary>
@@ -386,8 +386,8 @@
     if (h.espp_purchase_gross) parts.push('ESPP (not Box 1) ~' + money(h.espp_purchase_gross));
     if (h.cash_bonus_gross) parts.push('cash ~' + money(h.cash_bonus_gross));
     if (h.iso_vest_events_skipped) parts.push(h.iso_vest_events_skipped + ' ISO vest skipped');
-    if (h.iso_bargain) parts.push('ISO AMT bargain ' + money(h.iso_bargain) + (h.iso_bargain_source === 'iso_vest_unexercised' ? ' (unexercised 2026 vests)' : ''));
-    else if (h.iso_vest_events_skipped) parts.push('no recorded exercise');
+    if (h.iso_bargain) parts.push('ISO AMT bargain ' + money(h.iso_bargain) + ' (recorded)');
+    else if (h.iso_vest_events_skipped) parts.push(h.iso_vest_events_skipped + ' ISO vest skipped · no recorded exercise');
     if (stats) stats.textContent = parts.join(' · ');
     if (events) {
       events.innerHTML = '';

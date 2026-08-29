@@ -98,11 +98,18 @@ def _attach_year_tax_cash_vs_tax(payload: dict, year: int) -> dict:
             payload['prior_tax_source'] = cvt.get('prior_tax_source')
             payload['prior_year_agi'] = cvt.get('prior_year_agi')
             payload['iso_bargain'] = cvt.get('iso_bargain')
+            payload['iso_vest_unexercised_bargain'] = cvt.get('iso_vest_unexercised_bargain')
             payload['amt_due'] = (cvt.get('tax_breakdown') or {}).get('amt')
             result = payload.get('result')
             if isinstance(result, dict):
                 result['iso_bargain'] = cvt.get('iso_bargain')
-                result['amt_due'] = payload['amt_due']
+                result['iso_exercise_count'] = cvt.get('iso_exercise_count')
+                result['iso_vest_unexercised_bargain'] = cvt.get('iso_vest_unexercised_bargain')
+                amt = float(payload.get('amt_due') or 0)
+                result['amt_due'] = amt
+                # Same AMT story as the Tax profile TOTAL TAX KPI
+                if amt > 0:
+                    result['total_tax'] = round(float(result.get('total_tax') or 0) + amt, 2)
                 result['espp_purchase_gross'] = (cvt.get('year_tax') or {}).get('vest_prefills', {}).get('espp_purchase_gross')
                 if result.get('espp_purchase_gross') in (None, 0):
                     hist = payload.get('history') or {}

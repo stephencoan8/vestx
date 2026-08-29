@@ -321,10 +321,9 @@ def iso_bargain_for_year(user_id: int, tax_year: int) -> Dict[str, Any]:
     """
     ISO AMT preference for the calendar year.
 
-    Recorded ISOExercise rows are SSOT. iso_stock lots acquired this year fill
-    exercises that never wrote ISOExercise. Remaining unexercised 2026 ISO vests
-    (past @ vest FMV, rest of year @ live) are the annual-profile planning bargain
-    — AMT if those vests are exercised this year.
+    Tax due uses recorded ISOExercise rows (SSOT) and iso_stock lots acquired
+    this year. Unexercised ISO vests are planning-only — not Form 6251 until
+    an exercise is recorded.
     """
     total = 0.0
     n_ex = 0
@@ -420,13 +419,10 @@ def iso_bargain_for_year(user_id: int, tax_year: int) -> Dict[str, Any]:
         vest_barg = 0.0
         n_vest = 0
 
-    total += vest_barg
     if n_ex:
         source = 'iso_exercise'
     elif n_lots:
         source = 'iso_stock'
-    elif n_vest:
-        source = 'iso_vest_unexercised'
     else:
         source = 'none'
     return {
