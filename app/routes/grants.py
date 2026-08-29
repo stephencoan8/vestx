@@ -77,6 +77,8 @@ def add_grant():
             grant_date = datetime.strptime(request.form.get('grant_date'), '%Y-%m-%d').date()
             grant_type = request.form.get('grant_type')
             share_type = request.form.get('share_type')
+            if (grant_type or '').lower() in ('espp', 'nqespp'):
+                share_type = 'espp'
             from app.utils.shares import whole_shares
             share_quantity = float(whole_shares(request.form.get('share_quantity')))
             bonus_type = request.form.get('bonus_type')
@@ -233,6 +235,8 @@ def edit_grant(grant_id):
             grant_date = datetime.strptime(request.form.get('grant_date'), '%Y-%m-%d').date()
             grant_type = request.form.get('grant_type')
             share_type = request.form.get('share_type') or grant.share_type  # Keep existing if disabled
+            if (grant_type or '').lower() in ('espp', 'nqespp'):
+                share_type = 'espp'
             from app.utils.shares import whole_shares
             share_quantity = float(whole_shares(request.form.get('share_quantity')))
             bonus_type = request.form.get('bonus_type') or None

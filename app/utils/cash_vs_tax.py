@@ -29,33 +29,9 @@ from app.utils.wage_year_tax import (
 
 
 def _prior_year_income_tax(user, tax_year: int, profile, entered: Optional[float]):
-    """Prior-year fed+CA income tax for §6654. Entered stub wins; else compute from that year."""
+    """Prior-year fed+CA income tax for §6654. Entered 1040 total tax only — never invent."""
     if entered is not None:
         return float(entered), 'entered'
-    prev = int(tax_year) - 1
-    try:
-        from app.models.tax_year_profile import TaxYearProfile
-        row = TaxYearProfile.get_for(user.id, prev)
-        cash = float(row.other_ordinary_income or 0) if row else 0.0
-        filing = (row.filing_status if row else None) or getattr(profile, 'filing_status', None) or 'single'
-        state = ((row.state_code if row else None) or getattr(profile, 'state_code', None) or 'CA')
-        stack = year_income_stack(user.id, prev, cash_wages=cash)
-        y = compute_w2_year_tax(
-            tax_year=prev,
-            filing_status=filing,
-            state_code=state,
-            wages=float(stack.get('ordinary') or 0),
-            stcg=float(stack.get('stcg') or 0),
-            ltcg=float(stack.get('ltcg') or 0),
-            include_fica=False,
-            use_state_engine=True,
-            fica_wages=0.0,
-        )
-        t = float(y.income_tax_total or 0)
-        if t > 0:
-            return t, 'computed'
-    except Exception:
-        pass
     return 0.0, 'missing'
 
 
@@ -388,11 +364,9 @@ def build_cash_vs_tax(
     prior_tax, prior_tax_source = _prior_year_income_tax(
         user, tax_year, profile, prior_tax_entered
     )
-    if prior_agi is None and prior_tax > 150_000:
-        prior_agi = prior_tax  # conservative: treat as high-AGI if last year's tax was huge
     harbor = safe_harbor_targets(
         prior_year_total_tax=prior_tax,
-        prior_year_agi=prior_agi if prior_agi is not None else (200_000 if prior_tax > 0 else None),
+        prior_year_agi=prior_agi,
         current_year_estimated_tax=expected_tax,
     )
     ytd_for_harbor = fed_locked + state_locked + est_paid
@@ -449,6 +423,8 @@ def build_cash_vs_tax(
             'payroll_fica_sdi': round(payroll, 2),
         },
         'iso_bargain': round(bargain, 2),
+        'iso_bargain_source': vest.get('iso_bargain_source') or 'none',
+        'iso_vest_unexercised_bargain': round(float(vest.get('iso_vest_unexercised_bargain') or 0), 2),
         'expected_withholding': round(expected_wh, 2),
         'withholding': {
             'federal_locked': round(fed_locked, 2),

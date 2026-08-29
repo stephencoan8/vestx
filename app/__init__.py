@@ -168,6 +168,9 @@ def create_app():
         from app.utils.migrate_stub_withholding import migrate_stub_withholding
         _safe_migrate('stub_withholding', migrate_stub_withholding)
 
+        from app.utils.migrate_espp_share_type import migrate_espp_share_type
+        _safe_migrate('espp_share_type', migrate_espp_share_type)
+
         from app.utils.migrate_ledger import migrate_ledger
         _safe_migrate('ledger', migrate_ledger)
         try:

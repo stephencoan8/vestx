@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 
 # API / engine stamp (kept in tax_center.ADVISOR_API_VERSION too)
-TAX_TABLE_VERSION = '2026-08-29-v8-espp-vpdi'
+TAX_TABLE_VERSION = '2026-08-29-v9-iso-espp-harbor'
 
 # --- Federal standard deduction (IRS inflation Rev. Proc.) ---
 FED_STD_DEDUCTION: Dict[int, Dict[str, float]] = {

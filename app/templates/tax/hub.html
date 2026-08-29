@@ -247,7 +247,7 @@
         </thead>
         <tbody>
           {% for lot in lots %}
-          {% set kind = 'iso' if lot.is_iso else ('cash' if lot.share_type == 'cash' else 'rsu') %}
+          {% set kind = 'iso' if lot.is_iso else ('espp' if lot.is_espp or lot.share_type == 'espp' else ('cash' if lot.share_type == 'cash' else 'rsu')) %}
           {% set held = lot.shares_available or 0 %}
           {% set unex = lot.shares_unexercised or 0 %}
           {% set basis = (lot.strike_price or lot.cost_basis_per_share) if lot.is_iso else lot.cost_basis_per_share %}
@@ -272,7 +272,7 @@
                 <span class="tax-lot-id">#{{ lot.vest_event_id }}</span>
               </a>
             </td>
-            <td data-value="{{ lot.share_type }}">{{ lot.share_type }}</td>
+            <td data-value="{{ lot.share_type }}">{{ lot.kind_label or lot.share_type }}</td>
             <td data-value="{{ held }}">{{ "{:,.0f}".format(held) }}</td>
             <td data-value="{{ unex }}">{% if lot.is_iso %}{{ "{:,.0f}".format(unex) }}{% else %}—{% endif %}</td>
             <td data-value="{{ basis or 0 }}">${{ "{:,.2f}".format(basis or 0) }}</td>

@@ -37,7 +37,7 @@
           <tr class="clickable-row" onclick="window.location='{{ url_for('grants.view_grant', grant_id=grant.id) }}';">
             <td>{{ grant.grant_date.strftime('%Y-%m-%d') }}</td>
             <td>{{ grant_type_label(grant.grant_type) }}</td>
-            <td>{{ {'rsu':'RSU','iso_5y':'ISO (5 year)','iso_6y':'ISO (6 year)','cash':'Cash'}.get(grant.share_type, grant.share_type) }}{% if grant.grant_type in ['espp','nqespp'] %} (ESPP){% endif %}</td>
+            <td>{{ share_kind_label(grant.grant_type, grant.share_type) }}</td>
             <td>{{ "{:,.0f}".format(grant.share_quantity) }}</td>
             <td>{{ "{:,.0f}".format(hv.shares) }}{% if hv.unex %} <span class="tax-muted">+{{ "{:,.0f}".format(hv.unex) }} unex</span>{% endif %}</td>
             <td>${{ "{:,.0f}".format(hv.value) }}</td>

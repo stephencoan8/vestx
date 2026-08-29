@@ -165,9 +165,18 @@ def test_vpdi_rate_is_1_1_not_statutory_sdi():
 def test_espp_not_box1_kind():
     from app.utils.wage_year_tax import vest_w2_kind
     assert vest_w2_kind('espp', 'rsu') == 'espp'
+    assert vest_w2_kind('espp', 'espp') == 'espp'
     assert vest_w2_kind('nqespp', 'rsu') == 'espp'
     assert vest_w2_kind('new_hire', 'rsu') == 'rsu'
     assert vest_w2_kind('new_hire', 'iso_5y') == 'iso'
+
+
+def test_prior_year_tax_is_entered_only():
+    from app.utils.cash_vs_tax import _prior_year_income_tax
+    t, src = _prior_year_income_tax(None, 2026, None, 50_000)
+    assert t == 50_000 and src == 'entered'
+    t, src = _prior_year_income_tax(None, 2026, None, None)
+    assert t == 0.0 and src == 'missing'
 
 
 def test_safe_harbor_line_says_100_when_not_high_agi():

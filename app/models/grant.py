@@ -24,6 +24,7 @@ class ShareType(str, Enum):
     ISO_5Y = "iso_5y"
     ISO_6Y = "iso_6y"
     CASH = "cash"
+    ESPP = "espp"
 
 
 class BonusType(str, Enum):

@@ -24,7 +24,7 @@ def _kind_for_grant(grant: Grant) -> str:
         return 'iso_option'
     if st == ShareType.CASH.value:
         return 'cash'
-    if (grant.grant_type or '') in ('espp', 'nqespp'):
+    if st == ShareType.ESPP.value or (grant.grant_type or '') in ('espp', 'nqespp'):
         return 'espp'
     return 'rsu'
 

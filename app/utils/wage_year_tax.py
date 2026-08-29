@@ -321,18 +321,24 @@ def iso_bargain_for_year(user_id: int, tax_year: int) -> Dict[str, Any]:
     """
     ISO AMT preference for the calendar year.
 
-    Vest is not an AMT event. Recorded ISOExercise rows are SSOT; iso_stock lots
-    acquired this year fill in Shareworks/exercise paths that never wrote ISOExercise.
+    Recorded ISOExercise rows are SSOT. iso_stock lots acquired this year fill
+    exercises that never wrote ISOExercise. Remaining unexercised 2026 ISO vests
+    (past @ vest FMV, rest of year @ live) are the annual-profile planning bargain
+    — AMT if those vests are exercised this year.
     """
     total = 0.0
     n_ex = 0
     exercised_vests = set()
+    exercised_qty: Dict[int, float] = {}
     try:
         from app.models.stock_sale import ISOExercise
         rows = ISOExercise.query.filter_by(user_id=user_id).all()
     except Exception:
         rows = []
     for e in rows:
+        if e.vest_event_id:
+            vid = int(e.vest_event_id)
+            exercised_qty[vid] = exercised_qty.get(vid, 0.0) + float(e.shares_exercised or 0)
         if not e.exercise_date or e.exercise_date.year != int(tax_year):
             continue
         barg = e.total_bargain_element
@@ -364,11 +370,72 @@ def iso_bargain_for_year(user_id: int, tax_year: int) -> Dict[str, Any]:
         total += barg
         n_lots += 1
 
+    n_vest = 0
+    vest_barg = 0.0
+    try:
+        from datetime import date as _date
+        from app.models.vest_event import VestEvent
+        from app.models.grant import Grant, ShareType
+        from app.utils.price_utils import get_latest_user_price
+        from sqlalchemy.orm import joinedload
+        live = float(get_latest_user_price(user_id) or 0.0)
+        today = _date.today()
+        start = _date(int(tax_year), 1, 1)
+        end = _date(int(tax_year), 12, 31)
+        iso_types = {ShareType.ISO_5Y.value, ShareType.ISO_6Y.value}
+        events = (
+            VestEvent.query.options(joinedload(VestEvent.grant))
+            .join(Grant)
+            .filter(
+                Grant.user_id == user_id,
+                VestEvent.vest_date >= start,
+                VestEvent.vest_date <= end,
+            )
+            .all()
+        )
+        for ve in events:
+            if not ve.grant or (ve.grant.share_type or '') not in iso_types:
+                continue
+            vested = float(ve.shares_vested or 0)
+            unex = max(0.0, vested - exercised_qty.get(int(ve.id), 0.0))
+            if unex <= 0:
+                continue
+            strike = float(ve.grant.share_price_at_grant or 0)
+            is_future = bool(ve.vest_date and ve.vest_date > today)
+            fmv = 0.0
+            if is_future:
+                fmv = live
+            else:
+                fmv = float(getattr(ve, 'share_price_at_vest', None) or 0)
+                if fmv <= 0 and ve.value_at_vest and vested:
+                    fmv = float(ve.value_at_vest) / vested
+                if fmv <= 0:
+                    fmv = live
+            barg = unex * max(0.0, fmv - strike)
+            if barg <= 0:
+                continue
+            vest_barg += barg
+            n_vest += 1
+    except Exception:
+        vest_barg = 0.0
+        n_vest = 0
+
+    total += vest_barg
+    if n_ex:
+        source = 'iso_exercise'
+    elif n_lots:
+        source = 'iso_stock'
+    elif n_vest:
+        source = 'iso_vest_unexercised'
+    else:
+        source = 'none'
     return {
         'iso_bargain': round(total, 2),
+        'iso_vest_unexercised_bargain': round(vest_barg, 2),
         'exercise_count': n_ex,
         'iso_stock_lot_count': n_lots,
-        'source': 'iso_exercise' if n_ex else ('iso_stock' if n_lots else 'none'),
+        'iso_vest_events': n_vest,
+        'source': source,
     }
 
 
@@ -491,7 +558,9 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
         'iso_vest_events_skipped': iso_count,
         'espp_events_excluded_from_w2': espp_count,
         'iso_bargain': bargain['iso_bargain'],
+        'iso_vest_unexercised_bargain': bargain.get('iso_vest_unexercised_bargain') or 0,
         'iso_exercise_count': bargain['exercise_count'],
+        'iso_vest_events': bargain.get('iso_vest_events') or 0,
         'iso_bargain_source': bargain['source'],
         'event_count': len(rows),
         'events': rows[:40],

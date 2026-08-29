@@ -428,6 +428,7 @@ def api_year_tax():
                 result['stacked_wages'] = wages
                 result['tax_base'] = tax_base
                 result['iso_bargain'] = float((history or {}).get('iso_bargain') or 0)
+                result['iso_bargain_source'] = (history or {}).get('iso_bargain_source') or 'none'
                 result['espp_purchase_gross'] = float((history or {}).get('espp_purchase_gross') or 0)
                 result['rsu_vest_gross'] = float((history or {}).get('rsu_vest_gross') or 0)
             # Client-friendly form: rates as percent for override fields

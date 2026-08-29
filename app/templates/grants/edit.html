@@ -39,6 +39,7 @@
  <select id="share_type" name="share_type" required>
  <option value="">Select type...</option>
  <option value="rsu" {% if grant.share_type == 'rsu' %}selected{% endif %}>RSU</option>
+ <option value="espp" {% if grant.share_type == 'espp' %}selected{% endif %}>ESPP</option>
  <option value="iso_5y" {% if grant.share_type == 'iso_5y' %}selected{% endif %}>ISO (5 Year)</option>
  <option value="iso_6y" {% if grant.share_type == 'iso_6y' %}selected{% endif %}>ISO (6 Year)</option>
  <option value="cash" {% if grant.share_type == 'cash' %}selected{% endif %}>Cash</option>
