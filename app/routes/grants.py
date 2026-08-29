@@ -582,6 +582,100 @@ def finance_deep_dive_legacy():
     return redirect(url_for('grants.list_grants'))
 
 
+@grants_bp.route('/vest/<int:vest_id>', methods=['GET', 'POST'])
+@login_required
+def vest_detail(vest_id):
+    """View and edit details for a specific vest event."""
+    from app.models.stock_sale import StockSale, ISOExercise
+    from sqlalchemy.orm import joinedload
+
+    try:
+        vest_event = VestEvent.query.options(
+            joinedload(VestEvent.grant)
+        ).get_or_404(vest_id)
+
+        if vest_event.grant.user_id != current_user.id:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('grants.list_grants'))
+
+        if request.method == 'POST':
+            vest_event.notes = request.form.get('notes', '').strip()
+            db.session.commit()
+            flash('Vest notes updated successfully!', 'success')
+            return redirect(url_for('grants.vest_detail', vest_id=vest_id))
+
+        try:
+            user_key = current_user.get_decrypted_user_key() or b''
+        except Exception as e:
+            logger.error("Error getting user key: %s", e, exc_info=True)
+            user_key = b''
+
+        sales = StockSale.query.filter_by(vest_event_id=vest_id).order_by(
+            StockSale.sale_date.desc()
+        ).all()
+
+        for sale in sales:
+            if sale.capital_gain > 0:
+                try:
+                    sale.estimated_tax = sale.get_estimated_tax(user=current_user)
+                except Exception:
+                    sale.estimated_tax = None
+
+        exercises = ISOExercise.query.filter_by(vest_event_id=vest_id).order_by(
+            ISOExercise.exercise_date.desc()
+        ).all()
+
+        current_price = get_latest_user_price(current_user.id) or 0.0
+        try:
+            vest_data = vest_event.get_complete_data(
+                user_key=user_key,
+                current_price=current_price,
+                sales_data=sales,
+                exercises_data=exercises,
+                user=current_user,
+            )
+            if 'error' in vest_data:
+                flash(f"Warning: Some calculations unavailable: {vest_data['error']}", 'warning')
+        except Exception as e:
+            logger.error("get_complete_data failed for vest %s: %s", vest_id, e, exc_info=True)
+            is_iso = vest_event.grant.share_type in ['iso_5y', 'iso_6y']
+            vest_data = {
+                'vest_id': vest_event.id,
+                'has_vested': vest_event.has_vested,
+                'is_iso': is_iso,
+                'is_cash': vest_event.grant.share_type == 'cash',
+                'shares_vested': vest_event.shares_vested,
+                'price_at_vest': 0.0,
+                'gross_value': 0.0,
+                'shares_received': vest_event.shares_received,
+                'net_value': 0.0,
+                'current_price': current_price,
+                'strike_price': vest_event.grant.share_price_at_grant if is_iso else None,
+                'cost_basis_per_share': 0.0,
+                'shares_sold': 0.0,
+                'shares_exercised': 0.0,
+                'shares_remaining': vest_event.shares_received,
+                'tax_breakdown': None,
+                'sale_tax_projection': None,
+                'error': str(e),
+            }
+            flash(f'Warning: Some calculations unavailable: {str(e)}', 'warning')
+
+        return render_template(
+            'grants/vest_detail.html',
+            vest_event=vest_event,
+            grant=vest_event.grant,
+            vest_data=vest_data,
+            sales=sales,
+            exercises=exercises,
+        )
+
+    except Exception as e:
+        logger.error("Error in vest_detail route: %s", e, exc_info=True)
+        db.session.rollback()
+        flash(f'Error loading vest details: {str(e)}', 'danger')
+        return redirect(url_for('grants.list_grants'))
+
 @grants_bp.route('/sale-planning')
 @login_required
 def sale_planning():
