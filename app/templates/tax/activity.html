@@ -33,7 +33,15 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Tax to set aside</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
-      <div class="tax-sit-sub">liability − withholding − estimates</div>
+      <div class="tax-sit-sub">
+        {% if cash_vs_tax and cash_vs_tax.set_aside_recon %}
+        sales ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.sales) }}
+        + vest true-up ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.vest_true_up) }}
+        = ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.total) }}
+        {% else %}
+        liability − withholding − estimates
+        {% endif %}
+      </div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Still held</div>
@@ -125,6 +133,9 @@
 
   <div class="detail-card tax-ledger-block">
     <h2>Sale ledger</h2>
+    {% if cash_vs_tax and cash_vs_tax.set_aside_recon %}
+    <p class="tax-sit-sub">Est. tax on these sales ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.sales) }} + vest true-up ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.vest_true_up) }} = tax to set aside ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.total) }}.</p>
+    {% endif %}
     {% if sold.rows %}
     <div class="table-container tax-table-wrap">
       <table class="data-table">

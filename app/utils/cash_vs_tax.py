@@ -28,6 +28,66 @@ from app.utils.wage_year_tax import (
 )
 
 
+def _prior_year_income_tax(user, tax_year: int, profile, entered: Optional[float]):
+    """Prior-year fed+CA income tax for §6654. Entered stub wins; else compute from that year."""
+    if entered is not None:
+        return float(entered), 'entered'
+    prev = int(tax_year) - 1
+    try:
+        from app.models.tax_year_profile import TaxYearProfile
+        row = TaxYearProfile.get_for(user.id, prev)
+        cash = float(row.other_ordinary_income or 0) if row else 0.0
+        filing = (row.filing_status if row else None) or getattr(profile, 'filing_status', None) or 'single'
+        state = ((row.state_code if row else None) or getattr(profile, 'state_code', None) or 'CA')
+        stack = year_income_stack(user.id, prev, cash_wages=cash)
+        y = compute_w2_year_tax(
+            tax_year=prev,
+            filing_status=filing,
+            state_code=state,
+            wages=float(stack.get('ordinary') or 0),
+            stcg=float(stack.get('stcg') or 0),
+            ltcg=float(stack.get('ltcg') or 0),
+            include_fica=False,
+            use_state_engine=True,
+            fica_wages=0.0,
+        )
+        t = float(y.income_tax_total or 0)
+        if t > 0:
+            return t, 'computed'
+    except Exception:
+        pass
+    return 0.0, 'missing'
+
+
+def _safe_harbor_line(
+    *,
+    tax_year: int,
+    prior_tax: float,
+    prior_source: str,
+    harbor: dict,
+    ytd_credits: float,
+    no_penalty: bool,
+    april_balance: float,
+) -> str:
+    prior_y = tax_year - 1
+    h110 = float(harbor.get('prior_year_safe_harbor') or 0)
+    c90 = float(harbor.get('current_year_90pct') or 0)
+    required = float(harbor.get('required_annual') or 0)
+    src = 'entered' if prior_source == 'entered' else ('computed from %s return' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
+    if prior_tax <= 0:
+        return (
+            f'Enter {prior_y} total tax to test 110% safe harbor. '
+            f'90% of {tax_year} ≈ ${c90:,.0f}. YTD credits ${ytd_credits:,.0f}. '
+            f'April bill ${april_balance:,.0f}.'
+        )
+    penalty = 'No penalty' if no_penalty else 'Penalty risk — YTD credits are under the safe harbor'
+    return (
+        f'110% of {prior_y} tax ({src}) = ${h110:,.0f} vs 90% of {tax_year} = ${c90:,.0f}. '
+        f'Need ${required:,.0f}. YTD credits ${ytd_credits:,.0f}. '
+        f'{penalty}. April bill ${april_balance:,.0f}.'
+    )
+
+
 def _iso_bargain_for_year(user_id: int, tax_year: int) -> float:
     try:
         from app.models.stock_sale import ISOExercise
@@ -190,18 +250,21 @@ def build_cash_vs_tax(
     under_over = expected_tax - expected_wh  # + underpaid, − overpaid
     still_to_pay_es = max(0.0, under_over)
 
-    # Safe harbor vs April balance
-    prior_tax = prior_tax_entered or 0.0
+    # Safe harbor vs April balance — 110% of prior-year tax (high AGI) vs 90% of current
+    prior_tax, prior_tax_source = _prior_year_income_tax(
+        user, tax_year, profile, prior_tax_entered
+    )
+    if prior_agi is None and prior_tax > 150_000:
+        prior_agi = prior_tax  # conservative: treat as high-AGI if last year's tax was huge
     harbor = safe_harbor_targets(
         prior_year_total_tax=prior_tax,
-        prior_year_agi=prior_agi,
+        prior_year_agi=prior_agi if prior_agi is not None else (200_000 if prior_tax > 0 else None),
         current_year_estimated_tax=expected_tax,
     )
     ytd_for_harbor = fed_locked + state_locked + est_paid
-    harbor_met = prior_tax > 0 and ytd_for_harbor + 0.5 >= float(harbor['required_annual'] or 0)
+    required = float(harbor.get('required_annual') or 0)
+    no_penalty = required > 0 and ytd_for_harbor + 0.5 >= required
     april_balance = max(0.0, expected_tax - expected_wh)
-    # Penalty risk: YTD credits < required annual * (elapsed quarters)
-    no_penalty = harbor_met or ytd_for_harbor + 0.5 >= float(harbor['required_annual'] or 0)
 
     # Extra withholding per remaining vest $ of gross
     extra_per_vest = 0.0
@@ -261,6 +324,14 @@ def build_cash_vs_tax(
         is_next = (not past) and (not marked_next)
         if is_next:
             marked_next = True
+        if past:
+            why = 'Due date passed. Remaining federal ES is on Sep 15 and Jan 15.'
+        elif CA_ES_FRACTIONS[i] <= 0:
+            why = 'CA 540-ES is 0% this quarter. Federal remainder only.'
+        elif total_pay <= 0:
+            why = 'Nothing left on this installment.'
+        else:
+            why = 'Federal remainder split across remaining due dates. CA is 30/40/0/30.'
         quarters.append({
             **q,
             'due_iso': due.isoformat(),
@@ -271,12 +342,28 @@ def build_cash_vs_tax(
             'ca_payment': round(ca_pay, 2),
             'ca_fraction': CA_ES_FRACTIONS[i],
             'suggested_payment': round(total_pay, 2),
+            'why': why,
         })
 
     remaining_events = [
         e for e in (vest.get('events') or [])
         if e.get('is_future')
     ]
+
+    sales_tax = 0.0
+    try:
+        from app.utils.estimated_tax_calendar import stacked_tax_on_sales
+        stacked = stacked_tax_on_sales(user, None, tax_year)
+        # Income tax on sales only (not FICA) — this is the per-lot EST. TAX total
+        sales_tax = (
+            float(stacked.get('federal_tax') or 0)
+            + float(stacked.get('state_tax') or 0)
+            + float(stacked.get('niit') or 0)
+            + float(stacked.get('amt_due') or 0)
+        )
+    except Exception:
+        sales_tax = 0.0
+    vest_true_up = still_to_pay_es - sales_tax
 
     return {
         'tax_year': tax_year,
@@ -319,7 +406,25 @@ def build_cash_vs_tax(
         'april_balance': round(april_balance, 2),
         'no_penalty': bool(no_penalty),
         'safe_harbor': harbor,
+        'safe_harbor_line': _safe_harbor_line(
+            tax_year=tax_year,
+            prior_tax=prior_tax,
+            prior_source=prior_tax_source,
+            harbor=harbor,
+            ytd_credits=ytd_for_harbor,
+            no_penalty=no_penalty,
+            april_balance=april_balance,
+        ),
         'ytd_credits_for_harbor': round(ytd_for_harbor, 2),
+        'sales_tax': round(sales_tax, 2),
+        'vest_true_up': round(vest_true_up, 2),
+        'set_aside_recon': {
+            'sales': round(sales_tax, 2),
+            'vest_true_up': round(vest_true_up, 2),
+            'total': round(still_to_pay_es, 2),
+        },
+        'prior_tax': round(prior_tax, 2),
+        'prior_tax_source': prior_tax_source,
         'extra_withholding_on_remaining_vests': round(extra_per_vest, 2),
         'quarters': quarters,
         'ca_es_note': CA_ES_SOURCE,

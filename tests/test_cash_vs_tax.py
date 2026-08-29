@@ -93,6 +93,34 @@ def test_espp_qualifying_discount_ordinary():
     assert r.ordinary_income == pytest.approx(750.0)
 
 
+def test_safe_harbor_line_no_penalty_april_bill():
+    from app.utils.cash_vs_tax import _safe_harbor_line
+    line = _safe_harbor_line(
+        tax_year=2026,
+        prior_tax=35_455,
+        prior_source='entered',
+        harbor={
+            'prior_year_safe_harbor': 39_000,
+            'current_year_90pct': 50_000,
+            'required_annual': 39_000,
+        },
+        ytd_credits=141_674,
+        no_penalty=True,
+        april_balance=55_766,
+    )
+    assert '110% of 2025 tax' in line or '110% of 2024 tax' in line or '110%' in line
+    assert 'No penalty' in line
+    assert 'April bill' in line
+    assert '39,000' in line
+
+
+def test_grant_type_labels_not_enums():
+    from app.utils.share_labels import grant_type_label
+    assert grant_type_label('kickass') == 'Special'
+    assert grant_type_label('new_hire') == 'New hire'
+    assert grant_type_label('annual_performance') == 'Annual performance'
+
+
 def test_espp_disqualifying_if_sold_early():
     lot = LotSaleInput(
         vest_event_id=1,

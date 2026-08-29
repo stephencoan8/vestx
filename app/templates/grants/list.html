@@ -36,7 +36,7 @@
           {% set hv = held_by_grant.get(grant.id, {'shares': 0, 'value': 0, 'unex': 0}) %}
           <tr class="clickable-row" onclick="window.location='{{ url_for('grants.view_grant', grant_id=grant.id) }}';">
             <td>{{ grant.grant_date.strftime('%Y-%m-%d') }}</td>
-            <td>{{ grant.grant_type.replace('_', ' ') }}</td>
+            <td>{{ grant_type_label(grant.grant_type) }}</td>
             <td>{{ {'rsu':'RSU','iso_5y':'ISO (5 year)','iso_6y':'ISO (6 year)','cash':'Cash'}.get(grant.share_type, grant.share_type) }}{% if grant.grant_type in ['espp','nqespp'] %} (ESPP){% endif %}</td>
             <td>{{ "{:,.0f}".format(grant.share_quantity) }}</td>
             <td>{{ "{:,.0f}".format(hv.shares) }}{% if hv.unex %} <span class="tax-muted">+{{ "{:,.0f}".format(hv.unex) }} unex</span>{% endif %}</td>
@@ -102,7 +102,7 @@
           {% for ve in upcoming %}
           <tr class="clickable-row" onclick="window.location='{{ url_for('grants.vest_detail', vest_id=ve.id) }}';">
             <td>{{ ve.vest_date.strftime('%Y-%m-%d') }}</td>
-            <td>{{ ve.grant.grant_type.replace('_', ' ') }} {{ {'rsu':'RSU','iso_5y':'ISO (5y)','iso_6y':'ISO (6y)','cash':'Cash'}.get(ve.grant.share_type, ve.grant.share_type) }}</td>
+            <td>{{ grant_type_label(ve.grant.grant_type) }} {{ share_kind_label(ve.grant.grant_type, ve.grant.share_type) }}</td>
             <td>{{ "{:,.0f}".format(ve.shares_vested) }}</td>
             <td>${{ "{:,.0f}".format(ve.shares_vested * (live_price or 0)) }}</td>
           </tr>

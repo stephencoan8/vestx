@@ -3564,8 +3564,13 @@ h1, h2, .page-header h1, .auth-header h1 {
     border-color: var(--ink);
 }
 .tax-quarter-card.is-next .tax-quarter-label,
-.tax-quarter-card.is-next .tax-quarter-pay {
+.tax-quarter-card.is-next .tax-quarter-pay,
+.tax-quarter-card.is-next .tax-sit-sub {
     color: var(--paper);
+}
+.cash-vs-tax-harbor {
+    max-width: 28rem;
+    line-height: 1.45;
 }
 
 .advisor-fab {

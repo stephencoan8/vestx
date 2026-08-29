@@ -12,7 +12,7 @@ SHARE_TYPE_LABELS = {
 
 GRANT_TYPE_LABELS = {
     'new_hire': 'New hire',
-    'annual_performance': 'Annual',
+    'annual_performance': 'Annual performance',
     'promotion': 'Promotion',
     'kickass': 'Special',
     'espp': 'ESPP',

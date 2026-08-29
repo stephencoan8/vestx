@@ -1456,7 +1456,7 @@ def _result_from_eval(
     notes = [
         'Lots ordered for tax efficiency: LTCG / high-basis first; ISO cashless (ordinary) last.',
         'RSU cost basis = FMV on vest date (from pre-IPO prices in Settings), not $0 — gain is (sale − vest FMV).',
-        'Tax is incremental vs Tax Profile wages only (upcoming unvested RSU income is not auto-included).',
+        'Tax is incremental vs cash wages + this year’s vests (including remaining vests at live).',
         'Eff. rate = incremental tax ÷ economic gain (proceeds − basis), not ÷ gross proceeds.',
         'This is SpecID planning — execute the same vest lots when selling.',
     ]

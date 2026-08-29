@@ -104,27 +104,6 @@ def _tax_page_context(user, tax_year=None):
     )
     inventory['tax_to_save'] = float(tax_calendar.get('still_to_save') or 0)
     cash_vs_tax = tax_calendar.get('cash_vs_tax')
-    # Allocate stacked year tax across sales so per-lot EST. TAX foots the header
-    try:
-        from app.utils.estimated_tax_calendar import stacked_tax_on_sales
-        stacked = stacked_tax_on_sales(user, sales, tax_year)
-        analysis = stacked.get('analysis')
-        if analysis and getattr(analysis, 'lots', None) and sold.get('rows'):
-            weights = {}
-            tot_w = 0.0
-            for lr in analysis.lots:
-                w = abs(float(lr.ordinary_income or 0)) + abs(float(lr.capital_gain or 0))
-                weights[lr.vest_event_id] = weights.get(lr.vest_event_id, 0) + w
-                tot_w += w
-            equity_tax = float(stacked.get('total_tax') or 0)
-            if tot_w > 0 and equity_tax > 0:
-                for row in sold['rows']:
-                    if row.get('year') != tax_year:
-                        continue
-                    w = weights.get(row.get('vest_event_id'), 0)
-                    row['estimated_tax'] = equity_tax * (w / tot_w)
-    except Exception:
-        pass
     profile_ready = bool(float(profile.other_ordinary_income or 0) > 0)
     return dict(
         profile=profile,

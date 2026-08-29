@@ -16,8 +16,15 @@
       <div class="tax-sit-label">Expected withholding</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.expected_withholding) }}</div>
       <div class="tax-sit-sub">
-        {% if c.withholding.federal_entered %}fed from paystub{% else %}fed not entered — modeled{% endif %}
-        · {% if c.withholding.state_entered %}CA from paystub{% else %}CA not entered — modeled{% endif %}
+        {% if c.withholding.federal_entered and c.withholding.state_entered %}
+        from paystub YTD
+        {% elif c.withholding.federal_entered %}
+        fed from stub · CA modeled
+        {% elif c.withholding.state_entered %}
+        CA from stub · fed modeled
+        {% else %}
+        Modeled — enter YTD from your last stub on <a href="{{ url_for('tax_center.tax_profile') }}">Tax profile</a>
+        {% endif %}
       </div>
     </div>
     <div class="tax-sit-card accent">
@@ -26,16 +33,9 @@
       <div class="tax-sit-sub">liability − withholding − estimates</div>
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Still to pay (ES)</div>
-      <div class="tax-sit-value">${{ "{:,.0f}".format(c.still_to_save) }}</div>
-      <div class="tax-sit-sub">
-        {% if c.no_penalty %}
-        No underpayment penalty
-        {% if c.april_balance > 0 %} · still owe ${{ "{:,.0f}".format(c.april_balance) }} in April{% endif %}
-        {% else %}
-        May owe penalty if you miss safe harbor
-        {% endif %}
-      </div>
+      <div class="tax-sit-label">April balance due</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.april_balance) }}</div>
+      <div class="tax-sit-sub cash-vs-tax-harbor">{{ c.safe_harbor_line }}</div>
     </div>
   </div>
 
@@ -64,7 +64,10 @@
     <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
       <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_label }}</div>
       <div class="tax-quarter-pay">{% if q.is_past %}—{% else %}${{ "{:,.0f}".format(q.suggested_payment) }}{% endif %}</div>
+      <div class="tax-sit-sub">{{ q.why }}</div>
+      {% if not q.is_past %}
       <div class="tax-sit-sub">fed ${{ "{:,.0f}".format(q.federal_payment or 0) }} · CA {{ "{:.0f}".format((q.ca_fraction or 0)*100) }}% ${{ "{:,.0f}".format(q.ca_payment or 0) }}</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

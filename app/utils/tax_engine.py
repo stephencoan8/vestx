@@ -1204,8 +1204,9 @@ def analyze_sales(
             'brackets, NIIT, LTCG band, and AMT will be wrong. Enter full-year wages.'
         )
     warnings.append(
-        'Tax amounts are incremental: extra tax from this equity activity vs your profile income alone '
-        f'(stacked ordinary ${other_ord:,.0f} + other CG). Effective rate = incremental tax ÷ equity gain.'
+        'Tax amounts are incremental vs stacked ordinary '
+        f'${other_ord:,.0f} (cash wages + {year} vests, including remaining at live) + other CG. '
+        'Effective rate = incremental tax ÷ equity gain.'
     )
     # Surface which LTCG band the sale lands in (helps catch 15% vs 20% confusion)
     if ltcg_pos > 0:
