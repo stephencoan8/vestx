@@ -652,12 +652,18 @@ def year_income_stack(
     }
 
 
-def year_tax_snapshot(user, tax_year: int) -> Optional[Dict[str, Any]]:
+def year_tax_snapshot(
+    user,
+    tax_year: int,
+    *,
+    itemize_salt: float = 0.0,
+    itemize_mortgage: float = 0.0,
+    itemize_charity: float = 0.0,
+) -> Optional[Dict[str, Any]]:
     """
     Same stack as Tax profile / /tax/api/year-tax for ``tax_year``.
 
-    Used so 2026 safe harbor can read 2025 total_tax without a second save
-    on the 2026 prior-year fields.
+    harbor_tax is income tax (fed+CA+NIIT), not FICA/VPDI — matches 2026 Expected tax.
     """
     if user is None or not getattr(user, 'id', None):
         return None
@@ -690,11 +696,16 @@ def year_tax_snapshot(user, tax_year: int) -> Optional[Dict[str, Any]]:
         use_state_engine=bool(eng.get('use_state_engine', True)),
         vest_prefills=stack.get('vest') or {},
         fica_wages=float(stack.get('fica_wages') or ordinary),
+        itemize_salt=float(itemize_salt or 0),
+        itemize_mortgage=float(itemize_mortgage or 0),
+        itemize_charity=float(itemize_charity or 0),
     )
+    income = round(float(y.income_tax_total or 0), 2)
     return {
         'tax_year': int(tax_year),
         'total_tax': round(float(y.total_tax or 0), 2),
-        'income_tax_total': round(float(y.income_tax_total or 0), 2),
+        'income_tax_total': income,
+        'harbor_tax': income,
         'agi': round(tax_base or ordinary, 2),
         'ordinary': round(ordinary, 2),
         'profile_source': eng.get('profile_source'),

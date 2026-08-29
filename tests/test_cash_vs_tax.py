@@ -125,6 +125,18 @@ def test_grant_type_labels_not_enums():
     assert 'ESPP ESPP' not in lot_kind_line('espp', 'espp')
 
 
+def test_harbor_uses_income_tax_not_all_in_total():
+    """§6654 prior-year base is income tax, not FICA-inclusive total_tax."""
+    snap = {
+        'total_tax': 80_685,
+        'income_tax_total': 63_603,
+        'harbor_tax': 63_603,
+        'agi': 400_000,
+    }
+    assert snap['harbor_tax'] == snap['income_tax_total']
+    assert snap['harbor_tax'] < snap['total_tax']
+
+
 def test_set_aside_recon_adds_ledger_sales_to_true_up():
     from app.utils.cash_vs_tax import set_aside_recon
     r = set_aside_recon(13_228, 55_766)

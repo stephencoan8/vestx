@@ -47,3 +47,24 @@ def migrate_stub_withholding(app):
         )
     if changed:
         db.session.commit()
+    # Keep the active year's TaxYearProfile in sync so 2026 reads the stub, not 2025.
+    try:
+        from app.models.tax_year_profile import TaxYearProfile
+        from datetime import date
+        ynow = date.today().year
+        for p in TaxProfile.query.all():
+            yr = int(p.tax_year or ynow)
+            row = TaxYearProfile.get_for(p.user_id, yr)
+            if not row:
+                continue
+            if entered_amount(getattr(row, 'federal_withholding_ytd', None)) is None:
+                row.federal_withholding_ytd = float(p.federal_withholding_ytd or 0)
+            if entered_amount(getattr(row, 'state_withholding_ytd', None)) is None:
+                row.state_withholding_ytd = float(p.state_withholding_ytd or 0)
+        db.session.commit()
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        logger.warning('stub withholding year-row copy skipped: %s', e)

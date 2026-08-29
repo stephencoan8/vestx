@@ -366,6 +366,12 @@ def api_year_tax():
             for k in (
                 'amt_credit_carryforward',
                 'ca_amt_credit_carryforward',
+                'federal_withholding_ytd',
+                'state_withholding_ytd',
+                'estimated_payments_ytd',
+                'itemize_salt',
+                'itemize_mortgage',
+                'itemize_charity',
             ):
                 if k in data and data[k] is not None and data[k] != '':
                     out[k] = _money_float(data[k], 0)
@@ -429,6 +435,9 @@ def api_year_tax():
                     use_state_engine=bool(form.get('use_state_engine', True)),
                     vest_prefills=history,
                     fica_wages=fica_wages,
+                    itemize_salt=float(form.get('itemize_salt') or 0),
+                    itemize_mortgage=float(form.get('itemize_mortgage') or 0),
+                    itemize_charity=float(form.get('itemize_charity') or 0),
                 ).to_dict()
                 result['box1_wages'] = box1
                 result['equity_vested_ytd'] = eq_past
@@ -574,6 +583,12 @@ def tax_profile():
                 'include_fica': request.form.get('include_fica') == 'on',
                 'ss_wage_base_maxed': request.form.get('ss_wage_base_maxed') == 'on',
                 'include_niit': request.form.get('include_niit') == 'on',
+                'federal_withholding_ytd': _f('federal_withholding_ytd', 0) or 0,
+                'state_withholding_ytd': _f('state_withholding_ytd', 0) or 0,
+                'estimated_payments_ytd': _f('estimated_payments_ytd', 0) or 0,
+                'itemize_salt': _f('itemize_salt', 0) or 0,
+                'itemize_mortgage': _f('itemize_mortgage', 0) or 0,
+                'itemize_charity': _f('itemize_charity', 0) or 0,
             }
             stack = year_income_stack(
                 current_user.id,
@@ -666,6 +681,19 @@ def tax_profile():
     if float(form.get('other_ordinary_income') or 0) <= 0 and float(form.get('ytd_wages') or 0) > 0:
         form['other_ordinary_income'] = float(form['ytd_wages'])
 
+    if year_row:
+        form['itemize_salt'] = float(getattr(year_row, 'itemize_salt', 0) or 0)
+        form['itemize_mortgage'] = float(getattr(year_row, 'itemize_mortgage', 0) or 0)
+        form['itemize_charity'] = float(getattr(year_row, 'itemize_charity', 0) or 0)
+    elif profile.tax_year == selected_year:
+        form['itemize_salt'] = float(getattr(profile, 'itemize_salt', 0) or 0)
+        form['itemize_mortgage'] = float(getattr(profile, 'itemize_mortgage', 0) or 0)
+        form['itemize_charity'] = float(getattr(profile, 'itemize_charity', 0) or 0)
+    else:
+        form['itemize_salt'] = 0.0
+        form['itemize_mortgage'] = 0.0
+        form['itemize_charity'] = 0.0
+
     stack = year_income_stack(
         current_user.id,
         selected_year,
@@ -699,9 +727,9 @@ def tax_profile():
                 use_state_engine=form['use_state_engine'],
                 vest_prefills=history,
                 fica_wages=float(stack.get('fica_wages') or stacked),
-                itemize_salt=float(getattr(profile, 'itemize_salt', 0) or 0),
-                itemize_mortgage=float(getattr(profile, 'itemize_mortgage', 0) or 0),
-                itemize_charity=float(getattr(profile, 'itemize_charity', 0) or 0),
+                itemize_salt=float(form.get('itemize_salt') or getattr(profile, 'itemize_salt', 0) or 0),
+                itemize_mortgage=float(form.get('itemize_mortgage') or getattr(profile, 'itemize_mortgage', 0) or 0),
+                itemize_charity=float(form.get('itemize_charity') or getattr(profile, 'itemize_charity', 0) or 0),
             ).to_dict()
             year_tax['box1_wages'] = box1
             year_tax['equity_vested_ytd'] = eq_past
@@ -713,17 +741,22 @@ def tax_profile():
         except Exception as e:
             logger.warning('year tax display failed: %s', e)
 
+    def _wh(name):
+        if year_row is not None and entered_amount(getattr(year_row, name, None)) is not None:
+            return float(getattr(year_row, name) or 0)
+        if profile.tax_year == selected_year or year_row is None:
+            return float(getattr(profile, name, 0) or 0)
+        return 0.0
+
+    from app.utils.withholding import entered_amount
     est_tax_form = {
         'prior_year_total_tax': float(getattr(profile, 'prior_year_total_tax', 0) or 0),
         'prior_year_agi': getattr(profile, 'prior_year_agi', None),
-        'federal_withholding_ytd': float(getattr(profile, 'federal_withholding_ytd', 0) or 0),
-        'state_withholding_ytd': float(getattr(profile, 'state_withholding_ytd', 0) or 0),
-        'estimated_payments_ytd': float(getattr(profile, 'estimated_payments_ytd', 0) or 0),
+        'federal_withholding_ytd': _wh('federal_withholding_ytd'),
+        'state_withholding_ytd': _wh('state_withholding_ytd'),
+        'estimated_payments_ytd': _wh('estimated_payments_ytd'),
         'prior_tax_source': 'entered' if (getattr(profile, 'prior_year_total_tax', 0) or 0) else None,
     }
-    form['itemize_salt'] = float(getattr(profile, 'itemize_salt', 0) or 0)
-    form['itemize_mortgage'] = float(getattr(profile, 'itemize_mortgage', 0) or 0)
-    form['itemize_charity'] = float(getattr(profile, 'itemize_charity', 0) or 0)
 
     cash_vs_tax = None
     try:

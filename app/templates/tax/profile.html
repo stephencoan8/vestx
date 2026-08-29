@@ -469,17 +469,20 @@
     setText('[data-k="effective_rate"]', (Number(r.effective_rate || 0) * 100).toFixed(1) + '%');
     var comb = Number(r.combined_ordinary_marginal);
     if (!isFinite(comb) || comb <= 0) {
-      comb = Number(r.ordinary_marginal || 0) + Number(r.state_marginal || 0) + Number(r.fica_marginal || 0);
+      comb = Number(r.ordinary_marginal || 0) + Number(r.state_marginal || 0)
+        + Number(r.fica_marginal || 0) + Number(r.sdi_marginal || 0);
     }
     setText('[data-k="marginal_display"]', (comb * 100).toFixed(1) + '%');
     var ficaM = Number(r.fica_marginal || 0);
+    var sdiM = Number(r.sdi_marginal || 0);
     setText(
       '[data-k="marginal_sub"]',
       'fed ' + Math.round(Number(r.ordinary_marginal || 0) * 100) + '% · CA ' +
       (Number(r.state_marginal || 0) * 100).toFixed(1) + '%' +
-      (ficaM > 0 ? ' · FICA ' + (ficaM * 100).toFixed(1) + '%' : '')
+      (ficaM > 0 ? ' · FICA ' + (ficaM * 100).toFixed(1) + '%' : '') +
+      (sdiM > 0 ? ' · VPDI ' + (sdiM * 100).toFixed(1) + '%' : '')
     );
-    setMoney(document.querySelector('[data-k="total_fica"]'), r.total_fica);
+    setMoney(document.querySelector('[data-k="total_fica"]'), Number(r.total_fica || 0) + Number(r.sdi || 0));
     var taxBase = Number(r.tax_base || 0);
     if (!(taxBase > 0)) {
       taxBase = Number(r.stacked_wages || r.wages || 0) + Number(r.stcg || 0) + Number(r.ltcg || 0);

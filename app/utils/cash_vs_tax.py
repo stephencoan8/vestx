@@ -33,17 +33,31 @@ def _prior_year_income_tax(user, tax_year: int, profile, entered: Optional[float
     """
     Prior-year total tax for §6654.
 
-    Entered 2026-tab field wins. Else the previous calendar year's year-tax
-    snapshot (same Total tax as that year's Tax profile tab) — no invented AGI.
+    Entered 2026-tab field wins. Else prior-year income tax (fed+CA+NIIT),
+    not FICA/VPDI — same definition as 2026 Expected tax.
     """
     if entered is not None:
         return float(entered), 'entered', None
+    prev = int(tax_year) - 1
+    itemize = {'itemize_salt': 0.0, 'itemize_mortgage': 0.0, 'itemize_charity': 0.0}
     try:
-        snap = year_tax_snapshot(user, int(tax_year) - 1)
+        from app.models.tax_year_profile import TaxYearProfile
+        row = TaxYearProfile.get_for(user.id, prev) if user is not None else None
+        if row:
+            itemize = {
+                'itemize_salt': float(getattr(row, 'itemize_salt', 0) or 0),
+                'itemize_mortgage': float(getattr(row, 'itemize_mortgage', 0) or 0),
+                'itemize_charity': float(getattr(row, 'itemize_charity', 0) or 0),
+            }
+    except Exception:
+        pass
+    try:
+        snap = year_tax_snapshot(user, prev, **itemize)
     except Exception:
         snap = None
-    if snap and float(snap.get('total_tax') or 0) > 0:
-        return float(snap['total_tax']), 'computed', snap
+    harbor = float((snap or {}).get('harbor_tax') or (snap or {}).get('income_tax_total') or 0)
+    if snap and harbor > 0:
+        return harbor, 'computed', snap
     return 0.0, 'missing', None
 
 
@@ -64,7 +78,7 @@ def _safe_harbor_line(
     src = (
         'entered'
         if prior_source == 'entered'
-        else ('from %s year-tax' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
+        else ('from %s year-tax income tax' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
     )
     high = bool(harbor.get('high_agi_110'))
     prior_pct = '110%' if high else '100%'
@@ -271,6 +285,29 @@ def build_cash_vs_tax(
     if profile is None:
         profile = TaxProfile.for_user(user)
 
+    year_row = None
+    try:
+        from app.models.tax_year_profile import TaxYearProfile
+        year_row = TaxYearProfile.get_for(user.id, tax_year)
+    except Exception:
+        year_row = None
+
+    def _pick_entered(name: str):
+        if year_row is not None:
+            v = entered_amount(getattr(year_row, name, None))
+            if v is not None:
+                return v
+        return entered_amount(getattr(profile, name, None))
+
+    def _pick_item(name: str) -> float:
+        if year_row is not None and hasattr(year_row, name):
+            return float(getattr(year_row, name) or 0)
+        return float(getattr(profile, name, 0) or 0)
+
+    itemize_salt = _pick_item('itemize_salt')
+    itemize_mortgage = _pick_item('itemize_mortgage')
+    itemize_charity = _pick_item('itemize_charity')
+
     eng = resolve_engine_profile_for_year(user, tax_year)
     filing = eng.get('filing_status') or 'single'
     state = (eng.get('state_code') or 'CA').upper()
@@ -296,6 +333,9 @@ def build_cash_vs_tax(
         use_state_engine=True,
         vest_prefills=vest,
         fica_wages=ordinary,
+        itemize_salt=itemize_salt,
+        itemize_mortgage=itemize_mortgage,
+        itemize_charity=itemize_charity,
     )
     bargain = _iso_bargain_for_year(user.id, tax_year)
     vest_unex_bargain = float(vest.get('iso_vest_unexercised_bargain') or 0)
@@ -307,9 +347,9 @@ def build_cash_vs_tax(
     expected_tax = fed_tax + state_tax + amt_due
     payroll = float(year_tax.total_fica or 0) + float(getattr(year_tax, 'sdi', 0) or 0)
 
-    fed_wh_entered = entered_amount(getattr(profile, 'federal_withholding_ytd', None))
-    state_wh_entered = entered_amount(getattr(profile, 'state_withholding_ytd', None))
-    est_paid_entered = entered_amount(getattr(profile, 'estimated_payments_ytd', None))
+    fed_wh_entered = _pick_entered('federal_withholding_ytd')
+    state_wh_entered = _pick_entered('state_withholding_ytd')
+    est_paid_entered = _pick_entered('estimated_payments_ytd')
     prior_tax_entered = entered_amount(getattr(profile, 'prior_year_total_tax', None))
     prior_agi = getattr(profile, 'prior_year_agi', None)
     try:
@@ -415,7 +455,34 @@ def build_cash_vs_tax(
         e.get('vest_date') for e in remaining_rsu if e.get('vest_date')
     ]
 
-    sales_tax = _ledger_sales_tax(user, tax_year)
+    sale_st = float(stack.get('sale_stcg') or 0)
+    sale_lt = float(stack.get('sale_ltcg') or 0)
+    sales_tax = 0.0
+    if sale_st or sale_lt:
+        try:
+            base_tax = compute_w2_year_tax(
+                tax_year=tax_year,
+                filing_status=filing,
+                state_code=state,
+                wages=ordinary,
+                stcg=max(0.0, stcg - sale_st),
+                ltcg=max(0.0, ltcg - sale_lt),
+                include_fica=False,
+                ss_wage_base_maxed=False,
+                use_state_engine=True,
+                vest_prefills=vest,
+                fica_wages=0.0,
+                itemize_salt=itemize_salt,
+                itemize_mortgage=itemize_mortgage,
+                itemize_charity=itemize_charity,
+            )
+            full_inc = float(year_tax.federal_income_tax or 0) + float(year_tax.state_tax or 0)
+            base_inc = float(base_tax.federal_income_tax or 0) + float(base_tax.state_tax or 0)
+            sales_tax = max(0.0, full_inc - base_inc)
+        except Exception:
+            sales_tax = _ledger_sales_tax(user, tax_year)
+    else:
+        sales_tax = _ledger_sales_tax(user, tax_year)
     recon = set_aside_recon(sales_tax, still_to_pay_es)
     vest_true_up = recon['vest_true_up']
     # Extra W-4 is vest true-up on remaining RSUs only — not sales tax, not ESPP/ISO.

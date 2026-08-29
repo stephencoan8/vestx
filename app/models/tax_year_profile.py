@@ -41,6 +41,13 @@ class TaxYearProfile(db.Model):
     amt_credit_carryforward = db.Column(db.Float, default=0.0)
     ca_amt_credit_carryforward = db.Column(db.Float, default=0.0)
 
+    federal_withholding_ytd = db.Column(db.Float, default=0.0)
+    state_withholding_ytd = db.Column(db.Float, default=0.0)
+    estimated_payments_ytd = db.Column(db.Float, default=0.0)
+    itemize_salt = db.Column(db.Float, default=0.0)
+    itemize_mortgage = db.Column(db.Float, default=0.0)
+    itemize_charity = db.Column(db.Float, default=0.0)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -68,6 +75,12 @@ class TaxYearProfile(db.Model):
             'include_niit': bool(self.include_niit if self.include_niit is not None else True),
             'amt_credit_carryforward': float(self.amt_credit_carryforward or 0),
             'ca_amt_credit_carryforward': float(self.ca_amt_credit_carryforward or 0),
+            'federal_withholding_ytd': float(getattr(self, 'federal_withholding_ytd', 0) or 0),
+            'state_withholding_ytd': float(getattr(self, 'state_withholding_ytd', 0) or 0),
+            'estimated_payments_ytd': float(getattr(self, 'estimated_payments_ytd', 0) or 0),
+            'itemize_salt': float(getattr(self, 'itemize_salt', 0) or 0),
+            'itemize_mortgage': float(getattr(self, 'itemize_mortgage', 0) or 0),
+            'itemize_charity': float(getattr(self, 'itemize_charity', 0) or 0),
         }
 
     @classmethod
@@ -107,3 +120,11 @@ class TaxYearProfile(db.Model):
         profile.include_niit = self.include_niit
         profile.amt_credit_carryforward = self.amt_credit_carryforward
         profile.ca_amt_credit_carryforward = self.ca_amt_credit_carryforward
+        if hasattr(profile, 'federal_withholding_ytd'):
+            profile.federal_withholding_ytd = getattr(self, 'federal_withholding_ytd', 0) or 0
+            profile.state_withholding_ytd = getattr(self, 'state_withholding_ytd', 0) or 0
+            profile.estimated_payments_ytd = getattr(self, 'estimated_payments_ytd', 0) or 0
+        if hasattr(profile, 'itemize_salt'):
+            profile.itemize_salt = getattr(self, 'itemize_salt', 0) or 0
+            profile.itemize_mortgage = getattr(self, 'itemize_mortgage', 0) or 0
+            profile.itemize_charity = getattr(self, 'itemize_charity', 0) or 0
