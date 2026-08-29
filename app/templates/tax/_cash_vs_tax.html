@@ -1,0 +1,73 @@
+{# First-class withholding vs liability. Expects `cash_vs_tax` dict. #}
+{% if cash_vs_tax %}
+{% set c = cash_vs_tax %}
+{% set uo = c.under_over or 0 %}
+<section class="detail-card cash-vs-tax" id="cashVsTax">
+  <div class="tax-panel-head">
+    <h2>Withholding vs tax · {{ c.tax_year }}</h2>
+  </div>
+  <div class="tax-situation">
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Expected tax</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.expected_tax) }}</div>
+      <div class="tax-sit-sub">fed + CA{% if c.tax_breakdown.amt %} + AMT ${{ "{:,.0f}".format(c.tax_breakdown.amt) }}{% endif %} · not FICA</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Expected withholding</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.expected_withholding) }}</div>
+      <div class="tax-sit-sub">
+        {% if c.withholding.federal_entered %}fed from paystub{% else %}fed not entered — modeled{% endif %}
+        · {% if c.withholding.state_entered %}CA from paystub{% else %}CA not entered — modeled{% endif %}
+      </div>
+    </div>
+    <div class="tax-sit-card accent">
+      <div class="tax-sit-label">{% if uo >= 0 %}Underpaid{% else %}Overpaid{% endif %}</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(uo|abs) }}</div>
+      <div class="tax-sit-sub">liability − withholding − estimates</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Still to pay (ES)</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.still_to_save) }}</div>
+      <div class="tax-sit-sub">
+        {% if c.no_penalty %}
+        No underpayment penalty
+        {% if c.april_balance > 0 %} · still owe ${{ "{:,.0f}".format(c.april_balance) }} in April{% endif %}
+        {% else %}
+        May owe penalty if you miss safe harbor
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="tax-situation" style="margin-top:0.75rem;">
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Locked in</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.locked_in.withholding) }}</div>
+      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }} · sale gain ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}</div>
+    </div>
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Still coming</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.still_coming.vest_gross) }}</div>
+      <div class="tax-sit-sub" title="Using latest share price">remaining {{ c.tax_year }} vests @ live · not due today</div>
+    </div>
+    {% if c.extra_withholding_on_remaining_vests > 0 and c.still_coming.vest_gross > 0 %}
+    <div class="tax-sit-card">
+      <div class="tax-sit-label">Extra withhold on remaining vests</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(c.extra_withholding_on_remaining_vests) }}</div>
+      <div class="tax-sit-sub">add on W-4 / DE-4 to close the gap</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="tax-quarter-grid" style="margin-top:1rem;">
+    {% for q in c.quarters %}
+    <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
+      <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_label }}</div>
+      <div class="tax-quarter-pay">{% if q.is_past %}—{% else %}${{ "{:,.0f}".format(q.suggested_payment) }}{% endif %}</div>
+      <div class="tax-sit-sub">fed ${{ "{:,.0f}".format(q.federal_payment or 0) }} · CA {{ "{:.0f}".format((q.ca_fraction or 0)*100) }}% ${{ "{:,.0f}".format(q.ca_payment or 0) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="tax-sit-sub" style="margin-top:0.65rem;">{{ c.ca_es_note }}. Federal due Apr / Jun / Sep / Jan.</p>
+</section>
+{% endif %}

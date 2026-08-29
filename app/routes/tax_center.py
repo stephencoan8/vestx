@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 tax_center_bp = Blueprint('tax_center', __name__, url_prefix='/tax')
 
-ADVISOR_API_VERSION = '2026-07-27-v5b-async'
+ADVISOR_API_VERSION = '2026-08-29-v6-withholding'
 
 
 def _iso(share_type: str) -> bool:
@@ -103,6 +103,28 @@ def _tax_page_context(user, tax_year=None):
         user, tax_year=tax_year, sales=sales, profile=profile
     )
     inventory['tax_to_save'] = float(tax_calendar.get('still_to_save') or 0)
+    cash_vs_tax = tax_calendar.get('cash_vs_tax')
+    # Allocate stacked year tax across sales so per-lot EST. TAX foots the header
+    try:
+        from app.utils.estimated_tax_calendar import stacked_tax_on_sales
+        stacked = stacked_tax_on_sales(user, sales, tax_year)
+        analysis = stacked.get('analysis')
+        if analysis and getattr(analysis, 'lots', None) and sold.get('rows'):
+            weights = {}
+            tot_w = 0.0
+            for lr in analysis.lots:
+                w = abs(float(lr.ordinary_income or 0)) + abs(float(lr.capital_gain or 0))
+                weights[lr.vest_event_id] = weights.get(lr.vest_event_id, 0) + w
+                tot_w += w
+            equity_tax = float(stacked.get('total_tax') or 0)
+            if tot_w > 0 and equity_tax > 0:
+                for row in sold['rows']:
+                    if row.get('year') != tax_year:
+                        continue
+                    w = weights.get(row.get('vest_event_id'), 0)
+                    row['estimated_tax'] = equity_tax * (w / tot_w)
+    except Exception:
+        pass
     profile_ready = bool(float(profile.other_ordinary_income or 0) > 0)
     return dict(
         profile=profile,
@@ -114,6 +136,7 @@ def _tax_page_context(user, tax_year=None):
         inventory=inventory,
         sold=sold,
         tax_calendar=tax_calendar,
+        cash_vs_tax=cash_vs_tax,
         sold_year=tax_year,
         profile_ready=profile_ready,
         today=date.today(),
@@ -519,6 +542,9 @@ def tax_profile():
             profile.federal_withholding_ytd = _f('federal_withholding_ytd', 0) or 0
             profile.state_withholding_ytd = _f('state_withholding_ytd', 0) or 0
             profile.estimated_payments_ytd = _f('estimated_payments_ytd', 0) or 0
+            profile.itemize_salt = _f('itemize_salt', 0) or 0
+            profile.itemize_mortgage = _f('itemize_mortgage', 0) or 0
+            profile.itemize_charity = _f('itemize_charity', 0) or 0
 
             if profile.federal_ordinary_rate is not None:
                 current_user.federal_tax_rate = profile.federal_ordinary_rate
@@ -622,6 +648,9 @@ def tax_profile():
                 use_state_engine=form['use_state_engine'],
                 vest_prefills=history,
                 fica_wages=float(stack.get('fica_wages') or stacked),
+                itemize_salt=float(getattr(profile, 'itemize_salt', 0) or 0),
+                itemize_mortgage=float(getattr(profile, 'itemize_mortgage', 0) or 0),
+                itemize_charity=float(getattr(profile, 'itemize_charity', 0) or 0),
             ).to_dict()
             year_tax['box1_wages'] = box1
             year_tax['equity_vested_ytd'] = eq_past
@@ -640,12 +669,29 @@ def tax_profile():
         'state_withholding_ytd': float(getattr(profile, 'state_withholding_ytd', 0) or 0),
         'estimated_payments_ytd': float(getattr(profile, 'estimated_payments_ytd', 0) or 0),
     }
+    form['itemize_salt'] = float(getattr(profile, 'itemize_salt', 0) or 0)
+    form['itemize_mortgage'] = float(getattr(profile, 'itemize_mortgage', 0) or 0)
+    form['itemize_charity'] = float(getattr(profile, 'itemize_charity', 0) or 0)
+
+    cash_vs_tax = None
+    try:
+        from app.utils.cash_vs_tax import build_cash_vs_tax
+        cash_vs_tax = build_cash_vs_tax(
+            current_user, tax_year=selected_year, profile=profile
+        )
+        if year_tax is not None and cash_vs_tax:
+            amt = float((cash_vs_tax.get('tax_breakdown') or {}).get('amt') or 0)
+            year_tax['amt_due'] = amt
+            year_tax['total_tax'] = float(year_tax.get('total_tax') or 0) + amt
+    except Exception as e:
+        logger.warning('cash vs tax panel failed: %s', e)
 
     return render_template(
         'tax/profile.html',
         profile=profile,
         form=form,
         est_tax_form=est_tax_form,
+        cash_vs_tax=cash_vs_tax,
         selected_year=selected_year,
         years=years,
         history=history,
@@ -973,10 +1019,10 @@ def api_goal():
                 )
 
         payload['grok_enabled'] = xai_advisor.is_configured(current_user)
-        return jsonify({'success': True, **payload})
+        return _api_json({'success': True, **payload})
     except Exception as e:
         logger.error('goal optimize failed: %s', e, exc_info=True)
-        return jsonify({'error': str(e)}), 400
+        return _api_json({'success': False, 'error': str(e)}, status=400)
 
 
 @tax_center_bp.route('/api/ping', methods=['GET', 'POST'])

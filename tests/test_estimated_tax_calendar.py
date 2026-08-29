@@ -55,6 +55,9 @@ def test_remaining_set_aside_front_loads_next_due():
         estimated_payments_ytd=0,
     )
     with patch(
+        'app.utils.cash_vs_tax.build_cash_vs_tax',
+        side_effect=RuntimeError('force fallback'),
+    ), patch(
         'app.utils.estimated_tax_calendar.stacked_tax_on_sales',
         return_value={'total_tax': 10_000, 'federal_tax': 8000, 'state_tax': 1500, 'niit': 500,
                       'fica': 0, 'amt_due': 0, 'lot_count': 1, 'method': 'test'},

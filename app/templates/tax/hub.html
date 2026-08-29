@@ -33,7 +33,7 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Unexercised ISO</div>
       <div class="tax-sit-value">{{ "{:,.0f}".format(inventory.iso_unexercised) }} <span class="tax-sit-unit">sh</span></div>
-      <div class="tax-sit-sub">~${{ "{:,.0f}".format(inventory.unex_intrinsic) }} intrinsic @ live</div>
+      <div class="tax-sit-sub" title="Using latest share price">~${{ "{:,.0f}".format(inventory.unex_intrinsic) }} intrinsic @ live</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Tax to save ({{ sold_year }})</div>
@@ -42,7 +42,7 @@
         {% if (inventory.shares_sold_market or 0) > 0 %}
         {{ "{:,.0f}".format(inventory.shares_sold_market) }} sh sold · <a href="{{ url_for('tax_center.activity') }}">Activity</a>
         {% else %}
-        After equity sales · <a href="{{ url_for('tax_center.activity') }}">Activity</a>
+        vs wages + remaining year vests @ live · <a href="{{ url_for('tax_center.activity') }}">Activity</a>
         {% endif %}
       </div>
     </div>
@@ -708,12 +708,16 @@
     document.getElementById('goalStatus').className = 'tax-result-status ' + (data.success ? 'ok' : 'warn');
 
     var residual = residualAfterPicks(data.picks);
-    var heroes = [
-      ['Achieved net', money2(data.achieved_net_cash), true],
-      ['Incremental tax', money2(data.total_tax), false],
-      ['Shortfall', money2(data.shortfall), false],
-      ['Eff. rate', pct(data.effective_tax_rate), false]
-    ];
+    var hasTarget = Number(data.achieved_net_cash || 0) > 0.5 || Number(data.target_net_cash || 0) > 0.5 || (data.picks && data.picks.length);
+    var heroes = [];
+    if (hasTarget) {
+      heroes = [
+        ['Achieved net', money2(data.achieved_net_cash), true],
+        ['Incremental tax', money2(data.total_tax), false],
+        ['Shortfall', money2(data.shortfall), false],
+        ['Eff. rate', pct(data.effective_tax_rate), false]
+      ];
+    }
     var strikeOut = Number(data.total_strike_outlay || 0);
     if (strikeOut > 0.5) {
       heroes.splice(1, 0, ['Strike outlay (ISO)', money2(strikeOut), false]);
@@ -751,8 +755,9 @@
     if (picks.length) {
       tbl.innerHTML = '<thead><tr><th>#</th><th>SpecID</th><th>Action</th><th>Shares</th><th>Term</th><th>Why</th></tr></thead><tbody>' +
         picks.map(function (p, i) {
+          var ACTION_LABELS = {sell_rsu:'Sell shares',sell_iso_held:'Sell ISO stock',iso_cashless_dd:'ISO cashless',iso_exercise_hold:'Exercise & hold',iso_exercise_sell_qd:'Exercise then QD sell',iso_sell_to_cover:'Sell to cover',rsu_fund_iso:'Sell RSU to fund ISO'};
           return '<tr class="lot-pick-highlight"><td>' + (i + 1) + '</td><td><strong>#' + p.vest_event_id + '</strong> ' +
-            (p.label || '') + '</td><td><code class="tax-action">' + p.action + '</code></td><td>' +
+            (p.label || '') + '</td><td>' + (ACTION_LABELS[p.action] || p.action) + '</td><td>' +
             Number(p.shares).toLocaleString('en-US', { maximumFractionDigits: 2 }) +
             '</td><td>' + (p.is_long_term ? 'LT' : 'ST') +
             (p.iso_disposition && p.iso_disposition !== 'n/a' ? ' · ' + p.iso_disposition : '') +

@@ -225,6 +225,10 @@ class LotSaleInput:
     strike_price: float = 0.0
     exercise_date: Optional[date] = None
     fmv_at_exercise: Optional[float] = None
+    # ESPP §423
+    espp_discount: float = 0.0
+    fmv_at_grant: float = 0.0
+    fmv_at_purchase: float = 0.0
     # Commission allocated to this lot
     commission: float = 0.0
     label: str = ''
@@ -355,6 +359,63 @@ def earliest_qualifying_sale_date(grant_date: date, exercise_date: date) -> date
     return max(_add_years(grant_date, 2), _add_years(exercise_date, 1))
 
 
+def _analyze_espp_lot(
+    lot: LotSaleInput,
+    proceeds: float,
+    holding_days: int,
+    is_lt: bool,
+    notes: List[str],
+) -> LotSaleResult:
+    """§423 ESPP: QD vs DD. Lookback purchase price = (1 − discount) × min(grant FMV, purchase FMV)."""
+    disc = min(0.5, max(0.0, float(lot.espp_discount or 0)))
+    fmv_g = float(lot.fmv_at_grant or 0)
+    fmv_p = float(lot.fmv_at_purchase or lot.cost_basis_per_share or 0)
+    cands = [x for x in (fmv_g, fmv_p) if x > 0]
+    lookback = min(cands) if cands else float(lot.cost_basis_per_share or 0)
+    purchase_px = lookback * (1.0 - disc) if lookback > 0 else float(lot.cost_basis_per_share or 0)
+    qd_on = max(_add_years(lot.grant_date, 2), _add_years(lot.vest_date, 1))
+    is_qd = lot.sale_date >= qd_on
+    purchase_basis = purchase_px * lot.shares
+    actual_gain = proceeds - purchase_basis
+    if is_qd:
+        grant_bargain = max(0.0, (fmv_g or lookback) - purchase_px) * lot.shares
+        ordinary = min(grant_bargain, max(0.0, actual_gain)) if actual_gain > 0 else 0.0
+        capital_gain = actual_gain - ordinary
+        notes.append(
+            f'ESPP qualifying disposition (§423): {disc*100:.0f}% lookback discount as ordinary; '
+            f'rest capital gain. Purchase ${purchase_px:.2f}/sh.'
+        )
+        disp = 'qualifying'
+        from app.utils.tax_constants import ESPP_ANNUAL_LIMIT
+        if fmv_g and lot.shares * fmv_g > ESPP_ANNUAL_LIMIT:
+            notes.append(
+                f'Offering FMV ${lot.shares * fmv_g:,.0f} exceeds ${ESPP_ANNUAL_LIMIT:,.0f} §423 annual limit — check offering cap.'
+            )
+    else:
+        ordinary = max(0.0, fmv_p - purchase_px) * lot.shares
+        capital_gain = proceeds - (purchase_basis + ordinary)
+        notes.append(
+            f'ESPP disqualifying: bargain at purchase as ordinary; residual capital gain. '
+            f'QD window opens {qd_on.isoformat()}.'
+        )
+        disp = 'disqualifying'
+    return LotSaleResult(
+        vest_event_id=lot.vest_event_id,
+        label=lot.label or 'ESPP',
+        shares=lot.shares,
+        proceeds=proceeds,
+        cost_basis=purchase_basis + ordinary,
+        capital_gain=capital_gain,
+        ordinary_income=ordinary,
+        is_long_term=is_lt if is_qd else is_lt,
+        is_iso=False,
+        iso_disposition=disp,
+        holding_days=holding_days,
+        amt_bargain_element=0.0,
+        notes=notes,
+    )
+
+
 def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
     notes: List[str] = []
     proceeds = lot.shares * lot.sale_price - lot.commission
@@ -366,6 +427,10 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
     cost_basis_total = lot.shares * lot.cost_basis_per_share
     iso_disp = 'n/a'
     amt_bargain = 0.0
+
+    from app.utils.share_labels import is_espp_grant
+    if is_espp_grant(lot.grant_type, lot.share_type) and lot.espp_discount > 0:
+        return _analyze_espp_lot(lot, proceeds, holding_days, is_lt, notes)
 
     if lot.share_type == 'cash':
         notes.append('Cash awards are not capital assets; no CG model applied.')
@@ -1017,24 +1082,8 @@ def analyze_sales(
         if sh <= 0:
             continue
         if sh != lot.shares:
-            lot = LotSaleInput(
-                vest_event_id=lot.vest_event_id,
-                grant_id=lot.grant_id,
-                share_type=lot.share_type,
-                grant_type=lot.grant_type,
-                shares=float(sh),
-                sale_price=lot.sale_price,
-                sale_date=lot.sale_date,
-                vest_date=lot.vest_date,
-                grant_date=lot.grant_date,
-                cost_basis_per_share=lot.cost_basis_per_share,
-                is_iso=lot.is_iso,
-                strike_price=lot.strike_price,
-                exercise_date=lot.exercise_date,
-                fmv_at_exercise=lot.fmv_at_exercise,
-                commission=lot.commission,
-                label=lot.label,
-            )
+            from dataclasses import replace
+            lot = replace(lot, shares=float(sh))
         norm_lots.append(lot)
     lots = norm_lots
 

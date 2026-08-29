@@ -16,7 +16,10 @@ def test_combined_marginal_includes_medicare_when_ss_maxed():
     assert r.state_marginal > 0
     # SS maxed; Medicare 1.45% + Add'l 0.9% = 2.35%
     assert abs(r.fica_marginal - 0.0235) < 1e-6
-    assert abs(r.combined_ordinary_marginal - (r.ordinary_marginal + r.state_marginal + 0.0235)) < 1e-6
+    assert abs(
+        r.combined_ordinary_marginal
+        - (r.ordinary_marginal + r.state_marginal + 0.0235 + 0.013)
+    ) < 1e-6
 
 
 def test_sale_gains_in_year_tax_not_fica():

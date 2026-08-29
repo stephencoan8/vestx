@@ -63,7 +63,7 @@ def list_grants():
         live_price=live,
         held_by_grant=held_by_grant,
         upcoming=upcoming,
-        tab=request.args.get('tab') or 'grants',
+        tab=({'upcoming': 'schedule'}.get(request.args.get('tab')) or request.args.get('tab') or 'grants'),
     )
 
 

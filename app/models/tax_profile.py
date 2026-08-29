@@ -49,6 +49,9 @@ class TaxProfile(db.Model):
     federal_withholding_ytd = db.Column(db.Float, default=0.0)
     state_withholding_ytd = db.Column(db.Float, default=0.0)
     estimated_payments_ytd = db.Column(db.Float, default=0.0)  # estimated tax payments made YTD
+    itemize_salt = db.Column(db.Float, default=0.0)
+    itemize_mortgage = db.Column(db.Float, default=0.0)
+    itemize_charity = db.Column(db.Float, default=0.0)
 
     # Analysis year default
     tax_year = db.Column(db.Integer, nullable=True)

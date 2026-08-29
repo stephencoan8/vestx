@@ -145,6 +145,29 @@ def build_estimated_tax_calendar(
         from app.models.stock_sale import StockSale
         sales = StockSale.query.filter_by(user_id=user.id).all()
 
+    # Prefer full-year withholding vs liability (wages + vests + sales).
+    try:
+        from app.utils.cash_vs_tax import build_cash_vs_tax
+        cvt = build_cash_vs_tax(user, tax_year=tax_year, profile=profile, as_of=as_of)
+        return {
+            'tax_year': tax_year,
+            'as_of': as_of.isoformat(),
+            'equity_tax_estimate': float(cvt.get('expected_tax') or 0),
+            'tax_breakdown': cvt.get('tax_breakdown') or {},
+            'credits': {
+                'federal_withholding_ytd': float((cvt.get('withholding') or {}).get('federal_locked') or 0),
+                'state_withholding_ytd': float((cvt.get('withholding') or {}).get('state_locked') or 0),
+                'estimated_payments_ytd': float((cvt.get('withholding') or {}).get('estimated_payments') or 0),
+                'total': float(cvt.get('locked_in', {}).get('withholding') or 0),
+            },
+            'still_to_save': float(cvt.get('still_to_save') or 0),
+            'safe_harbor': cvt.get('safe_harbor') or {},
+            'quarters': cvt.get('quarters') or [],
+            'cash_vs_tax': cvt,
+        }
+    except Exception:
+        pass
+
     stacked = stacked_tax_on_sales(user, sales, tax_year)
     equity_tax = float(stacked.get('total_tax') or 0)
 

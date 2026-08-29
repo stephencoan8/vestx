@@ -108,6 +108,16 @@ def lot_input_from_vest(
     if is_iso and ex_date is None and uid:
         ex_date, fmv_ex = _iso_exercise_context(uid, vest.id)
 
+    from app.utils.share_labels import is_espp_grant
+    espp = is_espp_grant(grant.grant_type, st)
+    fmv_purchase = float(vest.share_price_at_vest or vest.value_at_vest or 0)
+    if vest.shares_vested:
+        try:
+            fmv_purchase = float(vest.share_price_at_vest or 0) or (
+                float(vest.value_at_vest or 0) / float(vest.shares_vested)
+            )
+        except Exception:
+            pass
     return LotSaleInput(
         vest_event_id=vest.id,
         grant_id=grant.id,
@@ -123,6 +133,9 @@ def lot_input_from_vest(
         strike_price=float(grant.share_price_at_grant or 0) if is_iso else 0.0,
         exercise_date=ex_date,
         fmv_at_exercise=fmv_ex,
+        espp_discount=float(grant.espp_discount or 0.15) if espp else 0.0,
+        fmv_at_grant=float(grant.share_price_at_grant or 0) if espp else 0.0,
+        fmv_at_purchase=fmv_purchase if espp else 0.0,
         label=label or f'Vest {vest.vest_date}',
     )
 

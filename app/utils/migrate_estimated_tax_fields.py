@@ -13,6 +13,9 @@ _COLUMNS = {
     'federal_withholding_ytd': 'FLOAT DEFAULT 0',
     'state_withholding_ytd': 'FLOAT DEFAULT 0',
     'estimated_payments_ytd': 'FLOAT DEFAULT 0',
+    'itemize_salt': 'FLOAT DEFAULT 0',
+    'itemize_mortgage': 'FLOAT DEFAULT 0',
+    'itemize_charity': 'FLOAT DEFAULT 0',
 }
 
 

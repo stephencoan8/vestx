@@ -36,7 +36,7 @@
     <div class="tax-sit-card accent">
       <div class="tax-sit-label">Total tax</div>
       <div class="tax-sit-value" data-k="total_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_tax) }}{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">fed + CA + FICA · <span class="year-label">{{ selected_year }}</span></div>
+      <div class="tax-sit-sub">fed + CA + payroll · <span class="year-label">{{ selected_year }}</span></div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">All-in effective</div>
@@ -56,18 +56,20 @@
       <div class="tax-sit-value tax-sit-value-sm" data-k="marginal_display">{% if year_tax %}{{ "%.1f"|format((year_tax.combined_ordinary_marginal or ((year_tax.ordinary_marginal or 0)+(year_tax.state_marginal or 0))) * 100) }}%{% else %}—{% endif %}</div>
       <div class="tax-sit-sub" data-k="marginal_sub">
         {% if year_tax %}
-        fed {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}% · CA {{ "%.1f"|format(year_tax.state_marginal * 100) }}%{% if year_tax.fica_marginal %} · FICA {{ "%.1f"|format(year_tax.fica_marginal * 100) }}%{% endif %}
+        fed {{ "%.0f"|format(year_tax.ordinary_marginal * 100) }}% · CA {{ "%.1f"|format(year_tax.state_marginal * 100) }}%{% if year_tax.fica_marginal %} · FICA {{ "%.1f"|format(year_tax.fica_marginal * 100) }}%{% endif %}{% if year_tax.sdi_marginal %} · SDI {{ "%.1f"|format(year_tax.sdi_marginal * 100) }}%{% endif %}
         {% else %}
         fed · CA · FICA
         {% endif %}
       </div>
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">FICA</div>
-      <div class="tax-sit-value" data-k="total_fica">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_fica) }}{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">SS + Medicare + Add’l</div>
+      <div class="tax-sit-label">Payroll</div>
+      <div class="tax-sit-value" data-k="total_fica">{% if year_tax %}${{ "{:,.0f}".format((year_tax.total_fica or 0) + (year_tax.sdi or 0)) }}{% else %}—{% endif %}</div>
+      <div class="tax-sit-sub">SS + Medicare + Add’l{% if year_tax and year_tax.sdi %} + CA SDI{% endif %}</div>
     </div>
   </div>
+
+  {% include 'tax/_cash_vs_tax.html' %}
 
   <div id="taxProfileBody" class="tax-profile-body">
     <section class="detail-card tax-profile-inputs">
@@ -137,6 +139,26 @@
                        value="{{ '{:,.2f}'.format(form.other_short_term_gains or 0) }}" data-money>
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="itemize_salt">SALT (capped)</label>
+                <input type="text" inputmode="decimal" class="money-input" id="itemize_salt" name="itemize_salt"
+                       value="{% if form.itemize_salt %}{{ '{:,.2f}'.format(form.itemize_salt) }}{% endif %}"
+                       placeholder="optional" data-money>
+              </div>
+              <div class="form-group">
+                <label for="itemize_mortgage">Mortgage interest</label>
+                <input type="text" inputmode="decimal" class="money-input" id="itemize_mortgage" name="itemize_mortgage"
+                       value="{% if form.itemize_mortgage %}{{ '{:,.2f}'.format(form.itemize_mortgage) }}{% endif %}"
+                       placeholder="optional" data-money>
+              </div>
+              <div class="form-group">
+                <label for="itemize_charity">Charity</label>
+                <input type="text" inputmode="decimal" class="money-input" id="itemize_charity" name="itemize_charity"
+                       value="{% if form.itemize_charity %}{{ '{:,.2f}'.format(form.itemize_charity) }}{% endif %}"
+                       placeholder="optional" data-money>
+              </div>
+            </div>
           </div>
         </details>
 
@@ -147,7 +169,8 @@
               <div class="form-group">
                 <label for="prior_year_total_tax">Prior-year total tax</label>
                 <input type="text" inputmode="decimal" class="money-input" id="prior_year_total_tax" name="prior_year_total_tax"
-                       value="{{ '{:,.2f}'.format(est_tax_form.prior_year_total_tax or 0) }}" data-money>
+                       value="{% if est_tax_form.prior_year_total_tax %}{{ '{:,.2f}'.format(est_tax_form.prior_year_total_tax) }}{% endif %}"
+                       placeholder="not entered" data-money>
               </div>
               <div class="form-group">
                 <label for="prior_year_agi">Prior-year AGI</label>
@@ -159,18 +182,21 @@
               <div class="form-group">
                 <label for="federal_withholding_ytd">Federal withholding YTD</label>
                 <input type="text" inputmode="decimal" class="money-input" id="federal_withholding_ytd" name="federal_withholding_ytd"
-                       value="{{ '{:,.2f}'.format(est_tax_form.federal_withholding_ytd or 0) }}" data-money>
+                       value="{% if est_tax_form.federal_withholding_ytd %}{{ '{:,.2f}'.format(est_tax_form.federal_withholding_ytd) }}{% endif %}"
+                       placeholder="not entered — modeled from paystub defaults" data-money>
               </div>
               <div class="form-group">
                 <label for="state_withholding_ytd">State withholding YTD</label>
                 <input type="text" inputmode="decimal" class="money-input" id="state_withholding_ytd" name="state_withholding_ytd"
-                       value="{{ '{:,.2f}'.format(est_tax_form.state_withholding_ytd or 0) }}" data-money>
+                       value="{% if est_tax_form.state_withholding_ytd %}{{ '{:,.2f}'.format(est_tax_form.state_withholding_ytd) }}{% endif %}"
+                       placeholder="not entered" data-money>
               </div>
             </div>
             <div class="form-group">
               <label for="estimated_payments_ytd">Estimated tax payments YTD</label>
               <input type="text" inputmode="decimal" class="money-input" id="estimated_payments_ytd" name="estimated_payments_ytd"
-                     value="{{ '{:,.2f}'.format(est_tax_form.estimated_payments_ytd or 0) }}" data-money>
+                     value="{% if est_tax_form.estimated_payments_ytd %}{{ '{:,.2f}'.format(est_tax_form.estimated_payments_ytd) }}{% endif %}"
+                     placeholder="not entered" data-money>
             </div>
           </div>
         </details>

@@ -33,44 +33,16 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Tax to set aside</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
-      <div class="tax-sit-sub">{{ sold_year }} estimated remaining</div>
+      <div class="tax-sit-sub">liability − withholding − estimates</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Still held</div>
       <div class="tax-sit-value">{{ "{:,.0f}".format(inventory.shares_available) }} <span class="tax-sit-unit">sh</span></div>
-      <div class="tax-sit-sub">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }} @ live</div>
+      <div class="tax-sit-sub" title="Using latest share price">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }} @ live</div>
     </div>
   </div>
 
-  <div class="detail-card tax-reserve-block">
-    <div class="tax-panel-head">
-      <div>
-        <h2>Tax reserve · {{ sold_year }}</h2>
-      </div>
-    </div>
-    <div class="tax-situation tax-sold-kpis" style="margin-bottom:1rem;">
-      <div class="tax-sit-card">
-        <div class="tax-sit-label">Est. tax</div>
-        <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.equity_tax_estimate) }}</div>
-      </div>
-      <div class="tax-sit-card">
-        <div class="tax-sit-label">Credits</div>
-        <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.credits.total) }}</div>
-      </div>
-      <div class="tax-sit-card accent">
-        <div class="tax-sit-label">Still to save</div>
-        <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
-      </div>
-    </div>
-    <div class="tax-quarter-grid">
-      {% for q in tax_calendar.quarters %}
-      <div class="tax-quarter-card {% if q.is_next %}is-next{% endif %} {% if q.is_past %}is-past{% endif %}">
-        <div class="tax-quarter-label">{{ q.label }} · due {{ q.due_label or q.due_iso }}</div>
-        <div class="tax-quarter-pay">{% if q.is_past %}—{% else %}${{ "{:,.0f}".format(q.suggested_payment) }}{% endif %}</div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
+  {% include 'tax/_cash_vs_tax.html' %}
 
   <div class="detail-card">
     <div class="tax-activity-grid">

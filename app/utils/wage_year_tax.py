@@ -30,30 +30,13 @@ from app.utils.payroll_tax import (
     ADDITIONAL_MEDICARE_RATE,
     add_medicare_threshold,
 )
-
-
-# Federal standard deduction (approx IRS inflation-adjusted)
-FED_STD_DEDUCTION = {
-    2023: {'single': 13850, 'mfj': 27700, 'mfs': 13850, 'hoh': 20800},
-    2024: {'single': 14600, 'mfj': 29200, 'mfs': 14600, 'hoh': 21900},
-    2025: {'single': 15000, 'mfj': 30000, 'mfs': 15000, 'hoh': 22500},
-    2026: {'single': 16100, 'mfj': 32200, 'mfs': 16100, 'hoh': 24150},
-}
-
-# CA standard deduction (FTB-style planning approx)
-CA_STD_DEDUCTION = {
-    2023: {'single': 5202, 'mfj': 10404, 'mfs': 5202, 'hoh': 10404},
-    2024: {'single': 5540, 'mfj': 11080, 'mfs': 5540, 'hoh': 11080},
-    2025: {'single': 5706, 'mfj': 11412, 'mfs': 5706, 'hoh': 11412},
-    2026: {'single': 5860, 'mfj': 11720, 'mfs': 5860, 'hoh': 11720},
-}
-
-
-def _std_for(table: dict, year: int, filing: str) -> float:
-    years = sorted(table.keys())
-    use = year if year in table else min(years, key=lambda y: abs(y - year))
-    row = table[use]
-    return float(row.get(filing) or row.get('single') or 0)
+from app.utils.tax_constants import (
+    FED_STD_DEDUCTION,
+    CA_STD_DEDUCTION,
+    CA_STD_SOURCE,
+    CA_SDI_RATE,
+    std_for as _std_for,
+)
 
 
 @dataclass
@@ -89,8 +72,10 @@ class YearTaxResult:
     ltcg_marginal: float
     state_marginal: float
     fica_marginal: float  # SS + Medicare + Add'l on next $ of wages (0 SS if maxed)
-    combined_ordinary_marginal: float  # fed + CA + FICA next-dollar on ordinary/RSU vest
+    combined_ordinary_marginal: float  # fed + CA + FICA + SDI next-dollar
     ss_wage_base: float
+    sdi: float = 0.0
+    sdi_marginal: float = 0.0
     notes: List[str] = field(default_factory=list)
     vest_prefills: Dict[str, Any] = field(default_factory=dict)
 
@@ -112,6 +97,9 @@ def compute_w2_year_tax(
     use_state_engine: bool = True,
     vest_prefills: Optional[dict] = None,
     fica_wages: Optional[float] = None,
+    itemize_salt: float = 0.0,
+    itemize_mortgage: float = 0.0,
+    itemize_charity: float = 0.0,
 ) -> YearTaxResult:
     """
     Full-year employee tax on W-2 wages (+ optional other ordinary / CG).
@@ -138,9 +126,21 @@ def compute_w2_year_tax(
     gross_ordinary = wages + other_ordinary + stcg
     fed_std = _std_for(FED_STD_DEDUCTION, year, filing)
     ca_std = _std_for(CA_STD_DEDUCTION, year, filing)
-    taxable_ordinary = max(0.0, gross_ordinary - fed_std)
+    from app.utils.tax_constants import SALT_CAP
+    salt = min(max(0.0, float(itemize_salt or 0)), float(SALT_CAP.get(year, 10_000)))
+    itemized = salt + max(0.0, float(itemize_mortgage or 0)) + max(0.0, float(itemize_charity or 0))
+    fed_ded = fed_std
+    if itemized > fed_std + 0.5:
+        fed_ded = itemized
+    taxable_ordinary = max(0.0, gross_ordinary - fed_ded)
 
     notes: List[str] = []
+    if year in CA_STD_SOURCE:
+        notes.append(f'CA standard deduction {year}: ${ca_std:,.0f} ({CA_STD_SOURCE[year]}).')
+    if itemized > fed_std + 0.5:
+        notes.append(
+            f'Itemizing ${itemized:,.0f} (SALT capped at ${salt:,.0f}) vs federal std ${fed_std:,.0f}.'
+        )
     bracket_year = year if year in ORDINARY_BRACKETS else min(
         ORDINARY_BRACKETS.keys(), key=lambda y: abs(y - year)
     )
@@ -230,12 +230,20 @@ def compute_w2_year_tax(
 
     total_fica = social_security + medicare + additional_medicare
     income_tax_total = federal_income + state_tax
-    total_tax = income_tax_total + total_fica
+    sdi_amt = 0.0
+    sdi_m = 0.0
+    if (state_code or '').upper() == 'CA' and include_fica and fwages > 0:
+        sdi_amt = fwages * CA_SDI_RATE
+        sdi_m = CA_SDI_RATE
+        notes.append(
+            f'CA SDI {CA_SDI_RATE*100:.1f}% uncapped on ${fwages:,.0f} = ${sdi_amt:,.0f} (EDD 2026).'
+        )
+    total_tax = income_tax_total + total_fica + sdi_amt
     tax_base = wages + other_ordinary + stcg + ltcg
     eff = (total_tax / tax_base) if tax_base > 0 else 0.0
     income_eff = (income_tax_total / tax_base) if tax_base > 0 else 0.0
 
-    # Next $1 of ordinary (salary / RSU vest W-2): fed bracket + CA + employee FICA.
+    # Next $1 of ordinary (salary / RSU vest W-2): fed bracket + CA + employee FICA + SDI.
     # NIIT does not apply to wages. SS drops off at the wage base.
     state_marg = float(state_result.marginal_rate or 0)
     ss_m = SS_EMPLOYEE_RATE if (include_fica and fwages < ss_base) else 0.0
@@ -243,7 +251,7 @@ def compute_w2_year_tax(
     add_thr = add_medicare_threshold(filing)
     add_m = ADDITIONAL_MEDICARE_RATE if (include_fica and (fwages + 1.0) >= add_thr) else 0.0
     fica_marg = ss_m + med_m + add_m
-    combined_ord_marg = ord_marginal + state_marg + fica_marg
+    combined_ord_marg = ord_marginal + state_marg + fica_marg + sdi_m
 
     notes.append(
         'Planning estimate — not a filed return. No itemizing, credits, or pre-tax 401(k) netting.'
@@ -262,7 +270,7 @@ def compute_w2_year_tax(
         other_ordinary=other_ordinary,
         total_ordinary=gross_ordinary,
         taxable_ordinary_federal=taxable_ordinary,
-        federal_std_deduction=fed_std,
+        federal_std_deduction=fed_ded,
         ca_std_deduction=ca_std,
         stcg=stcg,
         ltcg=ltcg,
@@ -285,6 +293,8 @@ def compute_w2_year_tax(
         ltcg_marginal=ltcg_marg,
         state_marginal=state_marg,
         fica_marginal=fica_marg,
+        sdi=sdi_amt,
+        sdi_marginal=sdi_m,
         combined_ordinary_marginal=combined_ord_marg,
         ss_wage_base=ss_base,
         notes=notes,

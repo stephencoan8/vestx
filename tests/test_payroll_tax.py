@@ -257,7 +257,8 @@ class TestFullYearW2Fica:
         assert y.total_fica == pytest.approx(10_453.20 + 2_610.00, abs=0.05)
         # Income tax alone was what user saw (~$45.6k); all-in should be ~$10k higher
         assert y.income_tax_total == pytest.approx(32_738.5 + 12_877.63, abs=1.0)
-        assert y.total_tax == pytest.approx(y.income_tax_total + y.total_fica, abs=0.05)
+        assert y.total_tax == pytest.approx(y.income_tax_total + y.total_fica + y.sdi, abs=0.05)
+        assert y.sdi == pytest.approx(180_000 * 0.013)
         assert y.effective_rate > 0.30  # not the broken ~26.8% Medicare-only all-in
 
 

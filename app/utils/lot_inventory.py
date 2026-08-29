@@ -12,6 +12,7 @@ from app.models.vest_event import VestEvent
 from app.models.stock_sale import StockSale, ISOExercise
 from app.utils.price_utils import get_latest_user_price
 from app.utils.shares import whole_shares
+from app.utils.share_labels import share_kind_label, grant_type_label, is_espp_grant
 
 
 def _iso_types():
@@ -137,7 +138,13 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             'exercise_date': latest_ex.exercise_date.isoformat() if latest_ex and latest_ex.exercise_date else None,
             'fmv_at_exercise': latest_ex.fmv_at_exercise if latest_ex else None,
             'basis_missing': basis_missing,
-            'label': f"{grant.grant_type} {grant.share_type.upper()} · {vest.vest_date.isoformat()}",
+            'label': (
+                f"{grant_type_label(grant.grant_type)} {share_kind_label(grant.grant_type, grant.share_type)}"
+                f" · {vest.vest_date.isoformat()}"
+            ),
+            'kind_label': share_kind_label(grant.grant_type, grant.share_type),
+            'is_espp': is_espp_grant(grant.grant_type, grant.share_type),
+            'espp_discount': float(grant.espp_discount or 0) if is_espp_grant(grant.grant_type, grant.share_type) else 0.0,
         })
 
     return _overlay_tax_lot_remaining(user_id, lots)

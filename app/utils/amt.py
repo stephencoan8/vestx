@@ -135,7 +135,8 @@ def compute_federal_tmt(
     ltcg_pref = max(0.0, min(float(ltcg or 0.0), taxable))
     ordinary_taxable_amt = max(0.0, taxable - ltcg_pref)
 
-    thr = FED_AMT_28_THRESHOLD.get(filing, 220700)
+    from app.utils.tax_constants import amt_28_threshold
+    thr = amt_28_threshold(year, filing)
     if ordinary_taxable_amt <= thr:
         tmt_ord = ordinary_taxable_amt * FED_AMT_RATE_LOW
     else:

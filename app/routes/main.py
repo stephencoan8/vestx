@@ -2,7 +2,7 @@
 Main application routes - dashboard, home page.
 """
 
-from flask import Blueprint, render_template, redirect, url_for, jsonify
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request
 from flask_login import login_required, current_user
 from app.models.grant import Grant
 from app.models.vest_event import VestEvent
@@ -18,6 +18,18 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for('main.dashboard'))
     return redirect(url_for('auth.login'))
+
+
+@main_bp.route('/holdings')
+@login_required
+def holdings_redirect():
+    """Canonical holdings live at /grants/."""
+    tab = request.args.get('tab')
+    if tab == 'upcoming':
+        tab = 'schedule'
+    if tab:
+        return redirect(url_for('grants.list_grants', tab=tab))
+    return redirect(url_for('grants.list_grants'))
 
 
 @main_bp.route('/dashboard')
