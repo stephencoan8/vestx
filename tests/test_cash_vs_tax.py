@@ -171,11 +171,11 @@ def test_espp_not_box1_kind():
     assert vest_w2_kind('new_hire', 'iso_5y') == 'iso'
 
 
-def test_prior_year_tax_is_entered_only():
+def test_prior_year_tax_entered_wins():
     from app.utils.cash_vs_tax import _prior_year_income_tax
-    t, src = _prior_year_income_tax(None, 2026, None, 50_000)
-    assert t == 50_000 and src == 'entered'
-    t, src = _prior_year_income_tax(None, 2026, None, None)
+    t, src, snap = _prior_year_income_tax(None, 2026, None, 50_000)
+    assert t == 50_000 and src == 'entered' and snap is None
+    t, src, snap = _prior_year_income_tax(None, 2026, None, None)
     assert t == 0.0 and src == 'missing'
 
 

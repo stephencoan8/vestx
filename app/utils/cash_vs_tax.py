@@ -25,14 +25,26 @@ from app.utils.wage_year_tax import (
     year_income_stack,
     compute_w2_year_tax,
     build_year_vest_prefill,
+    year_tax_snapshot,
 )
 
 
 def _prior_year_income_tax(user, tax_year: int, profile, entered: Optional[float]):
-    """Prior-year fed+CA income tax for §6654. Entered 1040 total tax only — never invent."""
+    """
+    Prior-year total tax for §6654.
+
+    Entered 2026-tab field wins. Else the previous calendar year's year-tax
+    snapshot (same Total tax as that year's Tax profile tab) — no invented AGI.
+    """
     if entered is not None:
-        return float(entered), 'entered'
-    return 0.0, 'missing'
+        return float(entered), 'entered', None
+    try:
+        snap = year_tax_snapshot(user, int(tax_year) - 1)
+    except Exception:
+        snap = None
+    if snap and float(snap.get('total_tax') or 0) > 0:
+        return float(snap['total_tax']), 'computed', snap
+    return 0.0, 'missing', None
 
 
 def _safe_harbor_line(
@@ -49,7 +61,11 @@ def _safe_harbor_line(
     h110 = float(harbor.get('prior_year_safe_harbor') or 0)
     c90 = float(harbor.get('current_year_90pct') or 0)
     required = float(harbor.get('required_annual') or 0)
-    src = 'entered' if prior_source == 'entered' else ('computed from %s return' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
+    src = (
+        'entered'
+        if prior_source == 'entered'
+        else ('from %s year-tax' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
+    )
     high = bool(harbor.get('high_agi_110'))
     prior_pct = '110%' if high else '100%'
     if prior_tax <= 0:
@@ -361,9 +377,11 @@ def build_cash_vs_tax(
     still_to_pay_es = max(0.0, under_over)
 
     # Safe harbor vs April balance — 110% of prior-year tax (high AGI) vs 90% of current
-    prior_tax, prior_tax_source = _prior_year_income_tax(
+    prior_tax, prior_tax_source, prior_snap = _prior_year_income_tax(
         user, tax_year, profile, prior_tax_entered
     )
+    if prior_agi is None and prior_snap and float(prior_snap.get('agi') or 0) > 0:
+        prior_agi = float(prior_snap['agi'])
     harbor = safe_harbor_targets(
         prior_year_total_tax=prior_tax,
         prior_year_agi=prior_agi,
@@ -472,7 +490,9 @@ def build_cash_vs_tax(
         'withholding_is_modeled': stub_prompt is not None,
         'withholding_prompt': stub_prompt,
         'prior_tax': round(prior_tax, 2),
+        'prior_year_tax': round(prior_tax, 2),
         'prior_tax_source': prior_tax_source,
+        'prior_year_agi': round(prior_agi, 2) if prior_agi is not None else None,
         'extra_withholding_on_remaining_vests': round(extra_per_vest, 2),
         'extra_withhold_on': 'remaining_rsu',
         'extra_withhold_note': extra_note,

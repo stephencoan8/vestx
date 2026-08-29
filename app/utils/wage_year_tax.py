@@ -656,6 +656,55 @@ def year_income_stack(
     }
 
 
+def year_tax_snapshot(user, tax_year: int) -> Optional[Dict[str, Any]]:
+    """
+    Same stack as Tax profile / /tax/api/year-tax for ``tax_year``.
+
+    Used so 2026 safe harbor can read 2025 total_tax without a second save
+    on the 2026 prior-year fields.
+    """
+    if user is None or not getattr(user, 'id', None):
+        return None
+    try:
+        from app.utils.tax_engine import resolve_engine_profile_for_year
+        eng = resolve_engine_profile_for_year(user, int(tax_year))
+    except Exception:
+        return None
+    cash = float(eng.get('other_ordinary_income_raw') or eng.get('other_ordinary_income') or 0)
+    stack = year_income_stack(
+        user.id,
+        int(tax_year),
+        cash_wages=cash,
+        other_stcg=float(eng.get('other_short_term_gains') or 0),
+        other_ltcg=float(eng.get('other_long_term_gains') or 0),
+    )
+    ordinary = float(stack.get('ordinary') or 0)
+    tax_base = float(stack.get('tax_base') or 0)
+    if ordinary <= 0 and tax_base <= 0:
+        return None
+    y = compute_w2_year_tax(
+        tax_year=int(tax_year),
+        filing_status=eng.get('filing_status') or 'single',
+        state_code=eng.get('state_code') or 'CA',
+        wages=ordinary,
+        stcg=float(stack.get('stcg') or 0),
+        ltcg=float(stack.get('ltcg') or 0),
+        include_fica=bool(eng.get('include_fica', True)),
+        ss_wage_base_maxed=False,
+        use_state_engine=bool(eng.get('use_state_engine', True)),
+        vest_prefills=stack.get('vest') or {},
+        fica_wages=float(stack.get('fica_wages') or ordinary),
+    )
+    return {
+        'tax_year': int(tax_year),
+        'total_tax': round(float(y.total_tax or 0), 2),
+        'income_tax_total': round(float(y.income_tax_total or 0), 2),
+        'agi': round(tax_base or ordinary, 2),
+        'ordinary': round(ordinary, 2),
+        'profile_source': eng.get('profile_source'),
+    }
+
+
 def attach_computed_year_income(profile: dict, user_id: int, tax_year: int) -> dict:
     """
     Replace the old YTD-wages field with computed ordinary (cash wages + vests).

@@ -94,6 +94,9 @@ def _attach_year_tax_cash_vs_tax(payload: dict, year: int) -> dict:
             payload['withholding_is_modeled'] = cvt.get('withholding_is_modeled')
             payload['expected_tax'] = cvt.get('expected_tax')
             payload['expected_withholding'] = cvt.get('expected_withholding')
+            payload['prior_year_tax'] = cvt.get('prior_year_tax') or cvt.get('prior_tax')
+            payload['prior_tax_source'] = cvt.get('prior_tax_source')
+            payload['prior_year_agi'] = cvt.get('prior_year_agi')
             payload['iso_bargain'] = cvt.get('iso_bargain')
             payload['amt_due'] = (cvt.get('tax_breakdown') or {}).get('amt')
             result = payload.get('result')
@@ -709,6 +712,7 @@ def tax_profile():
         'federal_withholding_ytd': float(getattr(profile, 'federal_withholding_ytd', 0) or 0),
         'state_withholding_ytd': float(getattr(profile, 'state_withholding_ytd', 0) or 0),
         'estimated_payments_ytd': float(getattr(profile, 'estimated_payments_ytd', 0) or 0),
+        'prior_tax_source': 'entered' if (getattr(profile, 'prior_year_total_tax', 0) or 0) else None,
     }
     form['itemize_salt'] = float(getattr(profile, 'itemize_salt', 0) or 0)
     form['itemize_mortgage'] = float(getattr(profile, 'itemize_mortgage', 0) or 0)
@@ -724,6 +728,16 @@ def tax_profile():
             amt = float((cash_vs_tax.get('tax_breakdown') or {}).get('amt') or 0)
             year_tax['amt_due'] = amt
             year_tax['total_tax'] = float(year_tax.get('total_tax') or 0) + amt
+        # 2026 tab: show 2025 year-tax total/AGI when those fields were never saved here
+        if cash_vs_tax:
+            if not (est_tax_form.get('prior_year_total_tax') or 0):
+                est_tax_form['prior_year_total_tax'] = float(
+                    cash_vs_tax.get('prior_year_tax') or cash_vs_tax.get('prior_tax') or 0
+                )
+                est_tax_form['prior_tax_source'] = cash_vs_tax.get('prior_tax_source')
+            if est_tax_form.get('prior_year_agi') in (None, 0, 0.0):
+                if cash_vs_tax.get('prior_year_agi'):
+                    est_tax_form['prior_year_agi'] = cash_vs_tax.get('prior_year_agi')
     except Exception as e:
         logger.warning('cash vs tax panel failed: %s', e)
 
