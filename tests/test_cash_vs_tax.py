@@ -69,6 +69,28 @@ def test_amt_28_breakpoint_2026():
     assert amt_28_threshold(2026, 'single') == 244500
 
 
+def test_espp_423_without_discount_field_still_espp():
+    """Tagged ESPP must not fall through to RSU even if discount was stored as 0."""
+    lot = LotSaleInput(
+        vest_event_id=1,
+        grant_id=1,
+        share_type='espp',
+        grant_type='espp',
+        shares=100,
+        sale_price=80.0,
+        sale_date=date(2026, 6, 1),
+        vest_date=date(2024, 4, 15),
+        grant_date=date(2024, 4, 15),
+        cost_basis_per_share=50.0,
+        espp_discount=0.0,
+        fmv_at_grant=50.0,
+        fmv_at_purchase=50.0,
+    )
+    r = analyze_lot(lot)
+    assert r.iso_disposition == 'qualifying'
+    assert r.ordinary_income == pytest.approx(750.0)
+
+
 def test_espp_qualifying_discount_ordinary():
     lot = LotSaleInput(
         vest_event_id=1,
@@ -116,25 +138,59 @@ def test_safe_harbor_line_no_penalty_april_bill():
 
 
 def test_grant_type_labels_not_enums():
-    from app.utils.share_labels import grant_type_label, lot_kind_line
+    from app.utils.share_labels import grant_type_label, lot_kind_line, pick_action_label
     assert grant_type_label('kickass') == 'Special'
     assert grant_type_label('new_hire') == 'New hire'
     assert grant_type_label('annual_performance') == 'Annual performance'
     assert lot_kind_line('espp', 'rsu') == 'ESPP'
     assert lot_kind_line('new_hire', 'rsu') == 'New hire RSU'
     assert 'ESPP ESPP' not in lot_kind_line('espp', 'espp')
+    assert pick_action_label('sell_rsu', 'espp', 'espp') == 'Sell ESPP'
+    assert pick_action_label('sell_rsu', 'new_hire', 'rsu') == 'Sell shares'
 
 
-def test_harbor_uses_income_tax_not_all_in_total():
-    """§6654 prior-year base is income tax, not FICA-inclusive total_tax."""
+def test_harbor_uses_year_tax_total_including_payroll():
+    """110% of 2025 TOTAL TAX KPI (~$80,685) → harbor ~$88,753, not income-only."""
     snap = {
         'total_tax': 80_685,
         'income_tax_total': 63_603,
-        'harbor_tax': 63_603,
+        'harbor_tax': 80_685,
         'agi': 400_000,
     }
-    assert snap['harbor_tax'] == snap['income_tax_total']
-    assert snap['harbor_tax'] < snap['total_tax']
+    assert snap['harbor_tax'] == snap['total_tax']
+    assert snap['harbor_tax'] > snap['income_tax_total']
+    assert abs(snap['harbor_tax'] * 1.10 - 88_753.5) < 0.05
+
+
+def test_shareworks_iso_and_next_vest_targets():
+    from app.utils.shareworks_truth import (
+        SW_AVAILABLE_ISO,
+        SW_NEXT_RSU_VEST,
+        drift_vs_shareworks,
+    )
+    assert SW_AVAILABLE_ISO == 1055
+    assert SW_NEXT_RSU_VEST == 1590
+    d = drift_vs_shareworks(
+        {'iso_unexercised': 1065, 'held_shares': 0},
+        next_rsu_vest=1579,
+    )
+    assert d['available_iso'] == 10
+    assert d['next_rsu_vest'] == -11
+
+
+def test_extra_w4_is_not_april_balance_or_amt():
+    from app.utils.cash_vs_tax import extra_w4_target
+    april = 55_766
+    extra = extra_w4_target(
+        incremental_income_tax=18_000,
+        remaining_rsu_wh=12_000,
+        remaining_rsu_gross=200_000,
+    )
+    assert extra == 6_000
+    assert extra != april
+    # AMT is not an input — phantom AMT cannot inflate extra W-4
+    extra_zero_inc = extra_w4_target(0, 12_000, 200_000)
+    assert extra_zero_inc == 0
 
 
 def test_set_aside_recon_adds_ledger_sales_to_true_up():

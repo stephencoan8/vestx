@@ -36,7 +36,7 @@
     <div class="tax-sit-card accent">
       <div class="tax-sit-label">Total tax</div>
       <div class="tax-sit-value" data-k="total_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_tax) }}{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">fed + CA + payroll · <span class="year-label">{{ selected_year }}</span></div>
+      <div class="tax-sit-sub">fed + CA + payroll{% if year_tax and year_tax.amt_due %} · AMT ${{ "{:,.0f}".format(year_tax.amt_due) }} (recorded){% else %} · AMT $0 until recorded ISO exercise{% endif %} · <span class="year-label">{{ selected_year }}</span></div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">All-in effective</div>

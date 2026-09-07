@@ -33,8 +33,8 @@ def _prior_year_income_tax(user, tax_year: int, profile, entered: Optional[float
     """
     Prior-year total tax for §6654.
 
-    Entered 2026-tab field wins. Else prior-year income tax (fed+CA+NIIT),
-    not FICA/VPDI — same definition as 2026 Expected tax.
+    Entered 2026-tab field wins. Else prior calendar year's year-tax TOTAL TAX
+    (the 2025 tab KPI, ~$80k) so 110% harbor stays wired without a second save.
     """
     if entered is not None:
         return float(entered), 'entered', None
@@ -78,7 +78,7 @@ def _safe_harbor_line(
     src = (
         'entered'
         if prior_source == 'entered'
-        else ('from %s year-tax income tax' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
+        else ('from %s year-tax' % prior_y if prior_source == 'computed' else 'enter prior-year tax')
     )
     high = bool(harbor.get('high_agi_110'))
     prior_pct = '110%' if high else '100%'
@@ -94,6 +94,23 @@ def _safe_harbor_line(
         f'Need ${required:,.0f}. YTD credits ${ytd_credits:,.0f}. '
         f'{penalty}. April bill ${april_balance:,.0f}.'
     )
+
+
+def extra_w4_target(
+    incremental_income_tax: float,
+    remaining_rsu_wh: float,
+    remaining_rsu_gross: float,
+) -> float:
+    """
+    Extra W-4 / DE-4 on remaining RSUs — not April underpaid, not AMT.
+
+    Incremental income tax on remaining RSU gross minus already-modeled
+    supplemental withholding on those vests. Capped at remaining RSU gross.
+    """
+    if remaining_rsu_gross <= 0:
+        return 0.0
+    gap = max(0.0, float(incremental_income_tax or 0) - float(remaining_rsu_wh or 0))
+    return round(min(float(remaining_rsu_gross), gap), 2)
 
 
 def set_aside_recon(sales_tax: float, total: float) -> Dict[str, float]:
@@ -485,14 +502,47 @@ def build_cash_vs_tax(
         sales_tax = _ledger_sales_tax(user, tax_year)
     recon = set_aside_recon(sales_tax, still_to_pay_es)
     vest_true_up = recon['vest_true_up']
-    # Extra W-4 is vest true-up on remaining RSUs only — not sales tax, not ESPP/ISO.
+    # Extra W-4 ≠ April bill. Incremental income tax on remaining RSUs
+    # minus modeled supplemental — never AMT, never YTD shortfall, never sales.
     extra_per_vest = 0.0
     extra_note = ''
-    if remaining_rsu_gross > 0 and vest_true_up > 0:
-        extra_per_vest = min(vest_true_up, remaining_rsu_gross)
+    if remaining_rsu_gross > 0:
+        wages_without = max(0.0, ordinary - remaining_rsu_gross)
+        try:
+            without_rsu = compute_w2_year_tax(
+                tax_year=tax_year,
+                filing_status=filing,
+                state_code=state,
+                wages=wages_without,
+                stcg=stcg,
+                ltcg=ltcg,
+                include_fica=False,
+                ss_wage_base_maxed=False,
+                use_state_engine=True,
+                vest_prefills=vest,
+                fica_wages=0.0,
+                itemize_salt=itemize_salt,
+                itemize_mortgage=itemize_mortgage,
+                itemize_charity=itemize_charity,
+            )
+            inc_tax = max(
+                0.0,
+                (fed_tax + state_tax)
+                - (
+                    float(without_rsu.federal_income_tax or 0)
+                    + float(without_rsu.state_tax or 0)
+                ),
+            )
+        except Exception:
+            inc_tax = 0.0
+        remaining_rsu_wh = float(fut_vest_wh.get('federal') or 0) + float(
+            fut_vest_wh.get('state') or 0
+        )
+        extra_per_vest = extra_w4_target(inc_tax, remaining_rsu_wh, remaining_rsu_gross)
         when = ', '.join(rsu_date_labels[:3]) if rsu_date_labels else 'remaining RSUs'
         extra_note = (
-            f'On {when} RSUs only. Sales tax ${recon["sales"]:,.0f} is set aside, not extra W-4.'
+            f'On {when} RSUs only — extra W-4 vs modeled supplemental, not AMT. '
+            f'April bill ${april_balance:,.0f} is the full-year shortfall (separate).'
         )
     stub_prompt = withholding_stub_prompt(
         fed_wh_entered is not None, state_wh_entered is not None

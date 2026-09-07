@@ -21,13 +21,20 @@ GRANT_TYPE_LABELS = {
 
 ACTION_LABELS = {
     'sell_rsu': 'Sell shares',
+    'sell_espp': 'Sell ESPP',
     'sell_iso_held': 'Sell ISO stock',
     'iso_cashless_dd': 'ISO cashless',
     'iso_exercise_hold': 'Exercise & hold',
-    'iso_exercise_sell_qd': 'Exercise, hold, sell QD',
+    'iso_exercise_sell_qd': 'Exercise then QD sell',
     'iso_sell_to_cover': 'Sell to cover',
     'rsu_fund_iso': 'Sell RSU to fund ISO',
 }
+
+
+def pick_action_label(action: str = '', grant_type: str = '', share_type: str = '') -> str:
+    if action == 'sell_rsu' and is_espp_grant(grant_type, share_type):
+        return ACTION_LABELS['sell_espp']
+    return action_label(action)
 
 
 def share_kind_label(grant_type: str = '', share_type: str = '') -> str:

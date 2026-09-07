@@ -135,6 +135,7 @@ class GoalPlanResult:
 def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
     """Convert lot_inventory dicts to LotSpec with max available shares for planning."""
     from app.utils.shares import whole_shares
+    from app.utils.share_labels import is_espp_grant
 
     specs: List[LotSpec] = []
     for lot in lots:
@@ -157,12 +158,17 @@ def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
                 continue
             vest_date = date.fromisoformat(str(vd)[:10]) if not isinstance(vd, date) else vd
             grant_date = date.fromisoformat(str(gd)[:10]) if not isinstance(gd, date) else gd
+            gt = lot.get('grant_type') or ''
+            st = lot.get('share_type') or 'rsu'
+            disc = float(lot.get('espp_discount') or 0)
+            if is_espp_grant(gt, st) and disc <= 0:
+                disc = 0.15
             specs.append(
                 LotSpec(
                     vest_event_id=int(lot['vest_event_id']),
                     grant_id=int(lot.get('grant_id') or lot['vest_event_id']),
-                    share_type=lot.get('share_type') or 'rsu',
-                    grant_type=lot.get('grant_type') or '',
+                    share_type=st,
+                    grant_type=gt,
                     is_iso=is_iso,
                     shares=held if held > 0 else 0.0,
                     vest_date=vest_date,
@@ -178,6 +184,11 @@ def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
                     shares_available=held,
                     shares_unexercised=unex,
                     label=lot.get('label') or f"vest {lot['vest_event_id']}",
+                    espp_discount=disc,
+                    fmv_at_grant=float(lot.get('fmv_at_grant') or lot.get('share_price_at_grant') or 0),
+                    fmv_at_purchase=float(
+                        lot.get('fmv_at_purchase') or lot.get('fmv_at_vest') or lot.get('cost_basis_per_share') or 0
+                    ),
                 )
             )
             if held > 0 and unex > 0:
@@ -249,6 +260,33 @@ def _lot_rank_score(
             score = 500 + tax_rate_est * 100 + ordinary * 0.01
             reason = 'ISO DD (held stock) — ordinary on bargain'
             return score, reason, is_lt, 'disqualifying'
+
+    from app.utils.share_labels import is_espp_grant
+    if is_espp_grant(spec.grant_type, spec.share_type):
+        disc = float(getattr(spec, 'espp_discount', 0) or 0.15)
+        fmv_g = float(getattr(spec, 'fmv_at_grant', 0) or 0)
+        fmv_p = float(getattr(spec, 'fmv_at_purchase', 0) or basis)
+        cands = [x for x in (fmv_g, fmv_p) if x > 0]
+        lookback = min(cands) if cands else basis
+        purchase_px = lookback * (1.0 - disc) if lookback > 0 else basis
+        from app.utils.tax_engine import _add_years
+        qd_on = max(_add_years(spec.grant_date, 2), _add_years(spec.vest_date, 1))
+        is_qd = sale_date >= qd_on
+        holding = (sale_date - spec.vest_date).days
+        is_lt = holding >= 365
+        if is_qd:
+            reason = (
+                f'ESPP qualifying §423: lookback discount ordinary, rest CG '
+                f'(purchase ~${purchase_px:.2f}/sh)'
+            )
+            score = 80 + max(0.0, (fmv_g or lookback) - purchase_px) * 0.01
+        else:
+            reason = (
+                f'ESPP disqualifying: bargain at purchase ordinary, residual CG '
+                f'(QD opens {qd_on.isoformat()})'
+            )
+            score = 220 + max(0.0, fmv_p - purchase_px) * 0.01
+        return score, reason, is_lt, 'qualifying' if is_qd else 'disqualifying'
 
     # RSU
     gain = max(0.0, price - basis)

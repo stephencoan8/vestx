@@ -64,7 +64,7 @@ class YearTaxResult:
     medicare: float
     additional_medicare: float
     total_fica: float
-    total_tax: float  # federal income + state + FICA
+    total_tax: float  # federal income + state + FICA + VPDI (AMT attached at year-tax layer)
     income_tax_total: float  # federal + state (no FICA)
     effective_rate: float  # total_tax / (ordinary + gains)  all-in
     income_tax_effective_rate: float  # (fed+state) / base
@@ -663,7 +663,8 @@ def year_tax_snapshot(
     """
     Same stack as Tax profile / /tax/api/year-tax for ``tax_year``.
 
-    harbor_tax is income tax (fed+CA+NIIT), not FICA/VPDI — matches 2026 Expected tax.
+    harbor_tax is the year-tax TOTAL TAX KPI (income + FICA + VPDI), so
+    110% of 2025 ~$80,685 wires ~$88,753 into the next year's safe harbor.
     """
     if user is None or not getattr(user, 'id', None):
         return None
@@ -705,7 +706,7 @@ def year_tax_snapshot(
         'tax_year': int(tax_year),
         'total_tax': round(float(y.total_tax or 0), 2),
         'income_tax_total': income,
-        'harbor_tax': income,
+        'harbor_tax': round(float(y.total_tax or 0), 2),  # 2025 TOTAL TAX KPI (income + payroll)
         'agi': round(tax_base or ordinary, 2),
         'ordinary': round(ordinary, 2),
         'profile_source': eng.get('profile_source'),

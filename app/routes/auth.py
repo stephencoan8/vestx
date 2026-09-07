@@ -46,8 +46,11 @@ def login():
                 flash('Account is locked. Please contact administrator.', 'error')
                 return render_template('auth/login.html')
             
-            # Successful login
-            login_user(user, remember=remember)
+            # Successful login — permanent session so a 14-day cookie survives
+            # tab refresh. Remember-me extends to 30 days.
+            from flask import session as flask_session
+            flask_session.permanent = True
+            login_user(user, remember=True)
             AuditLogger.log_auth_success(username)
             
             # Clear failed attempts if tracking

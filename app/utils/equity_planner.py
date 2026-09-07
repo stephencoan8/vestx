@@ -52,6 +52,8 @@ class CashSummary:
     incremental_tax: float = 0.0  # sum across years modeled
     net_cash: float = 0.0  # proceeds - outlay - tax
     amt_due_total: float = 0.0
+    federal_amt_due: float = 0.0
+    ca_amt_due: float = 0.0
     notes: List[str] = field(default_factory=list)
 
 
@@ -131,6 +133,9 @@ class LotSpec:
     shares_unexercised: float = 0.0
     label: str = ''
     commission: float = 0.0
+    espp_discount: float = 0.0
+    fmv_at_grant: float = 0.0
+    fmv_at_purchase: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +181,9 @@ def _build_sale(
         fmv_at_exercise=fmv_at_exercise,
         commission=commission or lot.commission,
         label=lot.label or f'{lot.share_type} {lot.vest_date}',
+        espp_discount=float(getattr(lot, 'espp_discount', 0) or 0),
+        fmv_at_grant=float(getattr(lot, 'fmv_at_grant', 0) or 0),
+        fmv_at_purchase=float(getattr(lot, 'fmv_at_purchase', 0) or 0),
     )
 
 
@@ -267,9 +275,11 @@ def _assemble(
         incremental_tax=total_tax,
         net_cash=net,
         amt_due_total=amt_total + ca_amt_total,
+        federal_amt_due=amt_total,
+        ca_amt_due=ca_amt_total,
         notes=[
             'Net cash = sale proceeds − exercise strike outlay − incremental tax across modeled years.',
-            f'Federal AMT due (sum of years): ${amt_total:,.0f}; CA AMT due (sum): ${ca_amt_total:,.0f}.',
+            f'Federal AMT due (sum of years): ${amt_total:,.0f}; CA AMT due (Schedule P–style): ${ca_amt_total:,.0f}.',
             'AMT credit ledger shows opening → generated → used → ending by year.',
         ],
     )
@@ -328,6 +338,38 @@ def plan_rsu_sell(
     if not sales:
         raise ValueError('No RSU lots selected for rsu_sell')
 
+    from app.utils.share_labels import is_espp_grant
+    espp_n = sum(1 for s in sales if is_espp_grant(s.grant_type, s.share_type))
+    rsu_n = len(sales) - espp_n
+    if espp_n and not rsu_n:
+        sale_title = 'ESPP sale'
+        sale_name = 'Sell ESPP'
+        sale_desc = (
+            '§423 ESPP: lookback purchase vs FMV; qualifying vs disqualifying; '
+            'ordinary bargain on DD (and grant-date discount on QD), residual capital gain.'
+        )
+        recs = [
+            'ESPP is not an RSU. Ordinary income is the §423 bargain (QD: grant-date lookback discount; '
+            'DD: FMV at purchase minus purchase price), not vest FMV as basis with $0 ordinary.',
+            'Qualifying: hold ≥2 years from offering/grant and ≥1 year from purchase. CA taxes gains as ordinary.',
+        ]
+    elif espp_n:
+        sale_title = 'Share sale'
+        sale_name = 'Sell shares'
+        sale_desc = 'Mixed RSU and ESPP lots — ESPP uses §423, RSUs use vest-FMV basis.'
+        recs = [
+            'RSU lots: capital gain vs FMV at vest. ESPP lots: §423 bargain ordinary + residual CG.',
+            'Federal: ST vs LT depends on hold from vest/purchase. CA taxes gains as ordinary.',
+        ]
+    else:
+        sale_title = 'RSU sale'
+        sale_name = 'Sell RSUs'
+        sale_desc = 'Sale of vested RSUs; capital gain/loss vs FMV at vest (basis).'
+        recs = [
+            'RSU ordinary income was (or will be) recognized at vest — this plan only models the sale vs vest FMV basis.',
+            'Federal: ST vs LT depends on hold from vest (≥1 year for LTCG). CA taxes gains as ordinary.',
+        ]
+
     year = sale_date.year
     analysis = analyze_sales(_profile_for_year(profile, year), sales)
     proceeds = sum(s.shares * sale_price - s.commission for s in sales)
@@ -335,16 +377,12 @@ def plan_rsu_sell(
     gain = proceeds - basis
 
     timeline = [
-        TimelineEvent(sale_date.isoformat(), 'sale', 'RSU sale', f'Sell at ${sale_price:.2f}', proceeds),
-    ]
-    recs = [
-        'RSU ordinary income was (or will be) recognized at vest — this plan only models the sale vs vest FMV basis.',
-        'Federal: ST vs LT depends on hold from vest (≥1 year for LTCG). CA taxes gains as ordinary.',
+        TimelineEvent(sale_date.isoformat(), 'sale', sale_title, f'Sell at ${sale_price:.2f}', proceeds),
     ]
     return _assemble(
         strategy='rsu_sell',
-        name='Sell RSUs',
-        description='Sale of vested RSUs; capital gain/loss vs FMV at vest (basis).',
+        name=sale_name,
+        description=sale_desc,
         year_payloads=[(year, 'sale', analysis, [], [{'shares': s.shares, 'price': sale_price} for s in sales])],
         cash_outlay=0.0,
         sale_proceeds=proceeds,

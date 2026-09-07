@@ -34,7 +34,9 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
-    login_manager.session_protection = 'strong'  # Enhanced session protection
+    # 'strong' binds the session to client IP. Railway/proxy hops look like
+    # session theft and dump the user on login mid-flow. User-agent is enough.
+    login_manager.session_protection = 'basic'
     mail.init_app(app)
     csrf.init_app(app)
 

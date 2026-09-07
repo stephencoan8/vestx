@@ -17,6 +17,7 @@ from app.utils.equity_planner import (
     plan_iso_cashless_dd,
     plan_iso_exercise_hold,
     plan_iso_exercise_sell_qd,
+    plan_rsu_sell,
     compare_iso_strategies,
     run_plan,
 )
@@ -101,6 +102,9 @@ def test_exercise_hold_has_amt_no_proceeds():
     # Large bargain with modest wages can create AMT due
     assert a['equity_ordinary'] == 0  # ISO exercise: no regular income
     assert 'earliest_qd_dates' in p.iso_meta
+    assert p.cash.federal_amt_due >= 0
+    assert p.cash.ca_amt_due >= 0
+    assert abs(p.cash.amt_due_total - (p.cash.federal_amt_due + p.cash.ca_amt_due)) < 0.01
 
 
 def test_exercise_only_amt_via_engine():
@@ -171,6 +175,30 @@ def test_run_plan_dispatch():
     )
     assert r['success']
     assert r['plan']['strategy'] == 'iso_cashless_dd'
+
+
+def test_espp_sale_is_not_labeled_rsu():
+    lot = LotSpec(
+        vest_event_id=9,
+        grant_id=9,
+        share_type='espp',
+        grant_type='espp',
+        is_iso=False,
+        shares=100,
+        vest_date=date(2024, 4, 15),
+        grant_date=date(2024, 4, 15),
+        strike_price=0,
+        cost_basis_per_share=50,
+        espp_discount=0.15,
+        fmv_at_grant=50,
+        fmv_at_purchase=50,
+        label='ESPP',
+    )
+    p = plan_rsu_sell(_profile(), [lot], sale_date=date(2026, 6, 1), sale_price=80)
+    assert p.name == 'Sell ESPP'
+    assert p.timeline[0].title == 'ESPP sale'
+    assert 'RSU sale' not in p.timeline[0].title
+    assert any('§423' in r or '423' in r for r in p.recommendations)
 
 
 if __name__ == '__main__':

@@ -565,7 +565,15 @@ def _format_goal_reply(result, target) -> str:
         f"Eff. rate: {result.effective_tax_rate*100:.1f}%"
     )
     iso_holds = [p for p in (result.picks or []) if p.action == 'iso_exercise_hold']
-    rsu_sells = [p for p in (result.picks or []) if p.action == 'sell_rsu']
+    from app.utils.share_labels import is_espp_grant, pick_action_label
+    rsu_sells = [
+        p for p in (result.picks or [])
+        if p.action == 'sell_rsu' and not is_espp_grant('', p.share_type)
+    ]
+    espp_sells = [
+        p for p in (result.picks or [])
+        if p.action == 'sell_rsu' and is_espp_grant('', p.share_type)
+    ]
     if iso_holds:
         iso_sh = sum(p.shares for p in iso_holds)
         lines.append(
@@ -578,6 +586,9 @@ def _format_goal_reply(result, target) -> str:
             f"(${result.total_proceeds:,.0f} − ${result.total_tax:,.0f} − "
             f"${result.total_strike_outlay:,.0f} = **${result.achieved_net_cash:,.0f}**)."
         )
+    if espp_sells:
+        espp_sh = sum(p.shares for p in espp_sells)
+        lines.append(f"ESPP sales (§423): **{espp_sh:,.0f}** sh (bargain ordinary on QD/DD, rest capital gain).")
     if rsu_sells:
         rsu_sh = sum(p.shares for p in rsu_sells)
         lines.append(f"RSU sales (min-tax order): **{rsu_sh:,.0f}** sh to fund ISO costs + pocket.")
@@ -588,8 +599,9 @@ def _format_goal_reply(result, target) -> str:
             lines.append(f"- {a}")
     else:
         for p in result.picks:
+            act = pick_action_label(p.action, '', p.share_type)
             lines.append(
-                f"- **v{p.vest_event_id}** `{p.action}` **{p.shares:,.2f}** sh "
+                f"- **v{p.vest_event_id}** {act} **{p.shares:,.2f}** sh "
                 f"@ ${p.price:.2f} ({'LT' if p.is_long_term else 'ST'}) — {p.reason}"
             )
     for n in (result.efficiency_notes or [])[:4]:

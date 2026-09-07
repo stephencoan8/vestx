@@ -545,6 +545,7 @@ def tax_profile():
         list_years_with_vests,
         year_income_stack,
     )
+    from app.utils.withholding import entered_amount
 
     profile = TaxProfile.for_user(current_user)
     years = list_years_with_vests(current_user.id)
@@ -597,18 +598,28 @@ def tax_profile():
             )
             data['ytd_wages'] = float(data['other_ordinary_income'] or 0)
             year_row = TaxYearProfile.upsert_from_form(current_user.id, ty, data)
-            year_row.apply_to_main_profile(profile)
-
-            # Estimated-tax calendar inputs live on main TaxProfile (cross-year)
-            profile.prior_year_total_tax = _f('prior_year_total_tax', 0) or 0
-            pagi = request.form.get('prior_year_agi', '')
-            profile.prior_year_agi = _money_float(pagi, None) if pagi not in (None, '') else None
-            profile.federal_withholding_ytd = _f('federal_withholding_ytd', 0) or 0
-            profile.state_withholding_ytd = _f('state_withholding_ytd', 0) or 0
-            profile.estimated_payments_ytd = _f('estimated_payments_ytd', 0) or 0
-            profile.itemize_salt = _f('itemize_salt', 0) or 0
-            profile.itemize_mortgage = _f('itemize_mortgage', 0) or 0
-            profile.itemize_charity = _f('itemize_charity', 0) or 0
+            # Saving 2025 must not steal the 2026 planning year or wipe stub YTD.
+            if ty >= date.today().year:
+                year_row.apply_to_main_profile(profile)
+                entered_prior = entered_amount(_f('prior_year_total_tax', None))
+                if entered_prior is not None:
+                    profile.prior_year_total_tax = entered_prior
+                else:
+                    from app.utils.cash_vs_tax import _prior_year_income_tax
+                    computed, _, _ = _prior_year_income_tax(
+                        current_user, ty, profile, None
+                    )
+                    if computed > 0:
+                        profile.prior_year_total_tax = computed
+                pagi = request.form.get('prior_year_agi', '')
+                if pagi not in (None, ''):
+                    profile.prior_year_agi = _money_float(pagi, None)
+                profile.federal_withholding_ytd = _f('federal_withholding_ytd', 0) or 0
+                profile.state_withholding_ytd = _f('state_withholding_ytd', 0) or 0
+                profile.estimated_payments_ytd = _f('estimated_payments_ytd', 0) or 0
+                profile.itemize_salt = _f('itemize_salt', 0) or 0
+                profile.itemize_mortgage = _f('itemize_mortgage', 0) or 0
+                profile.itemize_charity = _f('itemize_charity', 0) or 0
 
             if profile.federal_ordinary_rate is not None:
                 current_user.federal_tax_rate = profile.federal_ordinary_rate
@@ -617,7 +628,10 @@ def tax_profile():
             current_user.ss_wage_base_maxed = profile.ss_wage_base_maxed
 
             db.session.commit()
-            flash(f'{ty} tax profile saved and set as active for planning.', 'success')
+            if ty >= date.today().year:
+                flash(f'{ty} tax profile saved and set as active for planning.', 'success')
+            else:
+                flash(f'{ty} tax profile saved. {date.today().year} remains the planning year.', 'success')
             return redirect(url_for('tax_center.tax_profile', year=ty))
         except Exception as e:
             db.session.rollback()

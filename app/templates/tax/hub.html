@@ -656,7 +656,14 @@
       ['Fed AMT', a.amt_due],
       ['CA AMT', a.ca_amt_due],
       ['FICA', a.fica_tax]
-    ].filter(function (p) { return Number(p[1] || 0) > 0.5; });
+    ];
+    var isoHoldsForAmt = (data.picks || []).some(function (p) { return p.action === 'iso_exercise_hold'; });
+    parts = parts.filter(function (p) {
+      if (p[0] === 'Fed AMT' || p[0] === 'CA AMT') {
+        return isoHoldsForAmt || Number(p[1] || 0) > 0.5;
+      }
+      return Number(p[1] || 0) > 0.5;
+    });
     var meta = '';
     if (rates.ltcg != null) {
       meta += '<div class="tax-stack-meta">Federal LTCG rate on last $: <strong>' +
@@ -755,9 +762,11 @@
     if (picks.length) {
       tbl.innerHTML = '<thead><tr><th>#</th><th>SpecID</th><th>Action</th><th>Shares</th><th>Term</th><th>Why</th></tr></thead><tbody>' +
         picks.map(function (p, i) {
-          var ACTION_LABELS = {sell_rsu:'Sell shares',sell_iso_held:'Sell ISO stock',iso_cashless_dd:'ISO cashless',iso_exercise_hold:'Exercise & hold',iso_exercise_sell_qd:'Exercise then QD sell',iso_sell_to_cover:'Sell to cover',rsu_fund_iso:'Sell RSU to fund ISO'};
+          var ACTION_LABELS = {sell_rsu:'Sell shares',sell_espp:'Sell ESPP',sell_iso_held:'Sell ISO stock',iso_cashless_dd:'ISO cashless',iso_exercise_hold:'Exercise & hold',iso_exercise_sell_qd:'Exercise then QD sell',iso_sell_to_cover:'Sell to cover',rsu_fund_iso:'Sell RSU to fund ISO'};
+          var act = ACTION_LABELS[p.action] || p.action;
+          if (p.action === 'sell_rsu' && (p.share_type === 'espp' || (p.label || '').indexOf('ESPP') >= 0)) act = 'Sell ESPP';
           return '<tr class="lot-pick-highlight"><td>' + (i + 1) + '</td><td><strong>#' + p.vest_event_id + '</strong> ' +
-            (p.label || '') + '</td><td>' + (ACTION_LABELS[p.action] || p.action) + '</td><td>' +
+            (p.label || '') + '</td><td>' + act + '</td><td>' +
             Number(p.shares).toLocaleString('en-US', { maximumFractionDigits: 2 }) +
             '</td><td>' + (p.is_long_term ? 'LT' : 'ST') +
             (p.iso_disposition && p.iso_disposition !== 'n/a' ? ' · ' + p.iso_disposition : '') +
@@ -1207,7 +1216,8 @@
       ['Net cash', money2(cash.net_cash != null ? cash.net_cash : planObj.total_net_cash)],
       ['Incremental tax', money2(cash.incremental_tax != null ? cash.incremental_tax : planObj.total_incremental_tax)],
       ['Strike outlay', money2(cash.exercise_cash_outlay)],
-      ['AMT due', money2(cash.amt_due_total)],
+      ['Fed AMT', money2(cash.federal_amt_due != null ? cash.federal_amt_due : cash.amt_due_total)],
+      ['CA AMT', money2(cash.ca_amt_due != null ? cash.ca_amt_due : 0)],
       ['Eff. rate', pct(planObj.effective_rate_on_economic_gain)]
     ].map(function (c) {
       return '<div class="stat-card' + (c[0] === 'Net cash' ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +
@@ -1267,9 +1277,8 @@
       ['State', money2(a.state_tax)],
       ['Eff. rate', pct(a.effective_rate_on_gain)]
     ];
-    if (Number(a.amt_due || 0) > 0 || Number(a.ca_amt_due || 0) > 0) {
-      cards.push(['AMT due', money2((a.amt_due || 0) + (a.ca_amt_due || 0))]);
-    }
+    cards.push(['Fed AMT', money2(a.amt_due || 0)]);
+    cards.push(['CA AMT', money2(a.ca_amt_due || 0)]);
     if (Number(a.niit || 0) > 0) cards.push(['NIIT', money2(a.niit)]);
     document.getElementById('analysisStats').innerHTML = cards.map(function (c, i) {
       return '<div class="stat-card' + (i === 0 ? ' accent' : '') + '"><div class="stat-content"><div class="stat-label">' + c[0] +

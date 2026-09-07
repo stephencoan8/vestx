@@ -237,6 +237,34 @@ def test_optimize_exercise_all_iso_funds_via_rsu_and_pocket():
     assert abs(iso_sh - 5000) < 1
 
 
+def test_espp_rank_is_not_rsu_ltcg():
+    from app.utils.goal_optimizer import _lot_rank_score
+    from app.utils.equity_planner import LotSpec
+    spec = LotSpec(
+        vest_event_id=1,
+        grant_id=1,
+        share_type='espp',
+        grant_type='espp',
+        is_iso=False,
+        shares=100,
+        vest_date=date(2024, 4, 15),
+        grant_date=date(2024, 4, 15),
+        strike_price=0,
+        cost_basis_per_share=50,
+        espp_discount=0.15,
+        fmv_at_grant=50,
+        fmv_at_purchase=50,
+        shares_available=100,
+        label='ESPP',
+    )
+    score, reason, is_lt, disp = _lot_rank_score(
+        spec, price=80, sale_date=date(2026, 6, 1), mode='sell_held'
+    )
+    assert 'ESPP' in reason
+    assert 'RSU long-term' not in reason
+    assert disp == 'qualifying'
+
+
 if __name__ == '__main__':
     test_parse_heuristic_500k()
     test_parse_heuristic_k_suffix()

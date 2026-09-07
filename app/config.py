@@ -4,6 +4,7 @@ Secure configuration management for the application.
 
 import os
 import secrets
+from datetime import timedelta
 
 
 class Config:
@@ -54,16 +55,17 @@ class Config:
     SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in prod
     SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access
     SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
-    PERMANENT_SESSION_LIFETIME = 3600  # 1 hour session timeout
+    PERMANENT_SESSION_LIFETIME = timedelta(days=14)
+    SESSION_REFRESH_EACH_REQUEST = True
     
-    # Remember Me Cookie Security
+    # Remember Me Cookie Security (Flask-Login requires a timedelta)
     REMEMBER_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'
     REMEMBER_COOKIE_HTTPONLY = True
-    REMEMBER_COOKIE_DURATION = 86400 * 30  # 30 days
+    REMEMBER_COOKIE_DURATION = timedelta(days=30)
     
     # CSRF Protection
     WTF_CSRF_ENABLED = True
-    WTF_CSRF_TIME_LIMIT = 3600  # 1 hour
+    WTF_CSRF_TIME_LIMIT = int(timedelta(days=14).total_seconds())
     WTF_CSRF_SSL_STRICT = os.getenv('FLASK_ENV') == 'production'
     
     # Security Headers (Flask-Talisman)
@@ -121,8 +123,8 @@ class ProductionConfig(Config):
     REMEMBER_COOKIE_SECURE = True
     TALISMAN_FORCE_HTTPS = True
     
-    # Stricter session timeout
-    PERMANENT_SESSION_LIFETIME = 1800  # 30 minutes
+    # Stay signed in across a work week; 30 minutes was logging people out mid-plan
+    PERMANENT_SESSION_LIFETIME = timedelta(days=14)
 
 
 class DevelopmentConfig(Config):

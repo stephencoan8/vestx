@@ -429,7 +429,9 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
     amt_bargain = 0.0
 
     from app.utils.share_labels import is_espp_grant
-    if is_espp_grant(lot.grant_type, lot.share_type) and lot.espp_discount > 0:
+    if is_espp_grant(lot.grant_type, lot.share_type):
+        if not lot.espp_discount:
+            lot.espp_discount = 0.15
         return _analyze_espp_lot(lot, proceeds, holding_days, is_lt, notes)
 
     if lot.share_type == 'cash':
