@@ -26,7 +26,6 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        remember = request.form.get('remember', False)
         
         # Input validation
         if not username or not password:
@@ -46,8 +45,6 @@ def login():
                 flash('Account is locked. Please contact administrator.', 'error')
                 return render_template('auth/login.html')
             
-            # Successful login — permanent session so a 14-day cookie survives
-            # tab refresh. Remember-me extends to 30 days.
             from flask import session as flask_session
             flask_session.permanent = True
             login_user(user, remember=True)
