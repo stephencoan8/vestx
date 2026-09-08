@@ -219,13 +219,16 @@
     </div>
 
     <div class="tax-lots-toolbar" id="lotsToolbar">
-      <div class="tax-lots-filter" role="group" aria-label="Share type filter (multi-select)">
+      <div class="tax-lots-filter" role="group" aria-label="Lot filters">
         <span class="tax-lots-filter-label">Show</span>
         <button type="button" class="tax-chip tax-lot-filter is-active" data-lot-filter="all" aria-pressed="true">All</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="rsu" aria-pressed="false">RSU</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="espp" aria-pressed="false">ESPP</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso" aria-pressed="false">ISO</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_held" aria-pressed="false">ISO held</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="iso_unex" aria-pressed="false">ISO unexercised</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="lt" aria-pressed="false">LT</button>
+        <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="st" aria-pressed="false">ST</button>
       </div>
       <span class="tax-muted-sm" id="lotsFilterCount"></span>
     </div>
@@ -240,7 +243,7 @@
             <th data-sort="number">Held</th>
             <th data-sort="number">Unex</th>
             <th data-sort="number">Basis / strike</th>
-            <th data-sort="date">Ex date</th>
+            <th data-sort="date">Vest</th>
             <th data-sort="text">Hold</th>
             <th data-sort="number">Qty</th>
           </tr>
@@ -262,6 +265,9 @@
             data-exercised="{{ 'true' if lot.exercise_date else 'false' }}"
             data-has-held="{{ '1' if held > 0 else '0' }}"
             data-has-unex="{{ '1' if unex > 0 else '0' }}"
+            data-vest-date="{{ lot.vest_date or '' }}"
+            data-grant-date="{{ lot.grant_date or '' }}"
+            data-ex-date="{{ lot.exercise_date or '' }}"
             data-href="{{ url_for('grants.vest_detail', vest_id=lot.vest_event_id) }}"
             title="Open vest detail"
           >
@@ -276,8 +282,8 @@
             <td data-value="{{ held }}">{{ "{:,.0f}".format(held) }}</td>
             <td data-value="{{ unex }}">{% if lot.is_iso %}{{ "{:,.0f}".format(unex) }}{% else %}—{% endif %}</td>
             <td data-value="{{ basis or 0 }}">${{ "{:,.2f}".format(basis or 0) }}</td>
-            <td class="tax-muted-sm" data-value="{{ lot.exercise_date or '' }}">{{ lot.exercise_date or '—' }}</td>
-            <td data-value="{{ 'LT' if lot.is_long_term else 'ST' }}">{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
+            <td class="tax-muted-sm" data-value="{{ lot.vest_date or '' }}">{{ lot.vest_date or '—' }}</td>
+            <td data-hold data-value="{{ 'LT' if lot.is_long_term else 'ST' }}">{% if lot.is_long_term %}<span class="tax-badge lt">LT</span>{% else %}<span class="tax-badge st">ST</span>{% endif %}</td>
             <td class="tax-lot-no-nav" data-value="0">
               <input type="number" class="lot-qty form-control" step="1" min="0"
                      max="{{ max_q|int }}" value="0" inputmode="numeric"
@@ -960,13 +966,15 @@
     });
   })();
 
-  // Lot table: multi-select share-type filters + count (sorting via sortable-tables.js)
+  // Lot table: type + LT/ST as of sale date (sorting via sortable-tables.js)
   (function initLotsFilter() {
     const table = document.getElementById('lotsTable');
     const countEl = document.getElementById('lotsFilterCount');
     const chips = Array.prototype.slice.call(document.querySelectorAll('.tax-lot-filter'));
     if (!table || !chips.length) return;
 
+    const TYPE_KEYS = { rsu: 1, espp: 1, iso: 1, iso_held: 1, iso_unex: 1 };
+    const HOLD_KEYS = { lt: 1, st: 1 };
     const allBtn = chips.find(function (c) { return c.getAttribute('data-lot-filter') === 'all'; });
     const typeChips = chips.filter(function (c) { return c.getAttribute('data-lot-filter') !== 'all'; });
 
@@ -981,15 +989,54 @@
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
 
-    function matchesAny(tr, filters) {
-      if (tr.classList.contains('tax-lot-empty')) return true;
-      if (!filters.length) return true; // none selected = all
+    function parseISODate(s) {
+      if (!s) return null;
+      const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return null;
+      return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    }
+
+    function asOfDate() {
+      const plan = document.getElementById('planSaleDate');
+      const goal = document.getElementById('goalSaleDate');
+      return parseISODate((plan && plan.value) || (goal && goal.value) || '') || new Date();
+    }
+
+    function holdingStart(tr) {
+      const kind = tr.getAttribute('data-kind') || '';
+      const ex = parseISODate(tr.getAttribute('data-ex-date'));
+      const vest = parseISODate(tr.getAttribute('data-vest-date'));
+      // ISO stock: LTCG clock starts at exercise. RSU / ESPP / unexercised ISO: vest / purchase.
+      if (kind === 'iso' && ex) return ex;
+      return vest;
+    }
+
+    function refreshHoldAsOfSaleDate() {
+      const asOf = asOfDate();
+      table.querySelectorAll('tbody tr.tax-lot-row').forEach(function (tr) {
+        const start = holdingStart(tr);
+        const days = start ? Math.round((asOf - start) / 86400000) : 0;
+        const lt = days >= 365;
+        tr.setAttribute('data-lt', lt ? '1' : '0');
+        const badge = tr.querySelector('.tax-badge');
+        if (badge) {
+          badge.className = 'tax-badge ' + (lt ? 'lt' : 'st');
+          badge.textContent = lt ? 'LT' : 'ST';
+        }
+        const holdCell = tr.querySelector('td[data-hold]');
+        if (holdCell) holdCell.setAttribute('data-value', lt ? 'LT' : 'ST');
+      });
+    }
+
+    function typeMatch(tr, types) {
+      if (!types.length) return true;
       const kind = tr.getAttribute('data-kind') || (tr.dataset.iso === 'true' ? 'iso' : 'rsu');
       const held = parseFloat(tr.dataset.available || 0) > 0;
       const unex = parseFloat(tr.dataset.unexercised || 0) > 0;
-      for (let i = 0; i < filters.length; i++) {
-        const f = filters[i];
+      for (let i = 0; i < types.length; i++) {
+        const f = types[i];
         if (f === 'rsu' && kind === 'rsu') return true;
+        if (f === 'espp' && kind === 'espp') return true;
         if (f === 'iso' && kind === 'iso') return true;
         if (f === 'iso_held' && kind === 'iso' && held) return true;
         if (f === 'iso_unex' && kind === 'iso' && unex) return true;
@@ -997,18 +1044,39 @@
       return false;
     }
 
+    function holdMatch(tr, holds) {
+      if (!holds.length) return true;
+      const lt = tr.getAttribute('data-lt') === '1';
+      if (holds.indexOf('lt') >= 0 && lt) return true;
+      if (holds.indexOf('st') >= 0 && !lt) return true;
+      return false;
+    }
+
+    function vestedBySaleDate(tr) {
+      const vest = parseISODate(tr.getAttribute('data-vest-date'));
+      if (!vest) return true;
+      return vest.getTime() <= asOfDate().getTime();
+    }
+
+    function matchesRow(tr, filters) {
+      if (tr.classList.contains('tax-lot-empty')) return true;
+      if (!vestedBySaleDate(tr)) return false;
+      const types = filters.filter(function (f) { return TYPE_KEYS[f]; });
+      const holds = filters.filter(function (f) { return HOLD_KEYS[f]; });
+      return typeMatch(tr, types) && holdMatch(tr, holds);
+    }
+
     function applyFilter() {
+      refreshHoldAsOfSaleDate();
       const filters = selectedFilters();
-      // "All" is active only when no type chips are selected
       if (allBtn) setChipState(allBtn, filters.length === 0);
 
       let visible = 0;
       let total = 0;
       table.querySelectorAll('tbody tr.tax-lot-row').forEach(function (tr) {
         total += 1;
-        const show = matchesAny(tr, filters);
+        const show = matchesRow(tr, filters);
         tr.style.display = show ? '' : 'none';
-        // Uncheck/clear qty on filtered-out rows so scenarios don't use invisible lots
         if (!show) {
           const check = tr.querySelector('.lot-check');
           const qty = tr.querySelector('.lot-qty');
@@ -1020,7 +1088,7 @@
       });
       if (countEl) {
         const label = filters.length
-          ? (visible + ' of ' + total + ' · ' + filters.join(' + '))
+          ? (visible + ' of ' + total)
           : (total ? (visible + ' of ' + total + ' lots') : '');
         countEl.textContent = label;
       }
@@ -1030,18 +1098,19 @@
       btn.addEventListener('click', function () {
         const key = btn.getAttribute('data-lot-filter') || 'all';
         if (key === 'all') {
-          // Clear multi-select → show everything
           typeChips.forEach(function (c) { setChipState(c, false); });
           setChipState(btn, true);
         } else {
-          // Toggle this type; deselect "All"
           setChipState(btn, !btn.classList.contains('is-active'));
           if (allBtn) setChipState(allBtn, false);
-          // If user turned off the last type chip, back to All
           if (selectedFilters().length === 0 && allBtn) setChipState(allBtn, true);
         }
         applyFilter();
       });
+    });
+    ['planSaleDate', 'goalSaleDate'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', applyFilter);
     });
     applyFilter();
   })();
