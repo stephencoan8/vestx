@@ -39,13 +39,6 @@
     </div>
   </div>
 
-  {# ——— Intent chips ——— #}
-  <div class="tax-intents" role="group" aria-label="Quick intents">
-    <button type="button" class="tax-intent active" data-intent="cash" id="intentCash">Raise cash</button>
-    <button type="button" class="tax-intent" data-intent="iso" id="intentIso">ISO</button>
-    <button type="button" class="tax-intent" data-intent="advanced" id="intentAdvanced">Advanced</button>
-  </div>
-
   {# ——— Primary tabs ——— #}
   <nav class="chart-toggle tax-hub-tabs" id="taxHubTabs" role="tablist" aria-label="Plan sections">
     <button type="button" class="toggle-btn active" data-tax-tab="optimize" role="tab" aria-selected="true">Goal</button>
@@ -74,23 +67,6 @@
       </div>
     </div>
 
-    <div class="tax-quick-targets" aria-label="Quick targets">
-      <button type="button" class="tax-chip" data-goal-fill="50000">$50k</button>
-      <button type="button" class="tax-chip" data-goal-fill="100000">$100k</button>
-      <button type="button" class="tax-chip" data-goal-fill="300000">$300k</button>
-      <button type="button" class="tax-chip" data-goal-fill="500000">$500k</button>
-    </div>
-
-    <div class="tax-goal-iso-toggle" id="goalExerciseAllWrap">
-      <label class="form-check tax-goal-iso-label">
-        <input type="checkbox" id="goalExerciseAllIso">
-        <span class="tax-goal-iso-text">
-          <strong>Exercise ALL ISOs</strong>
-
-        </span>
-      </label>
-    </div>
-
     <details class="tax-hub-details" id="goalAdvancedDetails">
       <summary>Options &amp; constraints</summary>
       <div class="tax-details-body">
@@ -115,6 +91,18 @@
             <label for="goalSaleDate">Sale / exercise date</label>
             <input type="date" id="goalSaleDate" value="{{ today.isoformat() }}">
           </div>
+        </div>
+        <div class="tax-quick-targets" aria-label="Quick targets" style="margin-bottom:1rem;">
+          <button type="button" class="tax-chip" data-goal-fill="50000">$50k</button>
+          <button type="button" class="tax-chip" data-goal-fill="100000">$100k</button>
+          <button type="button" class="tax-chip" data-goal-fill="300000">$300k</button>
+          <button type="button" class="tax-chip" data-goal-fill="500000">$500k</button>
+        </div>
+        <div class="tax-goal-iso-toggle" id="goalExerciseAllWrap" style="margin-bottom:1rem;">
+          <label class="form-check tax-goal-iso-label">
+            <input type="checkbox" id="goalExerciseAllIso">
+            <span>Exercise all ISOs</span>
+          </label>
         </div>
         <div class="tax-check-row">
           <label class="form-check"><input type="checkbox" id="goalAllowRsu" checked> RSU sales</label>
@@ -210,9 +198,9 @@
       </div>
     </div>
 
-    <div class="tax-lots-toolbar" id="lotsToolbar">
+    <details class="tax-hub-details" id="lotsToolbar">
+      <summary>Filter lots <span class="tax-muted-sm" id="lotsFilterCount"></span></summary>
       <div class="tax-lots-filter" role="group" aria-label="Lot filters">
-        <span class="tax-lots-filter-label">Show</span>
         <button type="button" class="tax-chip tax-lot-filter is-active" data-lot-filter="all" aria-pressed="true">All</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="rsu" aria-pressed="false">RSU</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="espp" aria-pressed="false">ESPP</button>
@@ -222,8 +210,7 @@
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="lt" aria-pressed="false">LT</button>
         <button type="button" class="tax-chip tax-lot-filter" data-lot-filter="st" aria-pressed="false">ST</button>
       </div>
-      <span class="tax-muted-sm" id="lotsFilterCount"></span>
-    </div>
+    </details>
 
     <div class="table-container tax-table-wrap">
       <table class="data-table sortable-table" id="lotsTable">
@@ -392,11 +379,6 @@
       btn.classList.toggle('active', on);
       btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
-    document.querySelectorAll('.tax-intent').forEach(function (b) {
-      var map = { cash: 'optimize', iso: 'scenario', advanced: 'scenario' };
-      var intent = b.getAttribute('data-intent');
-      b.classList.toggle('active', map[intent] === name || (name === 'optimize' && intent === 'cash'));
-    });
     try { sessionStorage.setItem('vestx_tax_hub_tab', name); } catch (e) {}
     }
 
@@ -404,20 +386,6 @@
     btn.addEventListener('click', function () {
       showTaxTab(btn.getAttribute('data-tax-tab'));
     });
-  });
-
-  // Intents
-  document.getElementById('intentCash').addEventListener('click', function () {
-    showTaxTab('optimize');
-    document.getElementById('goalTarget').focus();
-  });
-  document.getElementById('intentIso').addEventListener('click', function () {
-    showTaxTab('scenario');
-    document.getElementById('planStrategy').value = 'compare_iso';
-    updatePlanFieldVisibility();
-  });
-  document.getElementById('intentAdvanced').addEventListener('click', function () {
-    showTaxTab('scenario');
   });
 
   // Deep-link ?tab= wins over session

@@ -32,27 +32,25 @@
             <h2>Vesting timeline</h2>
         </div>
 
-        <div class="chart-controls">
-            <div class="control-group">
-                <label for="xZoom">Time range</label>
-                <input type="range" id="xZoom" min="0.1" max="1" step="0.05" value="1">
-                <span id="xZoomLabel">100%</span>
-            </div>
-            <div class="control-group">
-                <label for="yZoom">Value range</label>
-                <input type="range" id="yZoom" min="0.1" max="1" step="0.05" value="1">
-                <span id="yZoomLabel">100%</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-secondary" id="resetZoom">Reset view</button>
-        </div>
-
         <div class="chart-container vesting-chart-wrap" style="border: none; padding: 0; margin: 0; background: transparent; height: 400px; position: relative; width: 100%;">
             <canvas id="vestingChart"></canvas>
         </div>
-        <div class="chart-legend">
-            <span class="legend-item"><span class="legend-line solid"></span> Past (vested)</span>
-            <span class="legend-item"><span class="legend-line dashed"></span> Future (projected)</span>
-        </div>
+        <details class="tax-hub-details">
+            <summary>Chart range</summary>
+            <div class="chart-controls">
+                <div class="control-group">
+                    <label for="xZoom">Time</label>
+                    <input type="range" id="xZoom" min="0.1" max="1" step="0.05" value="1">
+                    <span id="xZoomLabel">100%</span>
+                </div>
+                <div class="control-group">
+                    <label for="yZoom">Value</label>
+                    <input type="range" id="yZoom" min="0.1" max="1" step="0.05" value="1">
+                    <span id="yZoomLabel">100%</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-secondary" id="resetZoom">Reset</button>
+            </div>
+        </details>
     </div>
 
     <div class="dashboard-content">
@@ -60,7 +58,7 @@
             <h2>Upcoming vests</h2>
             {% if upcoming_vests %}
             <div class="vest-list vest-list-scroll" role="list" aria-label="Upcoming vesting events">
-                {% for vest in upcoming_vests %}
+                {% for vest in upcoming_vests[:4] %}
                 <a href="{{ url_for('grants.vest_detail', vest_id=vest.id) }}" class="vest-item vest-item-link" role="listitem" title="Open vest detail">
                     <div class="vest-date">{{ vest.vest_date.strftime('%b %d, %Y') }}</div>
                     <div class="vest-value">${{ "{:,.2f}".format(vest.shares_vested * current_price) }}</div>
@@ -82,18 +80,19 @@
                 </div>
             </div>
 
-            <div class="range-toggles compact" id="priceRangeToggles" role="group" aria-label="Chart range">
-                <button type="button" class="range-btn" data-range="1d">1D</button>
-                <button type="button" class="range-btn" data-range="1w">1W</button>
-                <button type="button" class="range-btn" data-range="1m">1M</button>
-                <button type="button" class="range-btn" data-range="ytd">YTD</button>
-                <button type="button" class="range-btn" data-range="1y">1Y</button>
-                <button type="button" class="range-btn" data-range="5y">5Y</button>
-                <button type="button" class="range-btn active" data-range="all">ALL</button>
-            </div>
-
+            <details class="tax-hub-details">
+                <summary>Range</summary>
+                <div class="range-toggles compact" id="priceRangeToggles" role="group" aria-label="Chart range">
+                    <button type="button" class="range-btn" data-range="1d">1D</button>
+                    <button type="button" class="range-btn" data-range="1w">1W</button>
+                    <button type="button" class="range-btn" data-range="1m">1M</button>
+                    <button type="button" class="range-btn" data-range="ytd">YTD</button>
+                    <button type="button" class="range-btn" data-range="1y">1Y</button>
+                    <button type="button" class="range-btn" data-range="5y">5Y</button>
+                    <button type="button" class="range-btn active" data-range="all">ALL</button>
+                </div>
+            </details>
             <div class="price-measure-badge compact" id="priceMeasureBadge" hidden></div>
-
             <div class="price-chart-wrap compact" id="priceChartWrap">
                 <canvas id="stockPriceChart"></canvas>
                 <div class="price-selection-overlay" id="priceSelectionOverlay" hidden></div>
