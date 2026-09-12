@@ -109,6 +109,7 @@ def lot_input_from_vest(
         ex_date, fmv_ex = _iso_exercise_context(uid, vest.id)
 
     from app.utils.share_labels import is_espp_grant
+    from app.utils.espp_423 import offering_start_for
     espp = is_espp_grant(grant.grant_type, st)
     fmv_purchase = float(vest.share_price_at_vest or vest.value_at_vest or 0)
     if vest.shares_vested:
@@ -118,6 +119,13 @@ def lot_input_from_vest(
             )
         except Exception:
             pass
+    offer = None
+    if espp:
+        offer = offering_start_for(
+            stored=getattr(grant, 'espp_offering_start', None),
+            grant_date=grant.grant_date,
+            purchase_date=vest.vest_date,
+        )
     return LotSaleInput(
         vest_event_id=vest.id,
         grant_id=grant.id,
@@ -133,9 +141,10 @@ def lot_input_from_vest(
         strike_price=float(grant.share_price_at_grant or 0) if is_iso else 0.0,
         exercise_date=ex_date,
         fmv_at_exercise=fmv_ex,
-        espp_discount=float(grant.espp_discount or 0.15) if espp else 0.0,
+        espp_discount=(float(grant.espp_discount or 0) or 0.15) if espp else 0.0,
         fmv_at_grant=float(grant.share_price_at_grant or 0) if espp else 0.0,
         fmv_at_purchase=fmv_purchase if espp else 0.0,
+        offering_start=offer,
         label=label or f'Vest {vest.vest_date}',
     )
 
@@ -211,7 +220,26 @@ def analysis_to_ui_dict(
         'federal_ordinary_tax': float(analysis.federal_ordinary_tax or 0),
         'amt_due': float(analysis.amt_due or 0),
         'rates_used': dict(rates),
+        'lots': [asdict_lot(x) for x in (analysis.lots or [])],
     }
+
+
+def asdict_lot(lot) -> Dict[str, Any]:
+    d = {
+        'vest_event_id': getattr(lot, 'vest_event_id', None),
+        'label': getattr(lot, 'label', ''),
+        'shares': getattr(lot, 'shares', 0),
+        'ordinary_income': getattr(lot, 'ordinary_income', 0),
+        'capital_gain': getattr(lot, 'capital_gain', 0),
+        'is_long_term': getattr(lot, 'is_long_term', False),
+        'disposition': getattr(lot, 'disposition', None) or getattr(lot, 'iso_disposition', 'n/a'),
+        'ordinary_bargain': getattr(lot, 'ordinary_bargain', 0),
+        'cg_remainder': getattr(lot, 'cg_remainder', 0),
+        'purchase_price_per_share': getattr(lot, 'purchase_price_per_share', 0),
+        'offering_start': getattr(lot, 'offering_start', None),
+        'notes': list(getattr(lot, 'notes', None) or [])[:6],
+    }
+    return d
 
 
 def estimate_vest_sale_tax(
@@ -275,7 +303,11 @@ def estimate_vest_sale_tax(
     is_long_term = days_held >= 365
     holding_period = _holding_period_label(days_held, has_vested)
 
-    if not user or unrealized_gain <= 0:
+    from app.utils.share_labels import is_espp_grant
+    espp = is_espp_grant(grant.grant_type, grant.share_type)
+    # ESPP DD can have large ordinary even when sale ≈ purchase-date FMV (unrealized vs
+    # vest FMV looks like $0). Always run the engine for ESPP/ISO.
+    if not user or (unrealized_gain <= 0 and not espp and not is_iso):
         return _empty_sale_dict(
             shares_held=shares_held,
             cost_basis_per_share=cost_basis_per_share,
@@ -285,7 +317,7 @@ def estimate_vest_sale_tax(
             days_held=days_held,
             is_long_term=is_long_term,
             holding_period=holding_period,
-            method='none' if unrealized_gain <= 0 else 'none',
+            method='none',
         )
 
     lot = lot_input_from_vest(

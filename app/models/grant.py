@@ -56,6 +56,8 @@ class Grant(db.Model):
     
     # ESPP specific - discount percentage (typically 15% = 0.15)
     espp_discount = db.Column(db.Float, nullable=True, default=0.0)
+    # Beginning of the §423 offering period (2-year QD clock). If null, inferred.
+    espp_offering_start = db.Column(db.Date, nullable=True)
     
     # For annual performance grants
     bonus_type = db.Column(db.String(20), nullable=True)  # short_term or long_term

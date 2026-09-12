@@ -147,6 +147,11 @@ def build_lots_for_user(user_id: int, as_of: Optional[date] = None) -> List[dict
             'espp_discount': (float(grant.espp_discount or 0) or 0.15) if is_espp_grant(grant.grant_type, grant.share_type) else 0.0,
             'fmv_at_grant': float(grant.share_price_at_grant or 0) if is_espp_grant(grant.grant_type, grant.share_type) else 0.0,
             'fmv_at_purchase': float(fmv_vest or 0) if is_espp_grant(grant.grant_type, grant.share_type) else 0.0,
+            'offering_start': (
+                (getattr(grant, 'espp_offering_start', None) or grant.grant_date).isoformat()
+                if is_espp_grant(grant.grant_type, grant.share_type) and (getattr(grant, 'espp_offering_start', None) or grant.grant_date)
+                else None
+            ),
         })
 
     return _overlay_tax_lot_remaining(user_id, lots)

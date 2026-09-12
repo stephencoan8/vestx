@@ -349,7 +349,7 @@ def build_cash_vs_tax(
         ss_wage_base_maxed=False,
         use_state_engine=True,
         vest_prefills=vest,
-        fica_wages=ordinary,
+        fica_wages=float(stack.get('fica_wages') or ordinary),
         itemize_salt=itemize_salt,
         itemize_mortgage=itemize_mortgage,
         itemize_charity=itemize_charity,
@@ -578,7 +578,10 @@ def build_cash_vs_tax(
         },
         'locked_in': {
             'vest_gross': round(eq_past, 2),
-            'sale_gain': round(stcg + ltcg, 2),
+            'sale_gain': round(
+                float(stack.get('sale_stcg') or 0) + float(stack.get('sale_ltcg') or 0), 2
+            ),
+            'sale_ordinary': round(float(stack.get('sale_ordinary') or 0), 2),
             'withholding': round(fed_locked + state_locked + est_paid, 2),
         },
         'still_coming': {
@@ -586,6 +589,7 @@ def build_cash_vs_tax(
             'rsu_gross': round(remaining_rsu_gross, 2),
             'withholding': round(fed_coming + state_coming, 2),
             'events': remaining_rsu[:12] or remaining_events[:12],
+            'live_price': float((vest or {}).get('live_price') or 0),
             'note': 'Remaining RSUs at live price, supplemental withholding. ESPP is not Box 1. Not cash due today.',
         },
         'under_over': round(under_over, 2),

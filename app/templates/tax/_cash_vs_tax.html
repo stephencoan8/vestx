@@ -40,7 +40,7 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Locked in</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.locked_in.withholding) }}</div>
-      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }} · sale gain ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}</div>
+      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }} · sale gain ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}{% if c.locked_in.sale_ordinary %} · sale ordinary ${{ "{:,.0f}".format(c.locked_in.sale_ordinary) }}{% endif %}</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Still coming</div>

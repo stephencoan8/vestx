@@ -40,6 +40,17 @@ def create_app():
     mail.init_app(app)
     csrf.init_app(app)
 
+    @app.after_request
+    def _tax_no_store(resp):
+        """Tax totals must not be served from a stale tab cache (report P0-0)."""
+        from flask import request
+        path = request.path or ''
+        if path.startswith('/tax') or path.startswith('/api/'):
+            resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        return resp
+
     # Make csrf_token available in all templates for manual forms
     @app.context_processor
     def inject_csrf_token():
@@ -175,6 +186,9 @@ def create_app():
 
         from app.utils.migrate_espp_share_type import migrate_espp_share_type
         _safe_migrate('espp_share_type', migrate_espp_share_type)
+
+        from app.utils.migrate_espp_offering import migrate_espp_offering
+        _safe_migrate('espp_offering', migrate_espp_offering)
 
         from app.utils.migrate_ledger import migrate_ledger
         _safe_migrate('ledger', migrate_ledger)

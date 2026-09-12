@@ -189,6 +189,11 @@ def inventory_to_specs(lots: Sequence[dict], price: float) -> List[LotSpec]:
                     fmv_at_purchase=float(
                         lot.get('fmv_at_purchase') or lot.get('fmv_at_vest') or lot.get('cost_basis_per_share') or 0
                     ),
+                    offering_start=(
+                        date.fromisoformat(str(lot['offering_start'])[:10])
+                        if lot.get('offering_start') and not isinstance(lot.get('offering_start'), date)
+                        else lot.get('offering_start')
+                    ),
                 )
             )
             if held > 0 and unex > 0:
@@ -263,30 +268,23 @@ def _lot_rank_score(
 
     from app.utils.share_labels import is_espp_grant
     if is_espp_grant(spec.grant_type, spec.share_type):
-        disc = float(getattr(spec, 'espp_discount', 0) or 0.15)
-        fmv_g = float(getattr(spec, 'fmv_at_grant', 0) or 0)
-        fmv_p = float(getattr(spec, 'fmv_at_purchase', 0) or basis)
-        cands = [x for x in (fmv_g, fmv_p) if x > 0]
-        lookback = min(cands) if cands else basis
-        purchase_px = lookback * (1.0 - disc) if lookback > 0 else basis
-        from app.utils.tax_engine import _add_years
-        qd_on = max(_add_years(spec.grant_date, 2), _add_years(spec.vest_date, 1))
-        is_qd = sale_date >= qd_on
-        holding = (sale_date - spec.vest_date).days
-        is_lt = holding >= 365
-        if is_qd:
-            reason = (
-                f'ESPP qualifying §423: lookback discount ordinary, rest CG '
-                f'(purchase ~${purchase_px:.2f}/sh)'
-            )
-            score = 80 + max(0.0, (fmv_g or lookback) - purchase_px) * 0.01
+        from app.utils.espp_423 import analyze_espp_sale
+        r = analyze_espp_sale(
+            shares=1.0,
+            sale_price=price,
+            sale_date=sale_date,
+            purchase_date=spec.vest_date,
+            grant_date=spec.grant_date,
+            offering_start=getattr(spec, 'offering_start', None),
+            grant_fmv=float(getattr(spec, 'fmv_at_grant', 0) or 0),
+            purchase_fmv=float(getattr(spec, 'fmv_at_purchase', 0) or basis),
+            discount=float(getattr(spec, 'espp_discount', 0) or 0.15),
+        )
+        if r.disposition == 'qualifying':
+            score = 80 + r.ordinary_income * 0.01
         else:
-            reason = (
-                f'ESPP disqualifying: bargain at purchase ordinary, residual CG '
-                f'(QD opens {qd_on.isoformat()})'
-            )
-            score = 220 + max(0.0, fmv_p - purchase_px) * 0.01
-        return score, reason, is_lt, 'qualifying' if is_qd else 'disqualifying'
+            score = 220 + r.ordinary_income * 0.01
+        return score, r.notes[0] if r.notes else 'ESPP §423', r.is_long_term, r.disposition
 
     # RSU
     gain = max(0.0, price - basis)

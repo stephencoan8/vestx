@@ -565,19 +565,23 @@ def build_year_vest_prefill(user_id: int, tax_year: int) -> Dict[str, Any]:
 
 def build_year_sale_gains(user_id: int, tax_year: int) -> Dict[str, Any]:
     """
-    Realized capital gain/loss on VestX sales in a calendar year.
+    Realized character on VestX sales in a calendar year.
 
-    Uses StockSale.capital_gain (proceeds − basis), never gross proceeds.
-    ST vs LT follows the sale row. ISO disqualifying ordinary is ignored here.
+    ESPP/ISO lots go through analyze_lot (§423 / §422). RSU lots use stored
+    proceeds − basis. Ordinary bargain (ESPP DD/QD, ISO DD) is **not** CG.
     """
     from datetime import date
+    from sqlalchemy.orm import joinedload
     from app.models.stock_sale import StockSale
+    from app.utils.sale_tax_estimate import lot_input_from_vest
+    from app.utils.tax_engine import analyze_lot
+    from app.utils.share_labels import is_espp_grant
 
     start = date(tax_year, 1, 1)
     end = date(tax_year, 12, 31)
     try:
         sales = (
-            StockSale.query
+            StockSale.query.options(joinedload(StockSale.vest_event))
             .filter(
                 StockSale.user_id == user_id,
                 StockSale.sale_date >= start,
@@ -590,7 +594,36 @@ def build_year_sale_gains(user_id: int, tax_year: int) -> Dict[str, Any]:
 
     stcg = 0.0
     ltcg = 0.0
+    ordinary = 0.0
+    fica_ordinary = 0.0
     for s in sales:
+        vest = getattr(s, 'vest_event', None)
+        grant = getattr(vest, 'grant', None) if vest else None
+        used_engine = False
+        if vest and grant and s.sale_date:
+            try:
+                lot = lot_input_from_vest(
+                    vest,
+                    shares=float(s.shares_sold or 0),
+                    sale_price=float(s.sale_price or 0),
+                    sale_date=s.sale_date,
+                    cost_basis_per_share=float(s.cost_basis_per_share or 0),
+                    user_id=user_id,
+                    label=f'Sale {s.sale_date}',
+                )
+                if lot and (is_espp_grant(grant.grant_type, grant.share_type) or lot.is_iso):
+                    r = analyze_lot(lot)
+                    ordinary += float(r.ordinary_income or 0)
+                    fica_ordinary += float(getattr(r, 'fica_ordinary', 0) or 0)
+                    if r.is_long_term:
+                        ltcg += float(r.capital_gain or 0)
+                    else:
+                        stcg += float(r.capital_gain or 0)
+                    used_engine = True
+            except Exception:
+                used_engine = False
+        if used_engine:
+            continue
         proceeds = float(
             s.total_proceeds
             if s.total_proceeds is not None
@@ -607,6 +640,8 @@ def build_year_sale_gains(user_id: int, tax_year: int) -> Dict[str, Any]:
         'sale_count': len(sales),
         'stcg': round(stcg, 2),
         'ltcg': round(ltcg, 2),
+        'ordinary': round(ordinary, 2),
+        'fica_ordinary': round(fica_ordinary, 2),
         'capital_gain': round(stcg + ltcg, 2),
     }
 
@@ -622,16 +657,20 @@ def year_income_stack(
     """
     Year income from VestX + the cash-wages field.
 
-      ordinary / FICA  = cash wages + RSU/cash vests (past @ vest FMV, rest of year @ live)
-      ESPP purchase is not Box 1 (ordinary at sale). ISO vest is not W-2; AMT is on exercise.
-      ST/LT CG         = recorded sale capital gains + optional non-VestX extras
+      ordinary / Box 1 = cash wages + RSU/cash vests + ESPP/ISO-DD sale ordinary
+      FICA             = cash + RSU/cash vests + ISO-DD ordinary (statutory ESPP ordinary is not FICA)
+      ESPP purchase FMV is never Box 1. ISO vest is not W-2; AMT is on recorded exercise.
+      ST/LT CG         = residual capital gain on recorded sales + optional non-VestX extras
     """
     cash = max(0.0, float(cash_wages or 0))
     vest = build_year_vest_prefill(user_id, tax_year)
     sales = build_year_sale_gains(user_id, tax_year)
     eq_past = float(vest.get('equity_vested_ytd') or 0)
     eq_fut = float(vest.get('equity_remaining_year') or 0)
-    ordinary = cash + eq_past + eq_fut
+    sale_ord = float(sales.get('ordinary') or 0)
+    sale_fica_ord = float(sales.get('fica_ordinary') or 0)
+    ordinary = cash + eq_past + eq_fut + sale_ord
+    fica_wages = cash + eq_past + eq_fut + sale_fica_ord
     stcg = float(sales.get('stcg') or 0) + float(other_stcg or 0)
     ltcg = float(sales.get('ltcg') or 0) + float(other_ltcg or 0)
     return {
@@ -640,9 +679,10 @@ def year_income_stack(
         'equity_remaining_year': round(eq_fut, 2),
         'sale_stcg': float(sales.get('stcg') or 0),
         'sale_ltcg': float(sales.get('ltcg') or 0),
+        'sale_ordinary': round(sale_ord, 2),
         'sale_count': int(sales.get('sale_count') or 0),
         'ordinary': round(ordinary, 2),
-        'fica_wages': round(ordinary, 2),
+        'fica_wages': round(fica_wages, 2),
         'stcg': round(stcg, 2),
         'ltcg': round(ltcg, 2),
         'tax_base': round(ordinary + stcg + ltcg, 2),

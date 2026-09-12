@@ -136,6 +136,7 @@ class LotSpec:
     espp_discount: float = 0.0
     fmv_at_grant: float = 0.0
     fmv_at_purchase: float = 0.0
+    offering_start: Optional[date] = None
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ def _build_sale(
         espp_discount=float(getattr(lot, 'espp_discount', 0) or 0),
         fmv_at_grant=float(getattr(lot, 'fmv_at_grant', 0) or 0),
         fmv_at_purchase=float(getattr(lot, 'fmv_at_purchase', 0) or 0),
+        offering_start=getattr(lot, 'offering_start', None),
     )
 
 

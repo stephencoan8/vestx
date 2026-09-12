@@ -67,3 +67,10 @@ def action_label(action: str = '') -> str:
 def is_espp_grant(grant_type: str = '', share_type: str = '') -> bool:
     gt = (grant_type or '').lower()
     return gt in ('espp', 'nqespp') or (share_type or '').lower() == 'espp'
+
+
+def is_statutory_espp(grant_type: str = '', share_type: str = '') -> bool:
+    """§423 statutory plan (not NQESPP)."""
+    if (grant_type or '').lower() == 'nqespp':
+        return False
+    return is_espp_grant(grant_type, share_type)

@@ -1377,12 +1377,15 @@
 
     const t = document.getElementById('analysisLots');
     if (a.lots && a.lots.length) {
-      t.innerHTML = '<thead><tr><th>Lot</th><th>Shares</th><th>Proceeds</th><th>Ordinary</th><th>CG</th><th>Term</th><th>ISO</th></tr></thead><tbody>' +
+      t.innerHTML = '<thead><tr><th>Lot</th><th>Shares</th><th>Proceeds</th><th>Ordinary</th><th>CG</th><th>Term</th><th>Disposition</th></tr></thead><tbody>' +
         a.lots.map(function (l) {
+          var disp = l.disposition || l.iso_disposition || '';
+          if (disp === 'qualifying') disp = 'QD';
+          if (disp === 'disqualifying') disp = 'DD';
           return '<tr><td>' + (l.label || l.vest_event_id) + '</td><td>' + l.shares +
             '</td><td>' + money2(l.proceeds) + '</td><td>' + money2(l.ordinary_income) +
             '</td><td>' + money2(l.capital_gain) + '</td><td>' + (l.is_long_term ? 'LT' : 'ST') +
-            '</td><td>' + (l.iso_disposition || '') + '</td></tr>';
+            '</td><td>' + disp + '</td></tr>';
         }).join('') + '</tbody>';
     } else t.innerHTML = '';
   }

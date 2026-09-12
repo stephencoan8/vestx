@@ -110,11 +110,18 @@ def _attach_year_tax_cash_vs_tax(payload: dict, year: int) -> dict:
                 # Same AMT story as the Tax profile TOTAL TAX KPI
                 if amt > 0:
                     result['total_tax'] = round(float(result.get('total_tax') or 0) + amt, 2)
+                hist = payload.get('history') or {}
                 result['espp_purchase_gross'] = (cvt.get('year_tax') or {}).get('vest_prefills', {}).get('espp_purchase_gross')
                 if result.get('espp_purchase_gross') in (None, 0):
-                    hist = payload.get('history') or {}
                     result['espp_purchase_gross'] = hist.get('espp_purchase_gross')
-                    result.setdefault('rsu_vest_gross', hist.get('rsu_vest_gross'))
+                result.setdefault('rsu_vest_gross', hist.get('rsu_vest_gross'))
+                result['sale_stcg'] = hist.get('sale_stcg')
+                result['sale_ltcg'] = hist.get('sale_ltcg')
+                result['sale_ordinary'] = hist.get('sale_ordinary')
+                result['sale_gain'] = round(
+                    float(hist.get('sale_stcg') or 0) + float(hist.get('sale_ltcg') or 0), 2
+                )
+                result['live_price'] = hist.get('live_price') or (cvt.get('still_coming') or {}).get('live_price')
     except Exception as e:
         logger.warning('year-tax cash_vs_tax failed: %s', e)
         payload['cash_vs_tax'] = None
@@ -500,6 +507,7 @@ def api_year_tax():
             history = dict(stack.get('vest') or {})
             history['sale_stcg'] = stack.get('sale_stcg')
             history['sale_ltcg'] = stack.get('sale_ltcg')
+            history['sale_ordinary'] = stack.get('sale_ordinary')
             history['sale_count'] = stack.get('sale_count')
             return _api_json(_attach_year_tax_cash_vs_tax(
                 _package(year, form, source, history, run=True, stack=stack), year
@@ -513,6 +521,7 @@ def api_year_tax():
         history = dict(stack.get('vest') or {})
         history['sale_stcg'] = stack.get('sale_stcg')
         history['sale_ltcg'] = stack.get('sale_ltcg')
+        history['sale_ordinary'] = stack.get('sale_ordinary')
         history['sale_count'] = stack.get('sale_count')
         if any(k in data for k in (
             'other_ordinary_income', 'wages',
@@ -715,6 +724,7 @@ def tax_profile():
     history = dict(stack.get('vest') or {})
     history['sale_stcg'] = stack.get('sale_stcg')
     history['sale_ltcg'] = stack.get('sale_ltcg')
+    history['sale_ordinary'] = stack.get('sale_ordinary')
     history['sale_count'] = stack.get('sale_count')
     box1 = float(stack.get('cash_wages') or 0)
     eq_past = float(stack.get('equity_vested_ytd') or 0)

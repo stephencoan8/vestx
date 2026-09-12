@@ -537,9 +537,10 @@
     fade(true, function () {
       var loader = (typeof window.vestxFetchJson === 'function')
         ? window.vestxFetchJson(api + '?year=' + encodeURIComponent(y), { credentials: 'same-origin' })
-        : fetch(api + '?year=' + encodeURIComponent(y), {
+        : fetch(api + '?year=' + encodeURIComponent(y) + '&cb=' + Date.now(), {
             credentials: 'same-origin',
-            headers: { 'Accept': 'application/json' }
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-store' }
           }).then(function (r) { return r.json(); });
       loader
         .then(function (data) {

@@ -229,6 +229,7 @@ class LotSaleInput:
     espp_discount: float = 0.0
     fmv_at_grant: float = 0.0
     fmv_at_purchase: float = 0.0
+    offering_start: Optional[date] = None
     # Commission allocated to this lot
     commission: float = 0.0
     label: str = ''
@@ -276,6 +277,13 @@ class LotSaleResult:
     holding_days: int
     amt_bargain_element: float  # recognized at exercise (for planning same-year exercise)
     notes: List[str] = field(default_factory=list)
+    # ESPP / ISO character for API + year stack (report G10)
+    disposition: str = 'n/a'  # QD | DD | n/a
+    ordinary_bargain: float = 0.0
+    cg_remainder: float = 0.0
+    purchase_price_per_share: float = 0.0
+    offering_start: Optional[str] = None
+    fica_ordinary: float = 0.0  # ordinary subject to SS/Medicare (0 for statutory ESPP)
 
 
 @dataclass
@@ -366,53 +374,44 @@ def _analyze_espp_lot(
     is_lt: bool,
     notes: List[str],
 ) -> LotSaleResult:
-    """§423 ESPP: QD vs DD. Lookback purchase price = (1 − discount) × min(grant FMV, purchase FMV)."""
-    disc = min(0.5, max(0.0, float(lot.espp_discount or 0)))
-    fmv_g = float(lot.fmv_at_grant or 0)
-    fmv_p = float(lot.fmv_at_purchase or lot.cost_basis_per_share or 0)
-    cands = [x for x in (fmv_g, fmv_p) if x > 0]
-    lookback = min(cands) if cands else float(lot.cost_basis_per_share or 0)
-    purchase_px = lookback * (1.0 - disc) if lookback > 0 else float(lot.cost_basis_per_share or 0)
-    qd_on = max(_add_years(lot.grant_date, 2), _add_years(lot.vest_date, 1))
-    is_qd = lot.sale_date >= qd_on
-    purchase_basis = purchase_px * lot.shares
-    actual_gain = proceeds - purchase_basis
-    if is_qd:
-        grant_bargain = max(0.0, (fmv_g or lookback) - purchase_px) * lot.shares
-        ordinary = min(grant_bargain, max(0.0, actual_gain)) if actual_gain > 0 else 0.0
-        capital_gain = actual_gain - ordinary
-        notes.append(
-            f'ESPP qualifying disposition (§423): {disc*100:.0f}% lookback discount as ordinary; '
-            f'rest capital gain. Purchase ${purchase_px:.2f}/sh.'
-        )
-        disp = 'qualifying'
-        from app.utils.tax_constants import ESPP_ANNUAL_LIMIT
-        if fmv_g and lot.shares * fmv_g > ESPP_ANNUAL_LIMIT:
-            notes.append(
-                f'Offering FMV ${lot.shares * fmv_g:,.0f} exceeds ${ESPP_ANNUAL_LIMIT:,.0f} §423 annual limit — check offering cap.'
-            )
-    else:
-        ordinary = max(0.0, fmv_p - purchase_px) * lot.shares
-        capital_gain = proceeds - (purchase_basis + ordinary)
-        notes.append(
-            f'ESPP disqualifying: bargain at purchase as ordinary; residual capital gain. '
-            f'QD window opens {qd_on.isoformat()}.'
-        )
-        disp = 'disqualifying'
+    """§423 ESPP via espp_423 SSOT — never the RSU FMV-basis path."""
+    from app.utils.espp_423 import analyze_espp_sale
+    from app.utils.share_labels import is_statutory_espp
+
+    r = analyze_espp_sale(
+        shares=lot.shares,
+        sale_price=lot.sale_price,
+        sale_date=lot.sale_date,
+        purchase_date=lot.vest_date,
+        grant_date=lot.grant_date,
+        offering_start=lot.offering_start,
+        grant_fmv=float(lot.fmv_at_grant or 0),
+        purchase_fmv=float(lot.fmv_at_purchase or lot.cost_basis_per_share or 0),
+        discount=float(lot.espp_discount or 0) or 0.15,
+        commission=float(lot.commission or 0),
+        statutory=is_statutory_espp(lot.grant_type, lot.share_type),
+    )
+    notes.extend(r.notes)
     return LotSaleResult(
         vest_event_id=lot.vest_event_id,
         label=lot.label or 'ESPP',
         shares=lot.shares,
         proceeds=proceeds,
-        cost_basis=purchase_basis + ordinary,
-        capital_gain=capital_gain,
-        ordinary_income=ordinary,
-        is_long_term=is_lt if is_qd else is_lt,
+        cost_basis=r.purchase_basis + r.ordinary_income,
+        capital_gain=r.capital_gain,
+        ordinary_income=r.ordinary_income,
+        is_long_term=r.is_long_term,
         is_iso=False,
-        iso_disposition=disp,
-        holding_days=holding_days,
+        iso_disposition=r.disposition,
+        holding_days=r.holding_days,
         amt_bargain_element=0.0,
         notes=notes,
+        disposition=r.disposition_code,
+        ordinary_bargain=r.ordinary_income,
+        cg_remainder=r.capital_gain,
+        purchase_price_per_share=r.purchase_price_per_share,
+        offering_start=r.offering_start.isoformat(),
+        fica_ordinary=r.fica_ordinary,
     )
 
 
@@ -504,9 +503,17 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
                 qd_ready = earliest_qualifying_sale_date(lot.grant_date, lot.exercise_date)
                 notes.append(f'Earliest QD date for this lot was {qd_ready.isoformat()}.')
     else:
-        # RSU / ESPP simplified: cost basis = FMV at vest (already taxed as ordinary at vest)
+        # RSU only — ESPP already returned above. Vest ordinary is W-2; sale is CG vs vest FMV.
         capital_gain = proceeds - cost_basis_total
-        notes.append('RSU/ESPP path: vest ordinary income is separate; sale is capital gain vs vest FMV basis.')
+        notes.append('RSU: vest ordinary is W-2 in the vest year; this sale is capital gain vs FMV at vest.')
+
+    disp_code = 'n/a'
+    if iso_disp == 'qualifying':
+        disp_code = 'QD'
+    elif iso_disp == 'disqualifying':
+        disp_code = 'DD'
+    # ISO DD ordinary is FICA wages; statutory ESPP is not (handled in _analyze_espp_lot).
+    fica_ord = ordinary if (lot.is_iso and iso_disp == 'disqualifying') else 0.0
 
     return LotSaleResult(
         vest_event_id=lot.vest_event_id,
@@ -522,6 +529,10 @@ def analyze_lot(lot: LotSaleInput) -> LotSaleResult:
         holding_days=holding_days,
         amt_bargain_element=amt_bargain if lot.is_iso else 0.0,
         notes=notes,
+        disposition=disp_code,
+        ordinary_bargain=ordinary,
+        cg_remainder=capital_gain,
+        fica_ordinary=fica_ord,
     )
 
 
@@ -1178,8 +1189,9 @@ def analyze_sales(
     amt_tax = float(full['amt_tax'])
     federal_after_credit = _delta('federal_tax_total')
 
-    # FICA only on equity ordinary — already incremental
-    fica = compute_fica(equity_ordinary, profile)
+    # FICA only on wage-character ordinary (ISO DD, NQESPP). Statutory ESPP ordinary is not FICA.
+    fica_base = sum(float(getattr(r, 'fica_ordinary', 0) or 0) for r in lot_results)
+    fica = compute_fica(fica_base, profile)
 
     state_result = full['state_result']
     for n in state_result.notes:

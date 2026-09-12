@@ -69,6 +69,25 @@ def test_amt_28_breakpoint_2026():
     assert amt_28_threshold(2026, 'single') == 244500
 
 
+def test_golden_g1_post_espp_federal_and_payroll():
+    """Report G1: fed+NIIT and payroll lock to independent rebuild (CA ±$100)."""
+    r = compute_w2_year_tax(
+        tax_year=2026,
+        filing_status='single',
+        state_code='CA',
+        wages=136_000 + 355_076,
+        stcg=462.55,
+        ltcg=38_221.20,
+        include_fica=True,
+    )
+    fed = r.federal_income_tax
+    assert abs(fed - 142_375.90) < 1.0
+    assert abs(r.total_fica + r.sdi - 26_581.12) < 1.0
+    assert abs(r.total_tax - 216_441.25) < 100.0
+    assert r.sdi == pytest.approx((136_000 + 355_076) * 0.011)
+    assert r.ca_std_deduction == 5706
+
+
 def test_espp_423_without_discount_field_still_espp():
     """Tagged ESPP must not fall through to RSU even if discount was stored as 0."""
     lot = LotSaleInput(
