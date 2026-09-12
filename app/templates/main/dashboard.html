@@ -12,7 +12,7 @@
     </header>
 
     <div class="hero-metrics">
-        <div class="hero-metric-card hero-metric-card-triple">
+        <div class="hero-metric-card">
             <div class="hero-metric">
                 <div class="hero-metric-label">Vested</div>
                 <div class="hero-metric-value">${{ "{:,.0f}".format(available_value) }}</div>
@@ -23,12 +23,6 @@
                 <div class="hero-metric-label">Unvested</div>
                 <div class="hero-metric-value">${{ "{:,.0f}".format(unavailable_value) }}</div>
                 <div class="hero-metric-note">{{ "{:,.0f}".format(unavailable_shares) }} sh</div>
-            </div>
-            <div class="hero-metric-divider" aria-hidden="true"></div>
-            <div class="hero-metric">
-                <div class="hero-metric-label">Total</div>
-                <div class="hero-metric-value">${{ "{:,.0f}".format(total_value) }}</div>
-                <div class="hero-metric-note"></div>
             </div>
         </div>
     </div>
@@ -84,7 +78,6 @@
                 <h2>Share price</h2>
                 <div class="price-display tile-price">
                     <div class="current-price" id="sharePriceHeadline">${{ "{:,.2f}".format(current_price) }}</div>
-                    <div class="price-label">per share</div>
                     <div class="price-change" id="sharePriceChange"></div>
                 </div>
             </div>

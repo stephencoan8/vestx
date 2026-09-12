@@ -22,10 +22,6 @@
   {# ——— Situation strip (decision KPIs only) ——— #}
   <div class="tax-situation" id="hubStats">
     <div class="tax-sit-card accent">
-      <div class="tax-sit-label">Live price</div>
-      <div class="tax-sit-value">${{ "{:,.2f}".format(live_price) }}</div>
-    </div>
-    <div class="tax-sit-card">
       <div class="tax-sit-label">Held</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }}</div>
       <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh</div>
