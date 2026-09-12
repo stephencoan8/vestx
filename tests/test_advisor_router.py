@@ -155,8 +155,8 @@ def test_open_uses_grok():
     assert r.skip_grok is False
 
 
-def test_should_i_sell_50k_engine_only():
-    """User phrase that previously crashed: should I sell + 50k + minimize taxes."""
+def test_should_i_sell_50k_consults_grok_after_engine():
+    """Judgment + cash target: engine picks, then Grok — not engine-only."""
     from app.utils.advisor_router import extract_cash_target
     msg = 'what should I sell to get 50k and minimize my taxes?'
     assert extract_cash_target(msg) == 50_000
@@ -167,15 +167,40 @@ def test_should_i_sell_50k_engine_only():
         live_price=115.07,
         sale_date=date(2026, 7, 27),
     )
-    assert r.mode == 'engine_only'
-    assert r.skip_grok is True
+    assert r.mode == 'engine_then_grok'
+    assert r.skip_grok is False
     assert r.intent == 'goal_optimize'
     assert r.engine_payload
     assert r.engine_payload.get('picks') or r.engine_payload.get('actions_summary')
     assert r.deterministic_reply
-    # Must be JSON-serializable for chat API
     import json
     json.dumps(r.engine_payload, default=str, allow_nan=False)
+
+
+def test_force_grok_never_skips():
+    r = route_and_compute(
+        user_message='I need to net $100k after tax minimize tax',
+        profile_dict=_profile(),
+        inventory_lots=_lots(),
+        live_price=50.0,
+        sale_date=date(2026, 7, 1),
+        force_grok=True,
+    )
+    assert r.skip_grok is False
+    assert r.mode == 'engine_then_grok'
+    assert r.engine_payload
+
+
+def test_espp_disqualifying_question_is_not_iso_engine():
+    r = route_and_compute(
+        user_message='How does an ESPP disqualifying disposition get taxed?',
+        profile_dict=_profile(),
+        inventory_lots=_lots(),
+        live_price=50.0,
+    )
+    assert r.intent != 'iso_qd'
+    assert r.skip_grok is False
+    assert r.mode == 'grok_only'
 
 
 def test_update_screen_300k_liquid_engine_only():

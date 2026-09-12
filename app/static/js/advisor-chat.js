@@ -542,7 +542,8 @@
             method: 'POST',
             body: JSON.stringify({
                 messages: messages,
-                plan: window.VESTX_LAST_PLAN || null
+                plan: window.VESTX_LAST_PLAN || null,
+                force_grok: true
             }),
             signal: enqueueAbort ? enqueueAbort.signal : undefined
         })

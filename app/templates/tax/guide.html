@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Tax guide - VestX{% endblock %}
+{% block content %}
+<div class="page tax-guide">
+  <header class="page-header">
+    <div>
+      <h1>How VestX taxes equity</h1>
+      <p class="tax-guide-lede">Planning model for a California employee-shareholder. Not a filed return, not advice. Engine {{ table_version }}.</p>
+    </div>
+    <div class="tax-hub-header-actions">
+      <a href="{{ url_for('tax_center.tax_profile') }}" class="btn btn-secondary">Tax profile</a>
+      <a href="{{ url_for('tax_center.hub') }}" class="btn btn-secondary">Plan</a>
+    </div>
+  </header>
+
+  <nav class="tax-guide-toc" aria-label="On this page">
+    <a href="#stack">Year stack</a>
+    <a href="#rsu">RSU</a>
+    <a href="#espp">ESPP §423</a>
+    <a href="#iso">ISO &amp; AMT</a>
+    <a href="#federal">Federal / CA / payroll</a>
+    <a href="#cash">Withholding vs April</a>
+    <a href="#grok">Ask Grok</a>
+    <a href="#gaps">What we do not model</a>
+    <a href="#cites">Citations</a>
+  </nav>
+
+  <article class="tax-guide-body">
+    <section id="truth">
+      <h2>Sources of truth</h2>
+      <ol>
+        <li><strong>IRS / SSA / FTB / EDD published tables</strong> for the tax year — brackets, standard deductions, SS wage base, NIIT, AMT, harbors.</li>
+        <li><strong>Your paystub</strong> for YTD federal and CA withholding when you enter it. VestX does not guess stub YTD.</li>
+        <li><strong>Shareworks / the broker tape</strong> for share counts. If VestX and Shareworks disagree by a few shares, believe Shareworks until a reconcile pass.</li>
+        <li><strong>VestX lots and sales</strong> for character (RSU vs ESPP vs ISO) and for recorded exercises.</li>
+      </ol>
+      <p>Peer tools (Holistiplan, Carta, ESO) use different wage and gain inputs. A $1–2k gap against them is usually input drift, not a reason to change VestX totals.</p>
+    </section>
+
+    <section id="stack">
+      <h2>The year income stack</h2>
+      <p>Everything else hangs off this split. Mixing the buckets is how phantom tax appears.</p>
+      <table class="data-table tax-guide-table">
+        <thead>
+          <tr><th>Bucket</th><th>In Box 1 / ordinary</th><th>FICA / VPDI</th><th>When</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cash wages (salary)</td><td>Yes</td><td>Yes</td><td>All year</td></tr>
+          <tr><td>RSU vest</td><td>Yes — FMV at vest (past) or live (remaining this year)</td><td>Yes</td><td>Vest year</td></tr>
+          <tr><td>ESPP purchase</td><td>No</td><td>No</td><td>Ordinary is on <em>sale</em>, §423</td></tr>
+          <tr><td>ISO vest</td><td>No</td><td>No</td><td>AMT only if you record an exercise</td></tr>
+          <tr><td>ESPP sale (statutory)</td><td>Bargain ordinary (QD or DD)</td><td>No</td><td>Sale year</td></tr>
+          <tr><td>ISO same-year cashless / DD</td><td>Bargain ordinary</td><td>Yes</td><td>Sale year</td></tr>
+          <tr><td>Capital gain on sale</td><td>No — ST/LT CG</td><td>No</td><td>Sale year; CA taxes it as ordinary PIT</td></tr>
+        </tbody>
+      </table>
+      <p>Remaining 2026 vests in the stack are marked at the <strong>live</strong> Plan price, not a stale vest-table print. Past vests stay at vest-date FMV.</p>
+    </section>
+
+    <section id="rsu">
+      <h2>RSUs</h2>
+      <p>At vest, FMV × shares is W-2 wages (Box 1) and FICA. Supplemental withholding on the stub is typically 22% federal and 10.23% CA — that is withholding, not the tax. Basis for a later sale is that vest FMV. Holding ≥ 1 year from vest is long-term federally; California does not care (gains are ordinary PIT either way).</p>
+    </section>
+
+    <section id="espp">
+      <h2>ESPP — IRC §423</h2>
+      <p>This is not an RSU. Treating a sale as “LTCG vs FMV basis, ordinary $0” is the wrong statute. VestX uses a single §423 engine for the planner, optimizer, recorded sales, and the year stack.</p>
+
+      <h3>Purchase price (lookback)</h3>
+      <p>You pay <code>(1 − discount) × min(FMV at offering start, FMV at purchase)</code>. Statutory discount cap is 15%. Example: grant/offering FMV $50, purchase FMV $80, 15% → you paid <strong>$42.50</strong>.</p>
+      <p>The two-year qualifying clock starts at the <strong>beginning of the offering period</strong>, not the purchase date. If VestX only stored a purchase date, offering start is inferred as six months earlier (standard SpaceX-style offering). You can store an explicit offering start on the grant when you have it.</p>
+
+      <h3>Qualifying disposition (QD)</h3>
+      <p>Hold ≥ 2 years from offering start <em>and</em> ≥ 1 year from purchase. Ordinary income is the <em>lesser of</em> (grant-date FMV − purchase price) and actual gain. In the example that is <strong>$7.50/sh</strong>, not the $37.50 purchase bargain. The rest is capital gain. Long-term if held ≥ 1 year from purchase.</p>
+
+      <h3>Disqualifying disposition (DD)</h3>
+      <p>Anything that is not QD.</p>
+      <ul>
+        <li>Sale at $100: ordinary = purchase FMV − purchase price = <strong>$37.50/sh</strong>; residual CG = $20/sh (sale − purchase FMV).</li>
+        <li>Sale at $60 (between $42.50 and $80): ordinary is <strong>capped at actual gain</strong> ($17.50); CG $0.</li>
+        <li>Sale below $42.50: ordinary $0; capital loss vs purchase price.</li>
+      </ul>
+      <p>Statutory §423 ordinary is compensation for income tax and <strong>not FICA</strong>. Non-qualified ESPP (NQESPP) is wages for FICA.</p>
+      <p>The $25,000 annual limit is FMV at grant × shares in the offering. VestX flags an excess; it does not silently split the lot into statutory vs non-statutory.</p>
+    </section>
+
+    <section id="iso">
+      <h2>ISOs, AMT, qualifying vs disqualifying</h2>
+      <p><strong>Vest:</strong> nothing on the 1040 and no AMT. Unexercised ISO vests must never create AMT due. A planning-only bargain figure may show so you can see what AMT would look like if you exercised — it does not hit TOTAL TAX, Expected tax, April, or extra W-4.</p>
+      <p><strong>Exercise and hold:</strong> regular tax unchanged. AMT preference = FMV at exercise − strike. Federal TMT is 26%/28% after the 2026 exemption ($90,100 single, phaseout starting $500,000 at 50%). Long-term capital gain inside AMTI is taxed at preferential 0/15/20% (Form 6251-style), not 26/28%, so a large LTCG stack does not fake AMT. California Schedule P–style AMT is 7% after CA exemption; the ISO planner prints Fed AMT and CA AMT as separate dollars, including $0.</p>
+      <p><strong>Same-year cashless / DD:</strong> bargain is ordinary wages (and FICA). No ISO AMT preference on those shares.</p>
+      <p><strong>Qualifying sale:</strong> 2 years from grant and 1 year from exercise. Entire gain over strike is long-term capital gain federally. AMT was the exercise-year problem; this year may use AMT credit entered on Tax profile.</p>
+    </section>
+
+    <section id="federal">
+      <h2>Federal, California, payroll</h2>
+      <ul>
+        <li>Federal ordinary: 2026 brackets after $16,100 standard deduction (single), unless you itemize above that (SALT capped).</li>
+        <li>LTCG/QD bands 0/15/20% stacked on taxable ordinary.</li>
+        <li>NIIT 3.8% on the lesser of net investment income and MAGI over $200,000 (single). Compensation is not NII; sale CG is.</li>
+        <li>CA PIT uses FTB 2026 540-ES standard deduction <strong>$5,706</strong> (single) and 2025 Schedule X as the planning proxy — final 2026 Schedule X is not published. Gains are ordinary. Mental Health Services Tax 1% over $1M taxable income.</li>
+        <li>FICA: SS 6.2% up to $184,500 (max $11,439); Medicare 1.45%; Additional Medicare 0.9% over $200k. Full-year W-2 never uses “SS already maxed.”</li>
+        <li>Payroll on this account uses employer <strong>VPDI 1.1%</strong> from the SpaceX stub, not statutory SDI 1.3%.</li>
+        <li>Net capital loss offsets ordinary, capped at $3,000 ($1,500 MFS) under IRC §1211.</li>
+      </ul>
+      <h3>Two totals, one AMT rule</h3>
+      <table class="data-table tax-guide-table">
+        <thead><tr><th>Line</th><th>Includes</th></tr></thead>
+        <tbody>
+          <tr><td>Expected tax</td><td>Federal + CA + NIIT + <em>recorded</em> AMT. Not FICA/VPDI.</td></tr>
+          <tr><td>TOTAL TAX</td><td>That stack plus FICA + VPDI. Same recorded AMT, or $0 until an exercise is recorded.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="cash">
+      <h2>Withholding, April, extra W-4, safe harbor</h2>
+      <p>These are four different numbers. Cloning them is a cash-planning bug.</p>
+      <ul>
+        <li><strong>Locked-in withholding</strong> — stub YTD federal $42,110.89 and CA $19,257.25 when entered; otherwise a model.</li>
+        <li><strong>Expected withholding</strong> — locked-in plus remaining paycheck/vest supplemental.</li>
+        <li><strong>Underpaid / April balance / tax to set aside</strong> — Expected tax minus expected withholding. Sales tax + vest true-up should foot to this.</li>
+        <li><strong>Extra W-4 on remaining RSUs</strong> — incremental income tax on remaining RSU vests minus already-modeled supplemental. Not the April bill, not sales tax, not AMT. You cannot withhold extra on ESPP or unexercised ISOs through payroll the same way.</li>
+        <li><strong>Safe harbor</strong> — high-AGI filer: 110% of prior-year total tax <em>or</em> 90% of current-year tax; VestX takes the lower required annual. 2025 year-tax ~$80,685 → 110% ~$88,753. Both tests are legal; the UI must show both. CA 540-ES installments are 30% / 40% / <strong>0%</strong> / 30%.</li>
+      </ul>
+      <p>Profile locked-in <em>sale gain</em> is the Activity ledger ST+LT total, not leftover “other LTCG” on the profile form.</p>
+    </section>
+
+    <section id="grok">
+      <h2>Ask Grok vs the optimizer</h2>
+      <p><strong>Optimize lots</strong> on Plan is the tax engine: SpecID picks, dollars, no narrative. That is intentional.</p>
+      <p><strong>Ask Grok</strong> (the button on every page, and “Ask Grok about this plan”) always calls Grok. If the question is computable — net cash, ISO QD dates, year income — the engine still runs first and Grok has to use those dollars. It should not answer “how does ESPP disqualifying work?” with a lot-picker dump.</p>
+    </section>
+
+    <section id="gaps">
+      <h2>What this engine still does not do</h2>
+      <p>Planning-grade means these are out until they are built. Do not assume they are hiding in a total.</p>
+      <ul>
+        <li>Full Form 6251 Part III (incentive stock, depletion, etc. beyond ISO bargain + LTCG split).</li>
+        <li>Final FTB 2026 Schedule X and 2026 CA Schedule P exemption (we use 2025 X and an inflated 2025 P exemption).</li>
+        <li>Qualified dividends, interest, tax-exempt interest add-back to NIIT MAGI — enter as other ST/LT if you must, they are not first-class fields yet.</li>
+        <li>Wash sales, 83(b), NQSO/NSO as their own share type, QBI, 401(k) deferral, multiple-employer FICA.</li>
+        <li>Actual §6654 underpayment penalty dollars — we test harbor vs YTD credits only.</li>
+        <li>Splitting ESPP lots that exceed the $25k offering cap into statutory vs non-statutory.</li>
+        <li>Shareworks share-count drift (on the order of ~7 held / 10 ISO / 11 next vest). Display conflict; do not silently “fix” Shareworks.</li>
+        <li>States other than California: flat rate if you set one, not a full state engine.</li>
+      </ul>
+    </section>
+
+    <section id="cites">
+      <h2>Citations (TY2026, single, CA)</h2>
+      <ul>
+        <li>Rev. Proc. 2025-32 — federal brackets, std. deduction $16,100, LTCG bands, AMT exemption $90,100 / phaseout $500,000 / 28% at $244,500.</li>
+        <li>IRC §1411 — NIIT 3.8% over MAGI $200,000.</li>
+        <li>SSA / IRS Topic 751 — SS wage base $184,500; Medicare; Additional Medicare.</li>
+        <li>FTB 2026 540-ES — CA std. $5,706; 30/40/0/30 estimates; 2025 Schedule X as proxy.</li>
+        <li>EDD — statutory SDI 1.3% uncapped; this account uses stub VPDI 1.1%.</li>
+        <li>IRC §6654 / Topic 306 — 90% current or 100%/110% prior (AGI &gt; $150k → 110%).</li>
+        <li>IRC §423 / Pub 525 — ESPP QD/DD.</li>
+        <li>IRC §§421–422, 56(b)(3) — ISO QD/DD and AMT bargain at exercise.</li>
+        <li>IRC §1211 — capital loss limit $3,000.</li>
+      </ul>
+      <p class="tax-guide-foot">Not tax advice. Confirm with a CPA before you file or change a W-4.</p>
+    </section>
+  </article>
+</div>
+{% endblock %}

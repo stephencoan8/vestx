@@ -1,17 +1,12 @@
 """
-Route chat questions: deterministic engine first, Grok only for nuance.
+Route chat questions.
 
-Computable (no LLM tokens for the numbers):
-  - Net-cash / min-tax lot selection → goal_optimizer
-  - Portfolio totals / held value
-  - ISO earliest QD dates
-  - Tax profile readout
+Ask Grok (force_grok, or judgment language) always consults Grok. The engine
+still runs first when the question is computable so dollars/SpecIDs stay
+authoritative — Grok explains them; it does not replace them.
 
-Grok (optional, after engine):
-  - "why / explain / risk / should I" on top of ENGINE_RESULT
-  - Open-ended strategy judgment
-
-This keeps accuracy high and API cost low.
+Engine-only (no Grok) is reserved for explicit optimizer commands without
+judgment language: “net $50k minimize tax”, “update my screen…”.
 """
 
 from __future__ import annotations
@@ -51,17 +46,28 @@ _PORTFOLIO = re.compile(
     re.I,
 )
 _QD = re.compile(
-    r'\b(qualifying|qd date|when can i sell.*iso|holding period|disqualif)\b',
+    r'\b(iso.{0,40}qd|qd date|when can i sell.{0,20}iso|iso.{0,20}holding period)\b',
     re.I,
 )
 _PROFILE = re.compile(
     r'\b(tax profile|my (?:filing|wages|bracket|state)|what rate)\b',
     re.I,
 )
-# Explicit explain/why only — NOT "should I sell" (that is pure optimize)
 _NUANCE = re.compile(
     r'\b(why|explain|nuance|risks?|pros?|cons?|tradeoffs?|compared? to|'
     r'what if|opinion|in your (?:view|opinion))\b',
+    re.I,
+)
+# Conversational / judgment — Ask Grok must not answer these from the engine alone
+_JUDGMENT = re.compile(
+    r"\b(should i|would you|could i|do you think|is it (?:better|worse|smart|worth)|"
+    r"worth it|recommend|advice|what happens if|how does|how do i|how would|"
+    r"espp|§\s*423|section 423|disqualif|qualifying disposition|"
+    r"amt credit|lockup|wait until|next year)\b",
+    re.I,
+)
+_SCREEN_CMD = re.compile(
+    r'\b(update (?:my )?screen|show what i should sell|fill (?:the )?picks)\b',
     re.I,
 )
 _INCOME_PROJ = re.compile(
@@ -166,7 +172,8 @@ def route_and_compute(
     if not text:
         return RouterResult(mode='grok_only', intent='empty', notes=['empty message'])
 
-    wants_nuance = bool(_NUANCE.search(text)) or force_grok
+    judgment = bool(_JUDGMENT.search(text) or _NUANCE.search(text))
+    wants_nuance = bool(force_grok or judgment)
     today = sale_date or date.today()
     price = float(live_price or 0)
     cash_target = extract_cash_target(text)
@@ -182,14 +189,24 @@ def route_and_compute(
     is_sell_plan = bool(
         cash_target
         or _OPTIMIZE.search(text)
-        or _NET_CASH.search(text)
         or is_exercise_iso_plan
-        or re.search(r'\b(sell|liquid|minimi[sz]e\s+tax)', text, re.I)
+        or _SCREEN_CMD.search(text)
+        or (
+            _NET_CASH.search(text)
+            and re.search(r'\b(sell|liquid|minimi[sz]e|raise|cash|net)\b', text, re.I)
+        )
     )
-    # Sell / cash / SpecID questions are pure engine — never force Grok just because of "should I sell"
-    if is_sell_plan and not force_grok and not re.search(
-        r'\b(why|explain|risk|tradeoff)\b', text, re.I
+    # Pure optimizer command (no judgment, not Ask Grok): engine-only.
+    # "Should I sell…" and the Ask Grok panel always consult Grok on top of picks.
+    if (
+        is_sell_plan
+        and not force_grok
+        and not judgment
+        and not _SCREEN_CMD.search(text)
+        and not re.search(r'\b(why|explain|risk|tradeoff)\b', text, re.I)
     ):
+        wants_nuance = False
+    if is_sell_plan and _SCREEN_CMD.search(text) and not force_grok and not _NUANCE.search(text):
         wants_nuance = False
 
     # Portfolio before optimize (avoid "how many shares" false positives)

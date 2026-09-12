@@ -194,6 +194,18 @@ def _tax_page_context(user, tax_year=None):
     )
 
 
+@tax_center_bp.route('/guide')
+@login_required
+def tax_guide():
+    """How VestX models federal, California, and equity tax."""
+    from app.utils.tax_constants import TAX_TABLE_VERSION
+    return render_template(
+        'tax/guide.html',
+        table_version=TAX_TABLE_VERSION,
+        today=date.today(),
+    )
+
+
 @tax_center_bp.route('/')
 @login_required
 def hub():

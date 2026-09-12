@@ -31,6 +31,7 @@
             <a href="{{ url_for('grants.list_grants') }}" class="nav-link{% if request.endpoint and request.endpoint.startswith('grants.') %} active{% endif %}">Holdings</a>
             <a href="{{ url_for('tax_center.activity') }}" class="nav-link{% if request.endpoint == 'tax_center.activity' %} active{% endif %}">Activity</a>
             <a href="{{ url_for('tax_center.hub') }}" class="nav-link{% if request.endpoint in ['tax_center.hub', 'tax_center.tax_profile'] %} active{% endif %}">Plan</a>
+            <a href="{{ url_for('tax_center.tax_guide') }}" class="nav-link{% if request.endpoint == 'tax_center.tax_guide' %} active{% endif %}">Guide</a>
             <a href="{{ url_for('settings.profile') }}" class="nav-link{% if request.endpoint and (request.endpoint.startswith('settings.') or request.endpoint.startswith('prices.')) %} active{% endif %}">Settings</a>
             {% if current_user.is_admin %}
             <a href="{{ url_for('admin.dashboard') }}" class="nav-link admin-link{% if request.endpoint and request.endpoint.startswith('admin.') %} active{% endif %}">Admin</a>

@@ -153,8 +153,8 @@ def run_advisor_turn(
             'api_ok': False,
         }
 
-    # Engine-only
-    if routed.skip_grok and routed.deterministic_reply:
+    # Engine-only — never skip Grok when the client asked Grok (Ask Grok panel)
+    if routed.skip_grok and routed.deterministic_reply and not force_grok:
         grok_on = False
         try:
             grok_on = xai_advisor.is_configured(user)

@@ -132,6 +132,7 @@
           <label class="form-check"><input type="checkbox" id="goalAllowHold"> Model ISO hold split</label>
           <label class="form-check"><input type="checkbox" id="goalExplain" {% if not grok_enabled %}disabled{% endif %}> Grok explanation{% if not grok_enabled %} <span class="tax-muted">(add key in Settings)</span>{% endif %}</label>
         </div>
+        <p class="tax-sit-sub" style="margin-top:0.5rem;"><a href="{{ url_for('tax_center.tax_guide') }}">How VestX taxes equity</a></p>
       </div>
     </details>
 
@@ -921,7 +922,7 @@
       fetch('{{ url_for("tax_center.api_advisor") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify({ messages: chatHistory, plan: lastGoalPlan })
+        body: JSON.stringify({ messages: chatHistory, plan: lastGoalPlan, force_grok: true })
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {

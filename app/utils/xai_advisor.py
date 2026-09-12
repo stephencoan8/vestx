@@ -277,7 +277,13 @@ Treat ACCOUNT_DATA as ground truth for holdings. Cite real vest_id values only.
 If ENGINE_RESULT appears in ACCOUNT_DATA, its dollars and SpecID picks are authoritative — explain them; do not invent alternate $ picks.
 If the summary says no lots, say inventory is empty — never fabricate grants/lots.
 
-Tax notes: CA taxes capital gains as ordinary; MHST 1% over $1M; ISO exercise ≠ sale; QD = 2y grant + 1y exercise.
+Tax notes (authoritative in VestX):
+- CA taxes capital gains as ordinary; MHST 1% over $1M TI.
+- ISO exercise ≠ sale. ISO AMT preference only on recorded exercises, never unexercised vests. Same-year cashless DD is ordinary, not AMT.
+- ISO QD = 2y from grant AND 1y from exercise.
+- ESPP is §423, not an RSU. DD ordinary = bargain at purchase (capped at actual gain). QD ordinary = lesser of grant-date discount and actual gain. Statutory ESPP ordinary is not FICA.
+- Extra W-4 on remaining RSUs is not the April bill and does not include AMT.
+- TOTAL TAX = income + recorded AMT + FICA + VPDI. Expected tax = income + recorded AMT (not FICA).
 Planning-grade only (not a CPA).
 
 ## OUTPUT (UI renders Markdown)

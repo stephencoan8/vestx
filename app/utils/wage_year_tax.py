@@ -114,16 +114,27 @@ def compute_w2_year_tax(
     year = int(tax_year)
     wages = max(0.0, float(wages or 0))
     other_ordinary = max(0.0, float(other_ordinary or 0))
-    stcg = max(0.0, float(stcg or 0))
-    ltcg = max(0.0, float(ltcg or 0))
+    stcg = float(stcg or 0)
+    ltcg = float(ltcg or 0)
+    # IRC §1211: net capital loss offsets ordinary, capped $3,000 ($1,500 MFS)
+    net_cg = stcg + ltcg
+    cap_loss_used = 0.0
+    if net_cg < 0:
+        cap = 1500.0 if filing == 'mfs' else 3000.0
+        cap_loss_used = min(cap, -net_cg)
+        stcg = 0.0
+        ltcg = 0.0
+    else:
+        stcg = max(0.0, stcg)
+        ltcg = max(0.0, ltcg)
     # FICA base is separate so YTD can't inflate federal ordinary via max()
     if fica_wages is None or float(fica_wages or 0) <= 0:
         fwages = wages
     else:
         fwages = max(0.0, float(fica_wages))
 
-    # Federal ordinary stack (wages + other ordinary + STCG as ordinary)
-    gross_ordinary = wages + other_ordinary + stcg
+    # Federal ordinary stack (wages + other ordinary + STCG as ordinary − §1211 loss)
+    gross_ordinary = max(0.0, wages + other_ordinary + stcg - cap_loss_used)
     fed_std = _std_for(FED_STD_DEDUCTION, year, filing)
     ca_std = _std_for(CA_STD_DEDUCTION, year, filing)
     from app.utils.tax_constants import SALT_CAP
@@ -135,6 +146,10 @@ def compute_w2_year_tax(
     taxable_ordinary = max(0.0, gross_ordinary - fed_ded)
 
     notes: List[str] = []
+    if cap_loss_used > 0:
+        notes.append(
+            f'Net capital loss limited to ${cap_loss_used:,.0f} against ordinary (IRC §1211).'
+        )
     if year in CA_STD_SOURCE:
         notes.append(f'CA standard deduction {year}: ${ca_std:,.0f} ({CA_STD_SOURCE[year]}).')
     if itemized > fed_std + 0.5:

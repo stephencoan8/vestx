@@ -69,6 +69,17 @@ def test_amt_28_breakpoint_2026():
     assert amt_28_threshold(2026, 'single') == 244500
 
 
+def test_capital_loss_capped_at_3000_against_ordinary():
+    r = compute_w2_year_tax(
+        tax_year=2026, filing_status='single', state_code='CA',
+        wages=80_000, stcg=-10_000, ltcg=0, include_fica=False,
+    )
+    # $10k net loss → $3k against ordinary; no leftover CG tax
+    assert r.stcg == 0
+    assert r.ltcg == 0
+    assert any('1211' in n for n in r.notes)
+
+
 def test_golden_g1_post_espp_federal_and_payroll():
     """Report G1: fed+NIIT and payroll lock to independent rebuild (CA ±$100)."""
     r = compute_w2_year_tax(
