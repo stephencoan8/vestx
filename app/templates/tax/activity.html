@@ -42,86 +42,89 @@
     </div>
   </div>
 
+  {% set iso_lots = lots | selectattr('is_iso') | selectattr('shares_unexercised') | list %}
   <div class="detail-card">
-    <div class="tax-activity-grid">
-      <div class="tax-activity-block">
-        <h2 id="recordSaleHeading">Record a sale</h2>
-        <form id="recordSaleForm">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="saleVest">Lot</label>
-              <select id="saleVest" required>
-                <option value="">Select…</option>
-                {% for lot in lots if lot.shares_available > 0 %}
-                <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_available|int }}">
-                  {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.0f}".format(lot.shares_available) }})
-                </option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="saleDate">Date</label>
-              <input type="date" id="saleDate" value="{{ today.isoformat() }}" required>
-            </div>
-            <div class="form-group">
-              <label for="saleShares">Shares</label>
-              <input type="number" step="1" min="1" id="saleShares" inputmode="numeric" required>
-            </div>
-            <div class="form-group">
-              <label for="salePrice">Price</label>
-              <input type="number" step="0.01" id="salePrice" value="{{ '%.2f'|format(live_price) }}" required>
-            </div>
-            <div class="form-group">
-              <label for="saleComm">Commission</label>
-              <input type="number" step="0.01" id="saleComm" value="0">
-            </div>
-            <div class="form-group">
-              <label for="saleNotes">Notes</label>
-              <input type="text" id="saleNotes" placeholder="Optional">
-            </div>
-          </div>
-        </form>
-        <div class="tax-goal-actions" style="margin-top:0.75rem;">
-          <button type="button" class="btn btn-primary" id="btnRecordSale">Save sale</button>
-          <button type="button" class="btn btn-secondary" id="btnCancelSaleEdit" style="display:none;">Cancel edit</button>
+    <h2 id="recordSaleHeading">Record transaction</h2>
+    <form id="recordSaleForm">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="txKind">Type</label>
+          <select id="txKind">
+            <option value="sale">Sale</option>
+            {% if iso_lots %}
+            <option value="exercise">ISO exercise</option>
+            {% endif %}
+          </select>
         </div>
-        <div id="recordSaleResult" class="tax-inline-result"></div>
       </div>
 
-      {% set iso_lots = lots | selectattr('is_iso') | selectattr('shares_unexercised') | list %}
-      {% if iso_lots %}
-      <div class="tax-activity-block">
-        <h2>Record ISO exercise</h2>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="exVest">ISO lot</label>
-            <select id="exVest">
-              <option value="">Select…</option>
-              {% for lot in lots if lot.is_iso and lot.shares_unexercised > 0 %}
-              <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_unexercised|int }}">
-                {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.0f}".format(lot.shares_unexercised) }} unex)
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="exDate">Exercise date</label>
-            <input type="date" id="exDate" value="{{ today.isoformat() }}">
-          </div>
-          <div class="form-group">
-            <label for="exShares">Shares</label>
-            <input type="number" step="1" min="1" id="exShares" inputmode="numeric">
-          </div>
-          <div class="form-group">
-            <label for="exFmv">FMV at exercise</label>
-            <input type="number" step="0.01" id="exFmv" value="{{ '%.2f'|format(live_price) }}">
-          </div>
+      <div id="txSaleFields" class="form-row">
+        <div class="form-group">
+          <label for="saleVest">Lot</label>
+          <select id="saleVest" required>
+            <option value="">Select…</option>
+            {% for lot in lots if lot.shares_available > 0 %}
+            <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_available|int }}">
+              {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.0f}".format(lot.shares_available) }})
+            </option>
+            {% endfor %}
+          </select>
         </div>
-        <button type="button" class="btn btn-secondary" id="btnRecordEx">Save exercise</button>
-        <div id="exResult" class="tax-inline-result"></div>
+        <div class="form-group">
+          <label for="saleDate">Date</label>
+          <input type="date" id="saleDate" value="{{ today.isoformat() }}" required>
+        </div>
+        <div class="form-group">
+          <label for="saleShares">Shares</label>
+          <input type="number" step="1" min="1" id="saleShares" inputmode="numeric" required>
+        </div>
+        <div class="form-group">
+          <label for="salePrice">Price</label>
+          <input type="number" step="0.01" id="salePrice" value="{{ '%.2f'|format(live_price) }}" required>
+        </div>
+        <div class="form-group">
+          <label for="saleComm">Commission</label>
+          <input type="number" step="0.01" id="saleComm" value="0">
+        </div>
+        <div class="form-group">
+          <label for="saleNotes">Notes</label>
+          <input type="text" id="saleNotes" placeholder="Optional">
+        </div>
+      </div>
+
+      {% if iso_lots %}
+      <div id="txExFields" class="form-row" hidden>
+        <div class="form-group">
+          <label for="exVest">ISO lot</label>
+          <select id="exVest">
+            <option value="">Select…</option>
+            {% for lot in lots if lot.is_iso and lot.shares_unexercised > 0 %}
+            <option value="{{ lot.vest_event_id }}" data-max="{{ lot.shares_unexercised|int }}">
+              {{ lot.label }} · #{{ lot.vest_event_id }} ({{ "{:,.0f}".format(lot.shares_unexercised) }} unex)
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="exDate">Date</label>
+          <input type="date" id="exDate" value="{{ today.isoformat() }}">
+        </div>
+        <div class="form-group">
+          <label for="exShares">Shares</label>
+          <input type="number" step="1" min="1" id="exShares" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="exFmv">FMV at exercise</label>
+          <input type="number" step="0.01" id="exFmv" value="{{ '%.2f'|format(live_price) }}">
+        </div>
       </div>
       {% endif %}
+    </form>
+    <div class="tax-goal-actions" style="margin-top:0.75rem;">
+      <button type="button" class="btn btn-primary" id="btnRecordTx">Save</button>
+      <button type="button" class="btn btn-secondary" id="btnCancelSaleEdit" style="display:none;">Cancel</button>
     </div>
+    <div id="recordSaleResult" class="tax-inline-result"></div>
   </div>
 
   <div class="detail-card tax-ledger-block">
@@ -231,12 +234,29 @@
     sel.value = id;
   }
 
+  function txKind() {
+    var el = document.getElementById('txKind');
+    return (el && el.value) || 'sale';
+  }
+
+  function setTxKind(kind) {
+    var sel = document.getElementById('txKind');
+    if (sel && sel.querySelector('option[value="' + kind + '"]')) sel.value = kind;
+    var saleF = document.getElementById('txSaleFields');
+    var exF = document.getElementById('txExFields');
+    if (saleF) saleF.hidden = kind !== 'sale';
+    if (exF) exF.hidden = kind !== 'exercise';
+    var btn = document.getElementById('btnRecordTx');
+    if (btn && !editingSaleId) btn.textContent = kind === 'exercise' ? 'Save exercise' : 'Save';
+    if (sel) sel.disabled = !!editingSaleId;
+  }
+
   function resetSaleForm() {
     editingSaleId = null;
     var heading = document.getElementById('recordSaleHeading');
-    if (heading) heading.textContent = 'Record a sale';
-    var btn = document.getElementById('btnRecordSale');
-    if (btn) btn.textContent = 'Save sale';
+    if (heading) heading.textContent = 'Record transaction';
+    var btn = document.getElementById('btnRecordTx');
+    if (btn) btn.textContent = 'Save';
     var cancel = document.getElementById('btnCancelSaleEdit');
     if (cancel) cancel.style.display = 'none';
     var vest = document.getElementById('saleVest');
@@ -256,6 +276,7 @@
     if (notes) notes.value = '';
     var el = document.getElementById('recordSaleResult');
     if (el) el.innerHTML = '';
+    setTxKind('sale');
   }
 
   function startSaleEdit(btn) {
@@ -271,9 +292,10 @@
     document.getElementById('salePrice').value = btn.dataset.price || '';
     document.getElementById('saleComm').value = btn.dataset.comm || '0';
     document.getElementById('saleNotes').value = btn.dataset.notes || '';
+    setTxKind('sale');
     var heading = document.getElementById('recordSaleHeading');
     if (heading) heading.textContent = 'Edit sale #' + editingSaleId;
-    var saveBtn = document.getElementById('btnRecordSale');
+    var saveBtn = document.getElementById('btnRecordTx');
     if (saveBtn) saveBtn.textContent = 'Update sale';
     var cancel = document.getElementById('btnCancelSaleEdit');
     if (cancel) cancel.style.display = 'inline-flex';
@@ -284,50 +306,93 @@
     if (form) form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  var btnRecordSale = document.getElementById('btnRecordSale');
-  if (btnRecordSale) {
-    btnRecordSale.addEventListener('click', function () {
-      const vest = document.getElementById('saleVest').value;
-      const el = document.getElementById('recordSaleResult');
-      if (!vest) {
-        el.innerHTML = '<div class="alert alert-warning">Select a lot.</div>';
-        return;
-      }
-      const body = {
-        vest_event_id: parseInt(vest, 10),
-        sale_date: document.getElementById('saleDate').value,
-        shares_sold: Math.floor(Number(document.getElementById('saleShares').value) || 0),
-        sale_price: parseFloat(document.getElementById('salePrice').value),
-        commission_fees: parseFloat(document.getElementById('saleComm').value || 0),
-        notes: document.getElementById('saleNotes').value
-      };
-      var updating = !!editingSaleId;
-      var url = updating
-        ? ('/tax/api/sales/' + editingSaleId)
-        : '{{ url_for("tax_center.api_record_sale") }}';
-      fetch(url, {
-        method: updating ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify(body)
+  function saveSale() {
+    const vest = document.getElementById('saleVest').value;
+    const el = document.getElementById('recordSaleResult');
+    if (!vest) {
+      el.innerHTML = '<div class="alert alert-warning">Select a lot.</div>';
+      return;
+    }
+    const body = {
+      vest_event_id: parseInt(vest, 10),
+      sale_date: document.getElementById('saleDate').value,
+      shares_sold: Math.floor(Number(document.getElementById('saleShares').value) || 0),
+      sale_price: parseFloat(document.getElementById('salePrice').value),
+      commission_fees: parseFloat(document.getElementById('saleComm').value || 0),
+      notes: document.getElementById('saleNotes').value
+    };
+    var updating = !!editingSaleId;
+    var url = updating
+      ? ('/tax/api/sales/' + editingSaleId)
+      : '{{ url_for("tax_center.api_record_sale") }}';
+    fetch(url, {
+      method: updating ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify(body)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+          return;
+        }
+        var verb = updating ? 'updated' : 'saved';
+        var analysis = data.analysis || {};
+        el.innerHTML = '<div class="alert alert-success">Sale #' + data.sale_id + ' ' + verb +
+          (analysis.after_tax_proceeds != null
+            ? (' · after-tax ' + money2(analysis.after_tax_proceeds) + ' · tax ' + money2(analysis.total_tax))
+            : '') + '</div>';
+        setTimeout(function () { location.reload(); }, 900);
       })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.error) {
-            el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
-            return;
-          }
-          var verb = updating ? 'updated' : 'saved';
-          var analysis = data.analysis || {};
-          el.innerHTML = '<div class="alert alert-success">Sale #' + data.sale_id + ' ' + verb +
-            (analysis.after_tax_proceeds != null
-              ? (' · after-tax ' + money2(analysis.after_tax_proceeds) + ' · tax ' + money2(analysis.total_tax))
-              : '') + '</div>';
-          setTimeout(function () { location.reload(); }, 900);
-        })
-        .catch(function (e) {
-          el.innerHTML = '<div class="alert alert-danger">' + (e.message || String(e)) + '</div>';
-        });
+      .catch(function (e) {
+        el.innerHTML = '<div class="alert alert-danger">' + (e.message || String(e)) + '</div>';
+      });
+  }
+
+  function saveExercise() {
+    const el = document.getElementById('recordSaleResult');
+    const vest = document.getElementById('exVest');
+    if (!vest || !vest.value) {
+      el.innerHTML = '<div class="alert alert-warning">Select an ISO lot.</div>';
+      return;
+    }
+    const body = {
+      vest_event_id: parseInt(vest.value, 10),
+      exercise_date: document.getElementById('exDate').value,
+      shares_exercised: Math.floor(Number(document.getElementById('exShares').value) || 0),
+      fmv_at_exercise: parseFloat(document.getElementById('exFmv').value)
+    };
+    fetch('{{ url_for("tax_center.api_record_exercise") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify(body)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+          return;
+        }
+        el.innerHTML = '<div class="alert alert-success">Exercise saved · bargain ' +
+          money2(data.bargain_element) + ' · est. AMT ' + money2(data.amt_due_estimate) + '</div>';
+        setTimeout(function () { location.reload(); }, 900);
+      })
+      .catch(function (e) {
+        el.innerHTML = '<div class="alert alert-danger">' + (e.message || String(e)) + '</div>';
+      });
+  }
+
+  var btnRecordTx = document.getElementById('btnRecordTx');
+  if (btnRecordTx) {
+    btnRecordTx.addEventListener('click', function () {
+      if (txKind() === 'exercise') saveExercise();
+      else saveSale();
     });
+  }
+  var kindSel = document.getElementById('txKind');
+  if (kindSel) {
+    kindSel.addEventListener('change', function () { setTxKind(kindSel.value); });
+    setTxKind(kindSel.value);
   }
 
   var btnCancelSaleEdit = document.getElementById('btnCancelSaleEdit');
@@ -342,34 +407,6 @@
       startSaleEdit(btn);
     });
   });
-
-  var btnRecordEx = document.getElementById('btnRecordEx');
-  if (btnRecordEx) {
-    btnRecordEx.addEventListener('click', function () {
-      const el = document.getElementById('exResult');
-      const body = {
-        vest_event_id: parseInt(document.getElementById('exVest').value, 10),
-        exercise_date: document.getElementById('exDate').value,
-        shares_exercised: Math.floor(Number(document.getElementById('exShares').value) || 0),
-        fmv_at_exercise: parseFloat(document.getElementById('exFmv').value)
-      };
-      fetch('{{ url_for("tax_center.api_record_exercise") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify(body)
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.error) {
-            el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
-            return;
-          }
-          el.innerHTML = '<div class="alert alert-success">Exercise saved · bargain ' +
-            money2(data.bargain_element) + ' · est. AMT ' + money2(data.amt_due_estimate) + '</div>';
-          setTimeout(function () { location.reload(); }, 900);
-        });
-    });
-  }
 
   document.querySelectorAll('.btn-del-sale').forEach(function (btn) {
     btn.addEventListener('click', function () {
