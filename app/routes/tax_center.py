@@ -176,6 +176,17 @@ def _tax_page_context(user, tax_year=None):
     inventory['tax_to_save'] = float(tax_calendar.get('still_to_save') or 0)
     cash_vs_tax = tax_calendar.get('cash_vs_tax')
     profile_ready = bool(float(profile.other_ordinary_income or 0) > 0)
+    wage_by_year = {}
+    try:
+        from app.models.tax_year_profile import TaxYearProfile
+        ty0 = date.today().year
+        for y in range(ty0, ty0 - 6, -1):
+            row = TaxYearProfile.get_for(user.id, y)
+            wage_by_year[y] = float(row.other_ordinary_income or 0) if row else 0.0
+        if not wage_by_year.get(ty0):
+            wage_by_year[ty0] = float(profile.other_ordinary_income or 0)
+    except Exception:
+        wage_by_year = {date.today().year: float(profile.other_ordinary_income or 0)}
     return dict(
         profile=profile,
         lots=lots,
@@ -191,6 +202,7 @@ def _tax_page_context(user, tax_year=None):
         profile_ready=profile_ready,
         today=date.today(),
         grok_enabled=xai_advisor.is_configured(user),
+        wage_by_year=wage_by_year,
     )
 
 
@@ -1752,4 +1764,43 @@ def api_record_exercise():
     except Exception as e:
         db.session.rollback()
         logger.error('exercise failed: %s', e, exc_info=True)
+        return jsonify({'error': str(e)}), 400
+
+
+@tax_center_bp.route('/api/wages', methods=['POST'])
+@login_required
+def api_record_wages():
+    """Set cash wages (ex-equity) for a tax year from Activity."""
+    try:
+        data = request.get_json() or {}
+        ty = int(data.get('tax_year') or date.today().year)
+        amount = float(str(data.get('amount') or 0).replace(',', ''))
+        if amount < 0:
+            return jsonify({'error': 'Wages cannot be negative'}), 400
+        from app.models.tax_year_profile import TaxYearProfile
+        from app.models.tax_profile import TaxProfile
+        profile = TaxProfile.for_user(current_user)
+        row = TaxYearProfile.get_for(current_user.id, ty)
+        payload = {}
+        if row:
+            payload = row.to_form_dict()
+        else:
+            payload = {
+                'filing_status': profile.filing_status or 'single',
+                'state_code': profile.state_code or 'CA',
+                'use_bracket_engine': True,
+                'use_state_engine': True,
+                'include_fica': True,
+                'include_niit': True,
+            }
+        payload['other_ordinary_income'] = amount
+        payload['ytd_wages'] = amount
+        year_row = TaxYearProfile.upsert_from_form(current_user.id, ty, payload)
+        if ty >= date.today().year:
+            year_row.apply_to_main_profile(profile)
+        db.session.commit()
+        return jsonify({'success': True, 'tax_year': ty, 'amount': amount})
+    except Exception as e:
+        db.session.rollback()
+        logger.error('wages save failed: %s', e, exc_info=True)
         return jsonify({'error': str(e)}), 400

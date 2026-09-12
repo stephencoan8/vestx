@@ -54,6 +54,7 @@
             {% if iso_lots %}
             <option value="exercise">ISO exercise</option>
             {% endif %}
+            <option value="wages">Wages</option>
           </select>
         </div>
       </div>
@@ -119,6 +120,22 @@
         </div>
       </div>
       {% endif %}
+
+      <div id="txWageFields" class="form-row" hidden>
+        <div class="form-group">
+          <label for="wageYear">Year</label>
+          <select id="wageYear">
+            {% for y in range(today.year, today.year - 6, -1) %}
+            <option value="{{ y }}" {% if y == sold_year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="wageAmount">Cash wages (ex-equity)</label>
+          <input type="text" inputmode="decimal" id="wageAmount"
+                 value="{{ '{:,.2f}'.format(wage_by_year.get(sold_year, 0) if wage_by_year is defined else 0) }}">
+        </div>
+      </div>
     </form>
     <div class="tax-goal-actions" style="margin-top:0.75rem;">
       <button type="button" class="btn btn-primary" id="btnRecordTx">Save</button>
@@ -246,8 +263,12 @@
     var exF = document.getElementById('txExFields');
     if (saleF) saleF.hidden = kind !== 'sale';
     if (exF) exF.hidden = kind !== 'exercise';
+    var wageF = document.getElementById('txWageFields');
+    if (wageF) wageF.hidden = kind !== 'wages';
     var btn = document.getElementById('btnRecordTx');
-    if (btn && !editingSaleId) btn.textContent = kind === 'exercise' ? 'Save exercise' : 'Save';
+    if (btn && !editingSaleId) {
+      btn.textContent = kind === 'exercise' ? 'Save exercise' : (kind === 'wages' ? 'Save wages' : 'Save');
+    }
     if (sel) sel.disabled = !!editingSaleId;
   }
 
@@ -349,6 +370,48 @@
       });
   }
 
+  var wageByYear = {{ wage_by_year|default({})|tojson }};
+
+  function fillWageAmount() {
+    var yEl = document.getElementById('wageYear');
+    var aEl = document.getElementById('wageAmount');
+    if (!yEl || !aEl) return;
+    var y = yEl.value;
+    var n = Number(wageByYear[y] || 0);
+    aEl.value = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function saveWages() {
+    const el = document.getElementById('recordSaleResult');
+    var yEl = document.getElementById('wageYear');
+    var aEl = document.getElementById('wageAmount');
+    var raw = (aEl && aEl.value || '').replace(/,/g, '');
+    var amount = parseFloat(raw);
+    if (!yEl || !yEl.value || isNaN(amount)) {
+      el.innerHTML = '<div class="alert alert-warning">Enter a year and amount.</div>';
+      return;
+    }
+    fetch('{{ url_for("tax_center.api_record_wages") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({ tax_year: parseInt(yEl.value, 10), amount: amount })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          el.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+          return;
+        }
+        wageByYear[String(data.tax_year)] = data.amount;
+        el.innerHTML = '<div class="alert alert-success">' + data.tax_year +
+          ' wages saved · $' + Number(data.amount).toLocaleString('en-US', { maximumFractionDigits: 0 }) + '</div>';
+        setTimeout(function () { location.reload(); }, 900);
+      })
+      .catch(function (e) {
+        el.innerHTML = '<div class="alert alert-danger">' + (e.message || String(e)) + '</div>';
+      });
+  }
+
   function saveExercise() {
     const el = document.getElementById('recordSaleResult');
     const vest = document.getElementById('exVest');
@@ -385,7 +448,9 @@
   var btnRecordTx = document.getElementById('btnRecordTx');
   if (btnRecordTx) {
     btnRecordTx.addEventListener('click', function () {
-      if (txKind() === 'exercise') saveExercise();
+      var k = txKind();
+      if (k === 'exercise') saveExercise();
+      else if (k === 'wages') saveWages();
       else saveSale();
     });
   }
@@ -394,6 +459,8 @@
     kindSel.addEventListener('change', function () { setTxKind(kindSel.value); });
     setTxKind(kindSel.value);
   }
+  var wageYearEl = document.getElementById('wageYear');
+  if (wageYearEl) wageYearEl.addEventListener('change', fillWageAmount);
 
   var btnCancelSaleEdit = document.getElementById('btnCancelSaleEdit');
   if (btnCancelSaleEdit) {
