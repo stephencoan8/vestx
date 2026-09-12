@@ -36,7 +36,9 @@
     <div class="tax-sit-card accent">
       <div class="tax-sit-label">Total tax</div>
       <div class="tax-sit-value" data-k="total_tax">{% if year_tax %}${{ "{:,.0f}".format(year_tax.total_tax) }}{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">fed + CA + payroll{% if year_tax and year_tax.amt_due %} · AMT ${{ "{:,.0f}".format(year_tax.amt_due) }} (recorded){% else %} · AMT $0 until recorded ISO exercise{% endif %} · <span class="year-label">{{ selected_year }}</span></div>
+      {% if year_tax and year_tax.amt_due %}
+      <div class="tax-sit-sub">AMT ${{ "{:,.0f}".format(year_tax.amt_due) }}</div>
+      {% endif %}
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">All-in effective</div>
@@ -65,7 +67,7 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Payroll</div>
       <div class="tax-sit-value" data-k="total_fica">{% if year_tax %}${{ "{:,.0f}".format((year_tax.total_fica or 0) + (year_tax.sdi or 0)) }}{% else %}—{% endif %}</div>
-      <div class="tax-sit-sub">SS + Medicare + Add’l{% if year_tax and year_tax.sdi %} + CA VPDI{% endif %}</div>
+      <div class="tax-sit-sub">{% if year_tax and year_tax.sdi %}SS · Medicare · VPDI{% else %}SS · Medicare{% endif %}</div>
     </div>
   </div>
 

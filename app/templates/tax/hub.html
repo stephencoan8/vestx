@@ -26,25 +26,20 @@
       <div class="tax-sit-value">${{ "{:,.2f}".format(live_price) }}</div>
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Held value</div>
+      <div class="tax-sit-label">Held</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }}</div>
-      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh still held · RSU {{ "{:,.0f}".format(inventory.rsu_held) }} · ISO {{ "{:,.0f}".format(inventory.iso_held) }}</div>
+      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh</div>
     </div>
+    {% if inventory.iso_unexercised %}
     <div class="tax-sit-card">
       <div class="tax-sit-label">Unexercised ISO</div>
-      <div class="tax-sit-value">{{ "{:,.0f}".format(inventory.iso_unexercised) }} <span class="tax-sit-unit">sh</span></div>
-      <div class="tax-sit-sub" title="Using latest share price">~${{ "{:,.0f}".format(inventory.unex_intrinsic) }} intrinsic @ live</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.unex_intrinsic) }}</div>
+      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.iso_unexercised) }} sh</div>
     </div>
+    {% endif %}
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Tax to save ({{ sold_year }})</div>
+      <div class="tax-sit-label">Tax to save</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.tax_to_save or 0) }}</div>
-      <div class="tax-sit-sub">
-        {% if (inventory.shares_sold_market or 0) > 0 %}
-        {{ "{:,.0f}".format(inventory.shares_sold_market) }} sh sold · <a href="{{ url_for('tax_center.activity') }}">Activity</a>
-        {% else %}
-        vs wages + remaining year vests @ live · <a href="{{ url_for('tax_center.activity') }}">Activity</a>
-        {% endif %}
-      </div>
     </div>
   </div>
 

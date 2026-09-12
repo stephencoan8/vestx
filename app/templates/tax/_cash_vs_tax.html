@@ -10,7 +10,9 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Expected tax</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.expected_tax) }}</div>
-      <div class="tax-sit-sub">fed + CA + NIIT{% if c.tax_breakdown.amt %} + recorded AMT ${{ "{:,.0f}".format(c.tax_breakdown.amt) }}{% else %} · AMT $0 until recorded ISO exercise{% endif %} · not FICA{% if c.iso_bargain %} · ISO bargain ${{ "{:,.0f}".format(c.iso_bargain) }} (recorded){% elif c.iso_vest_unexercised_bargain %} · ${{ "{:,.0f}".format(c.iso_vest_unexercised_bargain) }} bargain if exercised (planning only){% endif %}</div>
+      {% if c.tax_breakdown.amt %}
+      <div class="tax-sit-sub">AMT ${{ "{:,.0f}".format(c.tax_breakdown.amt) }}</div>
+      {% endif %}
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Expected withholding</div>
@@ -20,14 +22,13 @@
         {{ c.withholding_prompt }}
         <a href="{{ url_for('tax_center.tax_profile') }}">Open Tax profile</a>
         {% else %}
-        from paystub YTD
+        paystub
         {% endif %}
       </div>
     </div>
     <div class="tax-sit-card accent">
       <div class="tax-sit-label">{% if uo >= 0 %}Underpaid{% else %}Overpaid{% endif %}</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(uo|abs) }}</div>
-      <div class="tax-sit-sub">liability − withholding − estimates</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">April balance due</div>
@@ -40,18 +41,18 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Locked in</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.locked_in.withholding) }}</div>
-      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }} · sale gain ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}{% if c.locked_in.sale_ordinary %} · sale ordinary ${{ "{:,.0f}".format(c.locked_in.sale_ordinary) }}{% endif %}</div>
+      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }}{% if c.locked_in.sale_gain %} · sales ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}{% endif %}</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Still coming</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.still_coming.vest_gross) }}</div>
-      <div class="tax-sit-sub" title="Using latest share price">remaining {{ c.tax_year }} vests @ live · not due today</div>
+      <div class="tax-sit-sub">remaining vests</div>
     </div>
     {% if c.extra_withholding_on_remaining_vests > 0 and (c.remaining_rsu_gross or c.still_coming.vest_gross) > 0 %}
     <div class="tax-sit-card">
       <div class="tax-sit-label">Extra withhold on remaining RSUs</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.extra_withholding_on_remaining_vests) }}</div>
-      <div class="tax-sit-sub">{{ c.extra_withhold_note or 'W-4 / DE-4 on remaining RSUs only — not sales tax' }}</div>
+      <div class="tax-sit-sub">remaining RSUs</div>
     </div>
     {% endif %}
   </div>

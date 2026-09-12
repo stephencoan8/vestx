@@ -21,36 +21,26 @@
 
   <div class="tax-situation" id="activityStats">
     <div class="tax-sit-card accent">
-      <div class="tax-sit-label">Shares sold ({{ sold_year }})</div>
-      <div class="tax-sit-value">{{ "{:,.0f}".format(sold.summary_year.shares) }}</div>
-      <div class="tax-sit-sub">{{ sold.summary_year.sale_count }} sale(s)</div>
+      <div class="tax-sit-label">Sold</div>
+      <div class="tax-sit-value">{{ "{:,.0f}".format(sold.summary_year.shares) }} <span class="tax-sit-unit">sh</span></div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Proceeds</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(sold.summary_year.proceeds) }}</div>
+      {% if sold.summary_year.capital_gain %}
       <div class="tax-sit-sub">gain ${{ "{:,.0f}".format(sold.summary_year.capital_gain) }}</div>
+      {% endif %}
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Tax to set aside</div>
+      <div class="tax-sit-label">Set aside</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(tax_calendar.still_to_save) }}</div>
-      <div class="tax-sit-sub">
-        {% if cash_vs_tax and cash_vs_tax.set_aside_recon %}
-        sales ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.sales) }}
-        + vest true-up ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.vest_true_up) }}
-        = ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.total) }}
-        {% else %}
-        liability − withholding − estimates
-        {% endif %}
-      </div>
     </div>
     <div class="tax-sit-card">
-      <div class="tax-sit-label">Still held</div>
-      <div class="tax-sit-value">{{ "{:,.0f}".format(inventory.shares_available) }} <span class="tax-sit-unit">sh</span></div>
-      <div class="tax-sit-sub" title="Using latest share price">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }} @ live</div>
+      <div class="tax-sit-label">Held</div>
+      <div class="tax-sit-value">${{ "{:,.0f}".format(inventory.held_value or inventory.sellable_value) }}</div>
+      <div class="tax-sit-sub">{{ "{:,.0f}".format(inventory.shares_available) }} sh</div>
     </div>
   </div>
-
-  {% include 'tax/_cash_vs_tax.html' %}
 
   <div class="detail-card">
     <div class="tax-activity-grid">
@@ -98,6 +88,8 @@
         <div id="recordSaleResult" class="tax-inline-result"></div>
       </div>
 
+      {% set iso_lots = lots | selectattr('is_iso') | selectattr('shares_unexercised') | list %}
+      {% if iso_lots %}
       <div class="tax-activity-block">
         <h2>Record ISO exercise</h2>
         <div class="form-row">
@@ -128,14 +120,12 @@
         <button type="button" class="btn btn-secondary" id="btnRecordEx">Save exercise</button>
         <div id="exResult" class="tax-inline-result"></div>
       </div>
+      {% endif %}
     </div>
   </div>
 
   <div class="detail-card tax-ledger-block">
-    <h2>Sale ledger</h2>
-    {% if cash_vs_tax and cash_vs_tax.set_aside_recon %}
-    <p class="tax-sit-sub">Est. tax on these sales ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.sales) }} + vest true-up ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.vest_true_up) }} = tax to set aside ${{ "{:,.0f}".format(cash_vs_tax.set_aside_recon.total) }}.</p>
-    {% endif %}
+    <h2>Sales</h2>
     {% if sold.rows %}
     <div class="table-container tax-table-wrap">
       <table class="data-table">
@@ -180,7 +170,7 @@
       </table>
     </div>
     {% else %}
-    <p class="empty-state">No sales recorded yet. A sale leaves the lot — it will not come back on Holdings.</p>
+    <p class="empty-state">No sales recorded.</p>
     {% endif %}
   </div>
 
