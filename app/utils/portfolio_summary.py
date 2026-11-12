@@ -19,6 +19,12 @@ from app.models.vest_event import VestEvent
 from app.utils.lot_inventory import build_lots_for_user
 from app.utils.price_utils import get_latest_user_price
 from app.utils.shares import whole_shares
+from app.utils.valuation import (
+    held_position_from_lots,
+    is_option_share_type,
+    mark_to_market,
+    scheduled_vest_value,
+)
 
 
 def sold_shares_by_vest(user_id: int) -> Dict[int, float]:
@@ -31,12 +37,8 @@ def sold_shares_by_vest(user_id: int) -> Dict[int, float]:
     return out
 
 
-def _iso_types():
-    return {ShareType.ISO_5Y.value, ShareType.ISO_6Y.value}
-
-
 def value_unvested_events(events, price: float) -> Dict[str, float]:
-    """Mark unvested vest rows at live FMV (RSU) or intrinsic (ISO)."""
+    """Mark unvested vest rows at live FMV (RSU/ESPP) or floored ISO intrinsic."""
     unavail_shares_rsu = 0.0
     unavail_shares_iso = 0.0
     unavailable_value = 0.0
@@ -48,13 +50,11 @@ def value_unvested_events(events, price: float) -> Dict[str, float]:
         if sh <= 0:
             continue
         st = grant.share_type
-        if st in _iso_types():
+        if is_option_share_type(st):
             unavail_shares_iso += sh
-            strike = float(getattr(grant, 'share_price_at_grant', 0) or 0)
-            unavailable_value += sh * max(0.0, float(price) - strike)
         else:
             unavail_shares_rsu += sh
-            unavailable_value += sh * float(price)
+        unavailable_value += scheduled_vest_value(ve, price)
     return {
         'unavailable_value': float(unavailable_value),
         'unavailable_shares_rsu': float(unavail_shares_rsu),
@@ -83,28 +83,14 @@ def summarize_held_portfolio(
     price = float(live_price if live_price is not None else (get_latest_user_price(user_id) or 0.0))
     lots = lots if lots is not None else build_lots_for_user(user_id, as_of=as_of)
 
-    rsu_held = 0.0
-    iso_held = 0.0
-    iso_unex = 0.0
-    iso_unex_value = 0.0
-    available_stock_value = 0.0  # shares you actually hold (can sell once settled)
-
-    for lot in lots or []:
-        avail = float(lot.get('shares_available') or 0)
-        unex = float(lot.get('shares_unexercised') or 0)
-        is_iso = bool(lot.get('is_iso'))
-        strike = float(lot.get('strike_price') or lot.get('cost_basis_per_share') or 0)
-        if is_iso:
-            iso_held += avail
-            # Exercised ISO stock is real shares — full FMV (same as Shareworks stock)
-            available_stock_value += avail * price
-            iso_unex += unex
-            iso_unex_value += unex * max(0.0, price - strike)
-        else:
-            rsu_held += avail
-            available_stock_value += avail * price
-
-    held_shares = rsu_held + iso_held
+    position = held_position_from_lots(lots, price)
+    rsu_held = position['rsu_held']
+    iso_held = position['iso_held']
+    iso_unex = position['iso_unexercised']
+    iso_unex_value = position['iso_unexercised_value']
+    # Exercised ISO stock is real shares — full FMV (same as Shareworks stock)
+    available_stock_value = position['available_stock_value']
+    held_shares = position['held_shares']
 
     # ——— Unavailable: future (unvested) schedule ———
     future_vests = (
@@ -133,13 +119,18 @@ def summarize_held_portfolio(
     for g in Grant.query.filter_by(user_id=user_id).all():
         qty = float(g.share_quantity or 0)
         if g.share_type == 'cash':
-            grant_book_value += qty
-        elif g.share_type in ('iso_5y', 'iso_6y'):
+            grant_book_value += mark_to_market(qty, price, share_type='cash')
+        elif is_option_share_type(g.share_type):
             grant_book_shares += qty
-            grant_book_value += qty * max(0.0, price - float(g.share_price_at_grant or 0))
+            grant_book_value += mark_to_market(
+                qty, price,
+                share_type=g.share_type,
+                strike=g.share_price_at_grant,
+                unexercised=True,
+            )
         else:
             grant_book_shares += qty
-            grant_book_value += qty * price
+            grant_book_value += mark_to_market(qty, price, share_type=g.share_type, unexercised=False)
 
     sold_total = sum(float(s.shares_sold or 0) for s in StockSale.query.filter_by(user_id=user_id).all())
 

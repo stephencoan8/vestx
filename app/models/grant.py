@@ -125,21 +125,30 @@ class Grant(db.Model):
     @property
     def current_value(self) -> float:
         """
-        Calculate current total value based on latest stock price.
-        For ISOs (stock options): value = shares × (current_price - strike_price)
-        For RSUs/RSAs: value = shares × current_price
-        For CASH: value = cash amount (doesn't change with stock price)
+        Grant-level mark at the latest price. This is the grant quantity,
+        not shares still held after withholding or sales.
+
+        ISOs: shares × max(0, current price − strike). Underwater is zero.
+        RSUs/ESPP: shares × current price.
+        Cash: the cash amount (not multiplied by the share price).
         """
-        # Cash bonuses: value is fixed USD amount
+        from app.utils.valuation import is_option_share_type, mark_to_market
+
         if self.share_type == ShareType.CASH.value:
-            return self.share_quantity
-        
+            return mark_to_market(self.share_quantity, 0, share_type=self.share_type)
+
         current_price = self.current_share_price
-        
-        # For ISOs, calculate the spread (current price - strike price)
-        if self.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            spread = current_price - self.share_price_at_grant
-            return self.share_quantity * spread
-        
-        # For RSUs/RSAs/ESPP, use full current price
-        return self.share_quantity * current_price
+        if is_option_share_type(self.share_type):
+            return mark_to_market(
+                self.share_quantity,
+                current_price,
+                share_type=self.share_type,
+                strike=self.share_price_at_grant,
+                unexercised=True,
+            )
+        return mark_to_market(
+            self.share_quantity,
+            current_price,
+            share_type=self.share_type,
+            unexercised=False,
+        )

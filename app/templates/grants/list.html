@@ -78,7 +78,7 @@
             <td>{{ "{:,.0f}".format(lot.shares_unexercised or 0) }}</td>
             <td>${{ "{:,.2f}".format(lot.cost_basis_per_share or 0) }}</td>
             <td>{% if lot.is_long_term %}LT{% else %}ST{% endif %}</td>
-            <td>${{ "{:,.0f}".format((lot.shares_available or 0) * (live_price or 0)) }}</td>
+            <td>${{ "{:,.0f}".format(lot.market_value or 0) }}</td>
           </tr>
           {% endif %}
           {% endfor %}
@@ -104,7 +104,7 @@
             <td>{{ ve.vest_date.strftime('%Y-%m-%d') }}</td>
             <td>{{ lot_kind_line(ve.grant.grant_type, ve.grant.share_type) }}</td>
             <td>{{ "{:,.0f}".format(ve.shares_vested) }}</td>
-            <td>${{ "{:,.0f}".format(ve.shares_vested * (live_price or 0)) }}</td>
+            <td>${{ "{:,.0f}".format(ve.mtm_value or 0) }}</td>
           </tr>
           {% endfor %}
         </tbody>

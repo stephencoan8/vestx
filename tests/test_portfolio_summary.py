@@ -22,3 +22,13 @@ def test_unavailable_iso_uses_intrinsic():
     )
     s = value_unvested_events([ve], 100.0)
     assert s['unavailable_value'] == 60_000  # (100-40)*1000
+
+
+def test_unavailable_iso_floors_underwater_spread():
+    ve = SimpleNamespace(
+        shares_vested=120,
+        grant=SimpleNamespace(share_type='iso_6y', share_price_at_grant=200.0),
+    )
+    s = value_unvested_events([ve], 139.75)
+    assert s['unavailable_value'] == 0
+    assert s['unavailable_shares_iso'] == 120

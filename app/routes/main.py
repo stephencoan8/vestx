@@ -47,7 +47,11 @@ def dashboard():
 
     # Shareworks-aligned: Available (vested held) + Unavailable (unvested)
     from app.utils.portfolio_summary import summarize_held_portfolio
-    held = summarize_held_portfolio(current_user.id, live_price=current_price)
+    from app.utils.valuation import build_vesting_timeline, scheduled_vest_value
+    today = date.today()
+    held = summarize_held_portfolio(
+        current_user.id, live_price=current_price, as_of=today,
+    )
     total_shares = held['held_shares']
     total_value = held['total_value']  # available + unavailable
     available_value = held['available_value']
@@ -69,6 +73,8 @@ def dashboard():
         .limit(48)  # ~4 years monthly; list is scrollable on the dashboard
         .all()
     )
+    for vest in upcoming_vests:
+        vest.mtm_value = scheduled_vest_value(vest, current_price)
 
     all_vest_events = (
         VestEvent.query
@@ -79,7 +85,6 @@ def dashboard():
         .all()
     )
 
-    today = date.today()
     vested_events = [v for v in all_vest_events if v.vest_date <= today]
     vested_shares_gross = sum(v.shares_vested for v in vested_events)
     # Net received before market sales (withholding only) — kept for reference
@@ -90,89 +95,18 @@ def dashboard():
     vested_value_net = held['available_stock_value']
     needs_info_count = sum(1 for v in vested_events if v.needs_tax_info)
 
-    # Merged private pre-IPO + public SPCX history for timeline price points
+    # Past line marks shares still held (withholding and sales already out of
+    # the lots) plus vested unexercised options at the floored spread. The
+    # point on today uses the same live price as the hero, so it matches
+    # Vested. Future points add scheduled vests at that price.
     from app.utils.price_utils import get_merged_price_series
-    all_stock_prices = [
-        {'valuation_date': d, 'price_per_share': p}
-        for d, p in get_merged_price_series(current_user.id)
-    ]
-
-    timeline_events = []
-    for vest in all_vest_events:
-        timeline_events.append({'date': vest.vest_date, 'type': 'vest', 'vest': vest})
-    for price in all_stock_prices:
-        timeline_events.append({
-            'date': price['valuation_date'],
-            'type': 'price_update',
-            'price': price['price_per_share'],
-        })
-    timeline_events.sort(key=lambda x: x['date'])
-
-    # Precompute share types / strike to avoid repeated attribute access in nested loops
-    vest_meta = []
-    for vest in all_vest_events:
-        grant = vest.grant
-        is_iso = grant.share_type in ('iso_5y', 'iso_6y')
-        vest_meta.append({
-            'vest': vest,
-            'shares': vest.shares_vested,
-            'is_iso': is_iso,
-            'strike': grant.share_price_at_grant if is_iso else 0.0,
-            'vest_date': vest.vest_date,
-        })
-
-    vesting_timeline = []
-    cumulative_vested_value = 0.0
-    cumulative_total_value = 0.0
-    cumulative_vested_shares = 0.0
-    cumulative_total_shares = 0.0
-    running_price = 0.0
-
-    for event in timeline_events:
-        event_date = event['date']
-
-        if event['type'] == 'price_update':
-            running_price = event['price']
-            cumulative_vested_value = 0.0
-            cumulative_total_value = 0.0
-            for meta in vest_meta:
-                if meta['vest_date'] <= event_date:
-                    if meta['is_iso']:
-                        value = meta['shares'] * (running_price - meta['strike'])
-                    else:
-                        value = meta['shares'] * running_price
-                    cumulative_total_value += value
-                    if meta['vest_date'] <= today:
-                        cumulative_vested_value += value
-
-        elif event['type'] == 'vest':
-            vest = event['vest']
-            grant = vest.grant
-            shares = vest.shares_vested
-            if not running_price:
-                continue
-            if grant.share_type in ('iso_5y', 'iso_6y'):
-                value = shares * (running_price - grant.share_price_at_grant)
-            else:
-                value = shares * running_price
-
-            cumulative_total_value += value
-            cumulative_total_shares += shares
-            if vest.vest_date <= today:
-                cumulative_vested_value += value
-                cumulative_vested_shares += shares
-
-        if running_price > 0 and cumulative_total_shares > 0:
-            vesting_timeline.append({
-                'date': event_date.strftime('%Y-%m-%d'),
-                'vested_shares': cumulative_vested_shares,
-                'total_shares': cumulative_total_shares,
-                'vested_value': cumulative_vested_value,
-                'total_value': cumulative_total_value,
-                'is_vested': event_date <= today,
-                'price_at_date': running_price,
-                'event_type': event['type'],
-            })
+    vesting_timeline = build_vesting_timeline(
+        held['lots'],
+        [v for v in all_vest_events if v.vest_date > today],
+        get_merged_price_series(current_user.id),
+        live_price=current_price,
+        as_of=today,
+    )
 
     return render_template(
         'main/dashboard.html',
