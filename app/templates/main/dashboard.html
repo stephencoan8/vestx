@@ -61,7 +61,7 @@
                 {% for vest in upcoming_vests[:4] %}
                 <a href="{{ url_for('grants.vest_detail', vest_id=vest.id) }}" class="vest-item vest-item-link" role="listitem" title="Open vest detail">
                     <div class="vest-date">{{ vest.vest_date.strftime('%b %d, %Y') }}</div>
-                    <div class="vest-value">${{ "{:,.2f}".format(vest.shares_vested * current_price) }}</div>
+                    <div class="vest-value">${{ "{:,.2f}".format(vest.mtm_value) }}</div>
                 </a>
                 {% endfor %}
             </div>

@@ -170,6 +170,8 @@ def _profile_block(eng: dict) -> str:
 
 def _enrich_lots(lots: Sequence[dict], live_price: float) -> List[dict]:
     """Add market-value fields models use for ranking."""
+    from app.utils.valuation import is_option_share_type, mark_to_market
+
     out = []
     for lot in lots:
         row = dict(lot)
@@ -178,9 +180,17 @@ def _enrich_lots(lots: Sequence[dict], live_price: float) -> List[dict]:
         basis = float(lot.get('cost_basis_per_share') or 0)
         strike = float(lot.get('strike_price') or 0) if lot.get('is_iso') else basis
         px = float(lot.get('current_price') or live_price or 0)
-        held_mkt = held * px
+        held_mkt = mark_to_market(held, px, share_type=lot.get('share_type'), unexercised=False)
         held_gain = held * (px - basis) if held else 0.0
-        unex_spread = unex * max(0.0, px - strike) if unex else 0.0
+        if unex and (lot.get('is_iso') or is_option_share_type(lot.get('share_type'))):
+            unex_spread = mark_to_market(
+                unex, px,
+                share_type=lot.get('share_type') or 'iso_5y',
+                strike=strike,
+                unexercised=True,
+            )
+        else:
+            unex_spread = 0.0
         row['_held_mkt'] = held_mkt
         row['_held_gain'] = held_gain
         row['_unex_spread'] = unex_spread

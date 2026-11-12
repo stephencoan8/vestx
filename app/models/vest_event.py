@@ -82,26 +82,32 @@ class VestEvent(db.Model):
     @property
     def value_at_vest(self) -> float:
         """
-        Calculate value at vest based on current stock price data.
-        For ISOs (stock options): value = shares × (price_at_vest - strike_price)
-        For RSUs/RSAs: value = shares × price_at_vest
-        For CASH: value = cash amount (shares_vested represents USD amount)
+        Mark of the gross vest at the vest-date price (live price if unvested).
+
+        ISOs: shares × max(0, price − strike). RSUs/ESPP: shares × price.
+        Cash: the cash amount. Taxes are not subtracted.
         """
         from app.models.grant import ShareType
-        
-        # Cash bonuses: shares_vested represents USD amount
+        from app.utils.valuation import is_option_share_type, mark_to_market
+
         if self.grant.share_type == ShareType.CASH.value:
-            return self.shares_vested
-        
+            return mark_to_market(self.shares_vested, 0, share_type=self.grant.share_type)
+
         price_at_vest = self.share_price_at_vest
-        
-        # For ISOs, calculate the spread (price at vest - strike price)
-        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            spread = price_at_vest - self.grant.share_price_at_grant
-            return self.shares_vested * spread
-        
-        # For RSUs/RSAs/ESPP, use full price at vest
-        return self.shares_vested * price_at_vest
+        if is_option_share_type(self.grant.share_type):
+            return mark_to_market(
+                self.shares_vested,
+                price_at_vest,
+                share_type=self.grant.share_type,
+                strike=self.grant.share_price_at_grant,
+                unexercised=True,
+            )
+        return mark_to_market(
+            self.shares_vested,
+            price_at_vest,
+            share_type=self.grant.share_type,
+            unexercised=False,
+        )
     
     @property
     def shares_withheld_for_taxes(self) -> float:
@@ -130,28 +136,35 @@ class VestEvent(db.Model):
     @property
     def net_value(self) -> float:
         """
-        Calculate net value of shares received.
-        For ISOs: net_value = shares_received × (price_at_vest - strike_price)
-        For RSUs/RSAs: net_value = shares_received × price_at_vest
-        For CASH: net_value = USD amount received after taxes
+        Mark of shares received (after vest withholding) at the vest-date price.
+
+        ISOs use the floored spread. RSUs/ESPP use the full price.
+        Cash is the dollar amount received. Market sales are not subtracted.
         """
         from app.models.grant import ShareType
-        
-        # Cash bonuses: shares_received represents USD amount
+        from app.utils.valuation import is_option_share_type, mark_to_market
+
         if self.grant.share_type == ShareType.CASH.value:
-            return self.shares_received
-        
+            return mark_to_market(self.shares_received, 0, share_type=self.grant.share_type)
+
         price_at_vest = self.share_price_at_vest
-        if not price_at_vest:
+        if not price_at_vest and not is_option_share_type(self.grant.share_type):
             return 0.0
-        
-        # For ISOs, calculate based on spread
-        if self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            spread = price_at_vest - self.grant.share_price_at_grant
-            return self.shares_received * spread
-        
-        # For RSUs/RSAs/ESPP, use full price
-        return self.shares_received * price_at_vest
+
+        if is_option_share_type(self.grant.share_type):
+            return mark_to_market(
+                self.shares_received,
+                price_at_vest,
+                share_type=self.grant.share_type,
+                strike=self.grant.share_price_at_grant,
+                unexercised=True,
+            )
+        return mark_to_market(
+            self.shares_received,
+            price_at_vest,
+            share_type=self.grant.share_type,
+            unexercised=False,
+        )
     
     @property
     def tax_withheld(self) -> float:
@@ -316,8 +329,14 @@ class VestEvent(db.Model):
         if self.grant.share_type == ShareType.CASH.value:
             vest_value = self.shares_vested
         elif self.grant.share_type in [ShareType.ISO_5Y.value, ShareType.ISO_6Y.value]:
-            spread = current_stock_price - self.grant.share_price_at_grant
-            vest_value = self.shares_vested * spread if spread > 0 else 0.0
+            from app.utils.valuation import mark_to_market
+            vest_value = mark_to_market(
+                self.shares_vested,
+                current_stock_price,
+                share_type=self.grant.share_type,
+                strike=self.grant.share_price_at_grant,
+                unexercised=True,
+            )
             return {
                 'tax_amount': 0.0,
                 'is_estimated': True,
@@ -403,6 +422,7 @@ class VestEvent(db.Model):
 
         try:
             from app.models.grant import ShareType
+            from app.utils.valuation import mark_to_market
 
             if not user_key:
                 user_key = b''
@@ -433,7 +453,6 @@ class VestEvent(db.Model):
             shares_vested = self.shares_vested or 0.0
             shares_sold_for_tax = self.shares_sold or 0.0
             cash_paid = self.cash_paid or 0.0
-            spread = 0.0
 
             if is_cash:
                 gross_value = shares_vested
@@ -442,12 +461,20 @@ class VestEvent(db.Model):
             elif is_iso:
                 if strike_price is None:
                     strike_price = 0.0
-                spread = price_at_vest - strike_price
-                gross_value = shares_vested * spread
+                gross_value = mark_to_market(
+                    shares_vested, price_at_vest,
+                    share_type=self.grant.share_type,
+                    strike=strike_price,
+                    unexercised=True,
+                )
                 shares_withheld = shares_sold_for_tax
                 tax_withheld_value = cash_paid + (shares_withheld * price_at_vest)
             else:
-                gross_value = shares_vested * price_at_vest
+                gross_value = mark_to_market(
+                    shares_vested, price_at_vest,
+                    share_type=self.grant.share_type,
+                    unexercised=False,
+                )
                 shares_withheld = shares_sold_for_tax
                 tax_withheld_value = cash_paid + (shares_withheld * price_at_vest)
 
@@ -456,9 +483,18 @@ class VestEvent(db.Model):
             if is_cash:
                 net_value = shares_received
             elif is_iso:
-                net_value = shares_received * spread
+                net_value = mark_to_market(
+                    shares_received, price_at_vest,
+                    share_type=self.grant.share_type,
+                    strike=strike_price or 0,
+                    unexercised=True,
+                )
             else:
-                net_value = shares_received * price_at_vest
+                net_value = mark_to_market(
+                    shares_received, price_at_vest,
+                    share_type=self.grant.share_type,
+                    unexercised=False,
+                )
 
             total_sold = sum(s.shares_sold for s in sales_data) if sales_data else 0
             total_exercised = sum(e.shares_exercised for e in exercises_data) if exercises_data else 0
@@ -498,6 +534,26 @@ class VestEvent(db.Model):
                 except Exception as e:
                     logger.error("Error getting sale tax projection: %s", e)
 
+            if is_cash:
+                current_market_value = remaining_shares
+                unrealized_gain = 0.0
+            elif is_iso:
+                # Remaining ISO shares are unexercised options, not stock.
+                current_market_value = mark_to_market(
+                    remaining_shares, current_price,
+                    share_type=self.grant.share_type,
+                    strike=strike_price or 0,
+                    unexercised=True,
+                )
+                unrealized_gain = current_market_value
+            else:
+                current_market_value = mark_to_market(
+                    remaining_shares, current_price,
+                    share_type=self.grant.share_type,
+                    unexercised=False,
+                )
+                unrealized_gain = current_market_value - remaining_shares * cost_basis_per_share
+
             return {
                 'vest_id': self.id,
                 'vest_date': self.vest_date,
@@ -519,12 +575,9 @@ class VestEvent(db.Model):
                 'gross_value': gross_value,
                 'tax_withheld_value': tax_withheld_value,
                 'net_value': net_value,
-                'current_market_value': remaining_shares * current_price if not is_cash else remaining_shares,
+                'current_market_value': current_market_value,
                 'total_cost_basis': remaining_shares * cost_basis_per_share,
-                'unrealized_gain': (
-                    (remaining_shares * current_price) - (remaining_shares * cost_basis_per_share)
-                    if not is_cash else 0
-                ),
+                'unrealized_gain': unrealized_gain,
                 'cash_paid': self.cash_paid,
                 'cash_covered_all': self.cash_covered_all,
                 'tax_breakdown': tax_breakdown,

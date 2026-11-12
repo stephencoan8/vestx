@@ -30,6 +30,7 @@ def list_grants():
     from app.utils.lot_inventory import build_lots_for_user
     from app.utils.price_utils import get_latest_user_price
     from app.utils.ledger import ensure_lots_for_user
+    from app.utils.valuation import lot_market_value, scheduled_vest_value
 
     ensure_lots_for_user(current_user.id)
     grants = Grant.query.filter_by(user_id=current_user.id).order_by(Grant.grant_date.desc()).all()
@@ -42,11 +43,9 @@ def list_grants():
         unex = float(lot.get('shares_unexercised') or 0)
         held_by_grant[gid]['shares'] += sh
         held_by_grant[gid]['unex'] += unex
-        if lot.get('is_iso') and unex:
-            strike = float(lot.get('strike_price') or 0)
-            held_by_grant[gid]['value'] += sh * live + unex * max(0.0, live - strike)
-        else:
-            held_by_grant[gid]['value'] += sh * live
+        market_value = lot_market_value(lot, live)
+        held_by_grant[gid]['value'] += market_value
+        lot['market_value'] = market_value
     today = date.today()
     upcoming = (
         VestEvent.query.join(Grant)
@@ -55,6 +54,8 @@ def list_grants():
         .limit(24)
         .all()
     )
+    for ve in upcoming:
+        ve.mtm_value = scheduled_vest_value(ve, live)
     return render_template(
         'grants/list.html',
         grants=grants,
@@ -517,6 +518,7 @@ def vest_schedule_full():
     from app.utils.price_utils import warm_user_price_history
     from app.utils.portfolio_summary import sold_shares_by_vest
     from app.utils.lot_inventory import build_lots_for_user
+    from app.utils.valuation import is_option_share_type, lot_market_value, mark_to_market
 
     vest_events = VestEvent.query.options(
         joinedload(VestEvent.grant)
@@ -528,9 +530,9 @@ def vest_schedule_full():
     latest_stock_price = get_latest_user_price(current_user.id) or 0.0
     today = date.today()
     sold_map = sold_shares_by_vest(current_user.id)
-    held_by_vest = {}
+    lots_by_vest = {}
     for lot in build_lots_for_user(current_user.id) or []:
-        held_by_vest[int(lot['vest_event_id'])] = float(lot.get('shares_available') or 0)
+        lots_by_vest[int(lot['vest_event_id'])] = lot
 
     enriched_events = []
     for ve in vest_events:
@@ -541,11 +543,35 @@ def vest_schedule_full():
             ve.estimated_tax = None
         market_sold = float(sold_map.get(ve.id, 0) or 0)
         ve.market_shares_sold = market_sold
-        ve.shares_held_now = float(held_by_vest.get(ve.id, 0) or 0)
-        if ve.has_vested and ve.shares_held_now <= 0 and market_sold <= 0:
-            # Future ISO unexercised etc. — fall back to received if no lot yet
-            ve.shares_held_now = max(0.0, float(ve.shares_received or 0) - market_sold)
-        ve.held_value_now = ve.shares_held_now * latest_stock_price
+        share_type = ve.grant.share_type if ve.grant else None
+        lot = lots_by_vest.get(int(ve.id))
+        if share_type == 'cash':
+            ve.shares_held_now = 0.0
+            ve.held_value_now = float(ve.shares_received or 0) if ve.has_vested else 0.0
+        elif ve.vest_date > today or not ve.has_vested:
+            ve.shares_held_now = 0.0
+            ve.held_value_now = 0.0
+        elif lot:
+            ve.shares_held_now = float(lot.get('shares_available') or 0)
+            ve.held_value_now = lot_market_value(lot, latest_stock_price)
+        elif is_option_share_type(share_type):
+            # No inventory row yet: unexercised options, not stock at full price.
+            unex = max(0.0, float(ve.shares_received or 0) - market_sold)
+            ve.shares_held_now = 0.0
+            ve.held_value_now = mark_to_market(
+                unex, latest_stock_price,
+                share_type=share_type,
+                strike=ve.grant.share_price_at_grant,
+                unexercised=True,
+            )
+        else:
+            held_shares = max(0.0, float(ve.shares_received or 0) - market_sold)
+            ve.shares_held_now = held_shares
+            ve.held_value_now = mark_to_market(
+                held_shares, latest_stock_price,
+                share_type=share_type,
+                unexercised=False,
+            )
         enriched_events.append(ve)
 
     return render_template(
