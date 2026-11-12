@@ -7,6 +7,8 @@ flask-wtf>=1.2.1
 flask-talisman>=1.1.0
 
 # Database
+# SQLAlchemy 2.1 treats a bare postgresql:// URL as the psycopg (v3) dialect.
+# This app installs psycopg2 and selects it in app.config.sqlalchemy_database_uri.
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 

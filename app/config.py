@@ -7,6 +7,24 @@ import secrets
 from datetime import timedelta
 
 
+def sqlalchemy_database_uri(url: str) -> str:
+    """Normalize a DATABASE_URL for the driver this image actually installs.
+
+    Railway and Heroku publish ``postgres://``, which SQLAlchemy rejects.
+    A bare ``postgresql://`` URL is also not enough: SQLAlchemy 2.1's default
+    Postgres dialect is psycopg (v3) and does ``import psycopg``. requirements
+    installs psycopg2-binary, so select that driver explicitly. URLs that
+    already name a driver (``postgresql+psycopg2://`` and similar) are kept.
+    """
+    if not url:
+        return url
+    if url.startswith('postgres://'):
+        url = 'postgresql://' + url[len('postgres://'):]
+    if url.startswith('postgresql://'):
+        url = 'postgresql+psycopg2://' + url[len('postgresql://'):]
+    return url
+
+
 class Config:
     """Base configuration with security hardening."""
     
@@ -26,11 +44,12 @@ class Config:
             print("⚠️  Set SECRET_KEY in .env for production!")
     
     # Database
-    _db_url = os.getenv('DATABASE_URL', 'sqlite:///stonks.db')
-    # Railway / Heroku sometimes provide postgres:// which SQLAlchemy rejects
-    if _db_url.startswith('postgres://'):
-        _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
-    SQLALCHEMY_DATABASE_URI = _db_url
+    # Railway/Heroku hand out postgres://. A bare postgresql:// URL is not
+    # safe to pass through: SQLAlchemy 2.1 loads it as the psycopg v3 dialect,
+    # and this image installs psycopg2 (see sqlalchemy_database_uri).
+    SQLALCHEMY_DATABASE_URI = sqlalchemy_database_uri(
+        os.getenv('DATABASE_URL', 'sqlite:///stonks.db')
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,  # Verify connections before using
