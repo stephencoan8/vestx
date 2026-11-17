@@ -14,6 +14,9 @@ from typing import Any, Dict, List, Optional
 from app.utils.tax_constants import CA_ES_FRACTIONS, CA_ES_SOURCE, CITATIONS
 from app.utils.withholding import (
     entered_amount,
+    resolve_federal_supplemental_rate,
+    resolve_withholding_stub_date,
+    split_withholding_by_rates,
     vest_paycheck_withholding,
     wages_only_income_tax,
 )
@@ -283,6 +286,143 @@ def _year_amt_due(profile: dict, bargain: float) -> float:
         return 0.0
 
 
+def actual_post_stub_income_withholding(
+    user_id: int,
+    tax_year: int,
+    stub_date: date,
+    as_of: date,
+    *,
+    federal_rate: float,
+    state_code: str = 'CA',
+    filing_status: str = 'single',
+    cash_wages: float = 0.0,
+    ss_already_maxed: bool = False,
+) -> Dict[str, float]:
+    """
+    Income-tax withholding actually taken on vests after the paystub date.
+
+    Sell-to-cover (shares sold × FMV) plus cash paid is the actual withhold.
+    It is split by the supplemental and payroll rates in force. Only the
+    federal and state slices are income-tax credits. Vests on or before the
+    stub date are already inside the stub. Future vests are not actual yet.
+    """
+    from app.models.grant import Grant
+    from app.models.vest_event import VestEvent
+    from app.utils.payroll_tax import employee_fica
+    from app.utils.tax_constants import CA_SDI_RATE, CA_SUPP_RATE
+    from app.utils.wage_year_tax import vest_w2_kind
+    from app.utils.withholding import federal_supplemental_withholding
+    from sqlalchemy.orm import joinedload
+
+    empty = {'federal': 0.0, 'state': 0.0, 'payroll': 0.0, 'actual': 0.0, 'vests': 0}
+    if stub_date is None:
+        return empty
+
+    start = date(int(tax_year), 1, 1)
+    end = date(int(tax_year), 12, 31)
+    try:
+        events = (
+            VestEvent.query.options(joinedload(VestEvent.grant))
+            .join(Grant)
+            .filter(
+                Grant.user_id == user_id,
+                VestEvent.vest_date >= start,
+                VestEvent.vest_date <= end,
+            )
+            .order_by(VestEvent.vest_date.asc(), VestEvent.id.asc())
+            .all()
+        )
+    except Exception:
+        return empty
+
+    state = (state_code or '').upper()
+    ytd_wages = max(0.0, float(cash_wages or 0))
+    ytd_supp = 0.0
+    federal = 0.0
+    state_credit = 0.0
+    payroll = 0.0
+    actual_total = 0.0
+    n = 0
+
+    for vest in events:
+        grant = vest.grant
+        if not grant or not vest.vest_date:
+            continue
+        kind = vest_w2_kind(grant.grant_type or '', grant.share_type or '')
+        if kind not in ('rsu', 'cash'):
+            continue
+        is_cash = kind == 'cash'
+        try:
+            fmv = float(vest.fmv_at_vest or 0)
+        except (TypeError, ValueError):
+            fmv = 0.0
+        if fmv <= 0 and not is_cash:
+            try:
+                fmv = float(vest.share_price_at_vest or 0)
+            except Exception:
+                fmv = 0.0
+        shares = max(0.0, float(vest.shares_vested or 0))
+        gross = shares if is_cash else shares * max(0.0, fmv)
+        withheld_shares = max(0.0, float(vest.shares_sold or 0))
+        cash_paid = max(0.0, float(vest.cash_paid or 0))
+        if is_cash:
+            actual = cash_paid + withheld_shares
+        else:
+            actual = cash_paid + withheld_shares * max(0.0, fmv)
+
+        count_it = vest.vest_date > stub_date and vest.vest_date <= as_of and actual > 0.005
+        if count_it:
+            if gross > 0:
+                fica = employee_fica(
+                    period_wages=gross,
+                    ytd_wages_before=ytd_wages,
+                    tax_year=int(tax_year),
+                    filing_status=filing_status,
+                    ss_already_maxed=bool(ss_already_maxed),
+                )
+                ss_rate = float(fica.ss_effective_rate or 0)
+                med_rate = float(fica.medicare_rate or 0)
+                add_rate = float(fica.additional_medicare_effective_rate or 0)
+                fed_dollars = federal_supplemental_withholding(
+                    gross,
+                    ytd_supplemental_before=ytd_supp,
+                    rate=federal_rate,
+                )
+                fed_weight = fed_dollars / gross if gross else 0.0
+            else:
+                ss_rate = 0.0
+                med_rate = 0.0145
+                add_rate = 0.0
+                fed_weight = float(federal_rate or 0)
+            state_weight = CA_SUPP_RATE if state == 'CA' else 0.0
+            sdi_rate = CA_SDI_RATE if state == 'CA' else 0.0
+            split = split_withholding_by_rates(actual, {
+                'federal': fed_weight,
+                'state': state_weight,
+                'social_security': ss_rate,
+                'medicare': med_rate,
+                'additional_medicare': add_rate,
+                'sdi': sdi_rate,
+            })
+            federal += split['federal']
+            state_credit += split['state']
+            payroll += split['payroll']
+            actual_total += split['actual']
+            n += 1
+
+        if vest.vest_date <= as_of:
+            ytd_wages += max(0.0, gross)
+            ytd_supp += max(0.0, gross)
+
+    return {
+        'federal': federal,
+        'state': state_credit,
+        'payroll': payroll,
+        'actual': actual_total,
+        'vests': n,
+    }
+
+
 def build_cash_vs_tax(
     user,
     *,
@@ -380,7 +520,11 @@ def build_cash_vs_tax(
         cash_wages=cash, tax_year=tax_year, filing_status=filing, state_code=state
     )
 
-    # Modeled supplemental on past vs remaining vests
+    fed_supp_rate = resolve_federal_supplemental_rate(year_row, profile)
+    stub_date = resolve_withholding_stub_date(year_row, profile)
+    ss_maxed = bool(eng.get('ss_wage_base_maxed'))
+
+    # Modeled supplemental on past vs remaining vests (elected flat rate).
     past_vest_wh = vest_paycheck_withholding(
         eq_past,
         ytd_supplemental_before=0.0,
@@ -390,6 +534,7 @@ def build_cash_vs_tax(
         state_code=state,
         ss_already_maxed=False,
         include_fica=True,
+        federal_rate=fed_supp_rate,
     )
     fut_vest_wh = vest_paycheck_withholding(
         eq_fut,
@@ -398,20 +543,38 @@ def build_cash_vs_tax(
         tax_year=tax_year,
         filing_status=filing,
         state_code=state,
-        ss_already_maxed=bool(eng.get('ss_wage_base_maxed')),
+        ss_already_maxed=ss_maxed,
         include_fica=True,
+        federal_rate=fed_supp_rate,
     )
 
-    # Locked-in withholding: paystub if entered, else wages-to-date model + past vest supp
+    # Actual sell-to-cover / cash withholding on vests dated after the stub.
+    # The stub already includes vests on or before that date.
+    post_stub = {'federal': 0.0, 'state': 0.0, 'payroll': 0.0, 'actual': 0.0, 'vests': 0}
+    if stub_date is not None and (fed_wh_entered is not None or state_wh_entered is not None):
+        post_stub = actual_post_stub_income_withholding(
+            user.id,
+            tax_year,
+            stub_date,
+            as_of,
+            federal_rate=fed_supp_rate,
+            state_code=state,
+            filing_status=filing,
+            cash_wages=cash,
+            ss_already_maxed=ss_maxed,
+        )
+
+    # Locked-in withholding: paystub if entered, plus actual post-stub vest
+    # income-tax withholding. Otherwise wages model + past vest supplemental.
     if fed_wh_entered is not None:
-        fed_locked = fed_wh_entered
+        fed_locked = fed_wh_entered + float(post_stub.get('federal') or 0)
         fed_source = 'paystub'
     else:
         # Wages-only federal is full-year; attribute cash portion as locked if year is current
         fed_locked = float(wage_wh['federal']) + float(past_vest_wh['federal'])
         fed_source = 'modeled'
     if state_wh_entered is not None:
-        state_locked = state_wh_entered
+        state_locked = state_wh_entered + float(post_stub.get('state') or 0)
         state_source = 'paystub'
     else:
         state_locked = float(wage_wh['state']) + float(past_vest_wh['state'])
@@ -571,6 +734,12 @@ def build_cash_vs_tax(
             'estimated_payments': round(est_paid, 2),
             'federal_source': fed_source,
             'state_source': state_source,
+            'federal_supplemental_rate': fed_supp_rate,
+            'stub_date': stub_date.isoformat() if stub_date else None,
+            'post_stub_federal': round(float(post_stub.get('federal') or 0), 2),
+            'post_stub_state': round(float(post_stub.get('state') or 0), 2),
+            'post_stub_payroll': round(float(post_stub.get('payroll') or 0), 2),
+            'post_stub_vests': int(post_stub.get('vests') or 0),
             'federal_entered': fed_wh_entered is not None,
             'state_entered': state_wh_entered is not None,
             'estimates_entered': est_paid_entered is not None,

@@ -184,6 +184,9 @@ def create_app():
         from app.utils.migrate_tax_year_withholding import migrate_tax_year_withholding
         _safe_migrate('tax_year_withholding', migrate_tax_year_withholding)
 
+        from app.utils.migrate_withholding_elections import migrate_withholding_elections
+        _safe_migrate('withholding_elections', migrate_withholding_elections)
+
         from app.utils.migrate_espp_share_type import migrate_espp_share_type
         _safe_migrate('espp_share_type', migrate_espp_share_type)
 
@@ -197,6 +200,12 @@ def create_app():
             backfill_all()
         except Exception as e:
             _log.warning('ledger backfill on boot failed: %s', e)
+
+        try:
+            from app.utils.ledger import repair_sell_to_cover_lots
+            repair_sell_to_cover_lots()
+        except Exception as e:
+            _log.warning('sell-to-cover lot repair on boot failed: %s', e)
 
         try:
             from app.utils.init_db import init_admin_user

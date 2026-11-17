@@ -197,6 +197,21 @@
                        placeholder="7/31 stub CA — $19,257.25" data-money>
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="withholding_stub_date">Paystub date</label>
+                <input type="date" id="withholding_stub_date" name="withholding_stub_date"
+                       value="{{ est_tax_form.withholding_stub_date or '' }}">
+                <div class="tax-sit-sub">YTD above is through this date. Vests after it count from sell-to-cover, not the stub.</div>
+              </div>
+              <div class="form-group">
+                <label for="federal_supplemental_rate">Federal supplemental withholding %</label>
+                <input type="number" step="0.01" min="0" max="100" id="federal_supplemental_rate"
+                       name="federal_supplemental_rate"
+                       value="{{ '%.2f'|format((est_tax_form.federal_supplemental_rate if est_tax_form.federal_supplemental_rate is not none else 0.22) * 100) }}">
+                <div class="tax-sit-sub">Vest withholding estimates and future-vest projections. Default 22%. 37% still applies above $1M supplemental wages.</div>
+              </div>
+            </div>
             <div class="form-group">
               <label for="estimated_payments_ytd">Estimated tax payments YTD</label>
               <input type="text" inputmode="decimal" class="money-input" id="estimated_payments_ytd" name="estimated_payments_ytd"
@@ -455,6 +470,18 @@
       : ((Number(f.state_ordinary_rate || 0) * 100).toFixed(2));
     if (sc) sc.value = f.state_cg_rate_pct != null ? f.state_cg_rate_pct
       : ((Number(f.state_cg_rate || 0) * 100).toFixed(2));
+    var supp = document.getElementById('federal_supplemental_rate');
+    if (supp) {
+      if (f.federal_supplemental_rate_pct != null && f.federal_supplemental_rate_pct !== '') {
+        supp.value = Number(f.federal_supplemental_rate_pct).toFixed(2);
+      } else if (f.federal_supplemental_rate != null && f.federal_supplemental_rate !== '') {
+        supp.value = (Number(f.federal_supplemental_rate) * 100).toFixed(2);
+      } else {
+        supp.value = '22.00';
+      }
+    }
+    var stub = document.getElementById('withholding_stub_date');
+    if (stub) stub.value = f.withholding_stub_date || '';
     updateIdentityChip(f);
   }
 

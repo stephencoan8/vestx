@@ -7,6 +7,33 @@ from datetime import datetime, date
 from app.utils.price_utils import get_latest_user_price
 
 
+def _vest_withholding_estimate(profile: dict, gross: float, ytd_wages_before) -> dict:
+    """Employer supplemental withholding on one vest, not the marginal tax."""
+    from app.utils.withholding import resolve_federal_supplemental_rate, vest_paycheck_withholding
+
+    profile = profile or {}
+    try:
+        ytd = float(ytd_wages_before if ytd_wages_before is not None else (
+            profile.get('other_ordinary_income_raw')
+            or profile.get('stacking_ordinary_income')
+            or 0
+        ))
+    except (TypeError, ValueError):
+        ytd = 0.0
+    year = int(profile.get('tax_year') or date.today().year)
+    return vest_paycheck_withholding(
+        float(gross or 0),
+        ytd_supplemental_before=0.0,
+        ytd_fica_wages_before=ytd,
+        tax_year=year,
+        filing_status=profile.get('filing_status') or 'single',
+        state_code=profile.get('state_code') or 'CA',
+        ss_already_maxed=bool(profile.get('ss_wage_base_maxed')),
+        include_fica=bool(profile.get('include_fica', True)),
+        federal_rate=resolve_federal_supplemental_rate(profile, None),
+    )
+
+
 class VestEvent(db.Model):
     """Individual vesting event for a grant."""
     
@@ -255,6 +282,7 @@ class VestEvent(db.Model):
                 # Future: stack vest on top of saved wages (do not peel).
                 wages_include_this_vest=True if self.has_vested else False,
             )
+            withholding = _vest_withholding_estimate(profile, gross_value, result.get('base_ordinary'))
             return {
                 'has_breakdown': True,
                 'gross_value': result['gross_value'],
@@ -283,6 +311,7 @@ class VestEvent(db.Model):
                 'ss_wage_base': result.get('ss_wage_base'),
                 'profile_source': result.get('profile_source'),
                 'notes': result.get('notes') or [],
+                'withholding': withholding,
             }
 
         except Exception as e:
@@ -307,10 +336,7 @@ class VestEvent(db.Model):
         Estimate tax withholding for future vesting events via year Tax Profile engine.
         """
         from app.models.grant import ShareType, GrantType
-        from app.utils.tax_engine import (
-            resolve_engine_profile_for_year,
-            compute_vest_ordinary_tax,
-        )
+        from app.utils.tax_engine import resolve_engine_profile_for_year
 
         if self.has_vested:
             return {
@@ -364,17 +390,15 @@ class VestEvent(db.Model):
         else:
             profile = resolve_engine_profile_for_year(user, year)
 
-        result = compute_vest_ordinary_tax(
-            profile,
-            float(vest_value or 0),
-            has_vested=False,
-            wages_include_this_vest=False,
-        )
+        withholding = _vest_withholding_estimate(profile, float(vest_value or 0), None)
+        gross = float(vest_value or 0)
         return {
-            'tax_amount': result['total_tax'],
+            'tax_amount': withholding['total'],
             'is_estimated': True,
-            'tax_rate': result['effective_rate'],
-            'breakdown': result,
+            'tax_rate': (withholding['total'] / gross) if gross else 0.0,
+            'federal_rate': withholding.get('federal_rate') or 0.0,
+            'federal_withholding': withholding.get('federal') or 0.0,
+            'breakdown': withholding,
         }
     
     def get_estimated_sale_tax(self, current_stock_price: float = None,

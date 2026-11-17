@@ -48,6 +48,10 @@ class TaxProfile(db.Model):
     prior_year_agi = db.Column(db.Float, nullable=True)  # if >150k → 110% safe harbor
     federal_withholding_ytd = db.Column(db.Float, default=0.0)
     state_withholding_ytd = db.Column(db.Float, default=0.0)
+    # Paystub YTD is through this date. Vests after it are not in those figures.
+    withholding_stub_date = db.Column(db.Date, nullable=True)
+    # Elected federal supplemental withholding on RSU/bonus (fraction). Null = 22%.
+    federal_supplemental_rate = db.Column(db.Float, nullable=True)
     estimated_payments_ytd = db.Column(db.Float, default=0.0)  # estimated tax payments made YTD
     itemize_salt = db.Column(db.Float, default=0.0)
     itemize_mortgage = db.Column(db.Float, default=0.0)
@@ -125,4 +129,6 @@ class TaxProfile(db.Model):
             'ca_amt_credit_carryforward': g('ca_amt_credit_carryforward', 0.0) or 0.0,
             'tax_year': g('tax_year') or datetime.utcnow().year,
             'stacking_ordinary_income': other_ord,
+            'federal_supplemental_rate': g('federal_supplemental_rate', None),
+            'withholding_stub_date': g('withholding_stub_date', None),
         }
