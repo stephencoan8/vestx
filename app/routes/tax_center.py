@@ -353,6 +353,8 @@ def api_year_tax():
                 ),
                 'amt_credit_carryforward': 0.0,
                 'ca_amt_credit_carryforward': 0.0,
+                'federal_supplemental_rate': None,
+                'withholding_stub_date': '',
             }
             # Only for the active planning year with no year-row yet: offer main
             # profile money as a starting point (same calendar year only).
@@ -483,7 +485,8 @@ def api_year_tax():
             form_out = dict(form)
             form_out['tax_year'] = year
             for rk in ('federal_ordinary_rate', 'federal_ltcg_rate',
-                       'state_ordinary_rate', 'state_cg_rate'):
+                       'state_ordinary_rate', 'state_cg_rate',
+                       'federal_supplemental_rate'):
                 v = form_out.get(rk)
                 if v is not None and v != '':
                     try:
@@ -591,6 +594,21 @@ def tax_profile():
             return default
         return _money_float(raw, default if default is not None else 0)
 
+    def _stub_date(raw):
+        text = (raw or '').strip()
+        if not text:
+            return None
+        try:
+            return datetime.strptime(text[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+    def _supp_rate(raw):
+        from app.utils.withholding import coerce_supplemental_rate
+        if raw is None or str(raw).strip() == '':
+            return coerce_supplemental_rate(None)
+        return coerce_supplemental_rate(_money_float(raw, 22))
+
     if request.method == 'POST':
         try:
             ty = int(request.form.get('tax_year') or date.today().year)
@@ -617,6 +635,8 @@ def tax_profile():
                 'include_niit': request.form.get('include_niit') == 'on',
                 'federal_withholding_ytd': _f('federal_withholding_ytd', 0) or 0,
                 'state_withholding_ytd': _f('state_withholding_ytd', 0) or 0,
+                'withholding_stub_date': _stub_date(request.form.get('withholding_stub_date')),
+                'federal_supplemental_rate': _supp_rate(request.form.get('federal_supplemental_rate')),
                 'estimated_payments_ytd': _f('estimated_payments_ytd', 0) or 0,
                 'itemize_salt': _f('itemize_salt', 0) or 0,
                 'itemize_mortgage': _f('itemize_mortgage', 0) or 0,
@@ -649,6 +669,8 @@ def tax_profile():
                     profile.prior_year_agi = _money_float(pagi, None)
                 profile.federal_withholding_ytd = _f('federal_withholding_ytd', 0) or 0
                 profile.state_withholding_ytd = _f('state_withholding_ytd', 0) or 0
+                profile.withholding_stub_date = data['withholding_stub_date']
+                profile.federal_supplemental_rate = data['federal_supplemental_rate']
                 profile.estimated_payments_ytd = _f('estimated_payments_ytd', 0) or 0
                 profile.itemize_salt = _f('itemize_salt', 0) or 0
                 profile.itemize_mortgage = _f('itemize_mortgage', 0) or 0
@@ -794,12 +816,19 @@ def tax_profile():
         return 0.0
 
     from app.utils.withholding import entered_amount
+    from app.utils.withholding import (
+        resolve_federal_supplemental_rate,
+        resolve_withholding_stub_date,
+    )
+    _stub = resolve_withholding_stub_date(year_row, profile)
     est_tax_form = {
         'prior_year_total_tax': float(getattr(profile, 'prior_year_total_tax', 0) or 0),
         'prior_year_agi': getattr(profile, 'prior_year_agi', None),
         'federal_withholding_ytd': _wh('federal_withholding_ytd'),
         'state_withholding_ytd': _wh('state_withholding_ytd'),
         'estimated_payments_ytd': _wh('estimated_payments_ytd'),
+        'withholding_stub_date': _stub.isoformat() if _stub else '',
+        'federal_supplemental_rate': resolve_federal_supplemental_rate(year_row, profile),
         'prior_tax_source': 'entered' if (getattr(profile, 'prior_year_total_tax', 0) or 0) else None,
     }
 

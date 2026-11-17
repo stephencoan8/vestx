@@ -662,6 +662,8 @@ def resolve_engine_profile_for_year(user, tax_year: int) -> dict:
             'ca_amt_credit_carryforward': float(year_row.ca_amt_credit_carryforward or 0.0),
             'tax_year': year,
             'profile_source': 'tax_year_profile',
+            'federal_supplemental_rate': getattr(year_row, 'federal_supplemental_rate', None),
+            'withholding_stub_date': getattr(year_row, 'withholding_stub_date', None),
         }
     else:
         d = main.to_engine_dict()
@@ -678,6 +680,9 @@ def resolve_engine_profile_for_year(user, tax_year: int) -> dict:
             # Keep filing/state/engines from main; clear flat rate overrides
             d['federal_ordinary_rate'] = None
             d['federal_ltcg_rate'] = None
+
+    from app.utils.withholding import resolve_federal_supplemental_rate
+    d['federal_supplemental_rate'] = resolve_federal_supplemental_rate(year_row, main)
 
     # Bracket engine on → progressive (ignore legacy flat User rate seed)
     if d.get('use_bracket_engine', True):

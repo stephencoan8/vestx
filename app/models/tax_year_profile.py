@@ -43,6 +43,8 @@ class TaxYearProfile(db.Model):
 
     federal_withholding_ytd = db.Column(db.Float, default=0.0)
     state_withholding_ytd = db.Column(db.Float, default=0.0)
+    withholding_stub_date = db.Column(db.Date, nullable=True)
+    federal_supplemental_rate = db.Column(db.Float, nullable=True)
     estimated_payments_ytd = db.Column(db.Float, default=0.0)
     itemize_salt = db.Column(db.Float, default=0.0)
     itemize_mortgage = db.Column(db.Float, default=0.0)
@@ -77,6 +79,11 @@ class TaxYearProfile(db.Model):
             'ca_amt_credit_carryforward': float(self.ca_amt_credit_carryforward or 0),
             'federal_withholding_ytd': float(getattr(self, 'federal_withholding_ytd', 0) or 0),
             'state_withholding_ytd': float(getattr(self, 'state_withholding_ytd', 0) or 0),
+            'withholding_stub_date': (
+                self.withholding_stub_date.isoformat()
+                if getattr(self, 'withholding_stub_date', None) else ''
+            ),
+            'federal_supplemental_rate': getattr(self, 'federal_supplemental_rate', None),
             'estimated_payments_ytd': float(getattr(self, 'estimated_payments_ytd', 0) or 0),
             'itemize_salt': float(getattr(self, 'itemize_salt', 0) or 0),
             'itemize_mortgage': float(getattr(self, 'itemize_mortgage', 0) or 0),
@@ -124,6 +131,10 @@ class TaxYearProfile(db.Model):
             profile.federal_withholding_ytd = getattr(self, 'federal_withholding_ytd', 0) or 0
             profile.state_withholding_ytd = getattr(self, 'state_withholding_ytd', 0) or 0
             profile.estimated_payments_ytd = getattr(self, 'estimated_payments_ytd', 0) or 0
+        if hasattr(profile, 'withholding_stub_date'):
+            profile.withholding_stub_date = getattr(self, 'withholding_stub_date', None)
+        if hasattr(profile, 'federal_supplemental_rate'):
+            profile.federal_supplemental_rate = getattr(self, 'federal_supplemental_rate', None)
         if hasattr(profile, 'itemize_salt'):
             profile.itemize_salt = getattr(self, 'itemize_salt', 0) or 0
             profile.itemize_mortgage = getattr(self, 'itemize_mortgage', 0) or 0

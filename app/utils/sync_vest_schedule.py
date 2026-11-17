@@ -71,6 +71,7 @@ def sync_vest_events_for_grant(grant, vest_schedule: List[Dict[str, Any]]) -> Di
         by_date.setdefault(ve.vest_date, []).append(ve)
 
     matched_ids = set()
+    touched = []
     created = 0
     updated = 0
 
@@ -90,6 +91,7 @@ def sync_vest_events_for_grant(grant, vest_schedule: List[Dict[str, Any]]) -> Di
                 ve = candidates[0]
 
             matched_ids.add(ve.id)
+            touched.append(ve)
             # Update schedule math only; never overwrite tax / notes
             if ve.shares_vested != shares or ve.tax_year != vest_date.year:
                 ve.shares_vested = shares
@@ -107,6 +109,7 @@ def sync_vest_events_for_grant(grant, vest_schedule: List[Dict[str, Any]]) -> Di
             )
             db.session.add(ve)
             db.session.flush()
+            touched.append(ve)
             try:
                 from app.utils.vest_basis import ensure_vest_fmv_snapshot
                 if ve.has_vested:
@@ -133,6 +136,10 @@ def sync_vest_events_for_grant(grant, vest_schedule: List[Dict[str, Any]]) -> Di
 
         db.session.delete(ve)
         deleted += 1
+
+    from app.utils.ledger import sync_vest_lot_remaining
+    for ve in touched:
+        sync_vest_lot_remaining(ve, commit=False)
 
     return {
         'created': created,

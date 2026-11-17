@@ -140,6 +140,9 @@ def add_grant():
                         ensure_vest_fmv_snapshot(ve, user_id=current_user.id)
             except Exception:
                 pass
+            from app.utils.ledger import sync_vest_lot_remaining
+            for ve in VestEvent.query.filter_by(grant_id=grant.id).all():
+                sync_vest_lot_remaining(ve, commit=False)
 
             db.session.commit()
             flash('Grant added successfully!', 'success')
@@ -361,6 +364,8 @@ def update_vest_event(event_id):
         vest_event.shares_sold = 0.0 if cash_covered_all else shares_sold
 
         db.session.add(vest_event)
+        from app.utils.ledger import sync_vest_lot_remaining
+        sync_vest_lot_remaining(vest_event, commit=False)
         db.session.commit()
 
         return jsonify({
@@ -483,6 +488,8 @@ def update_vest_details(event_id):
                     holding = (sale.sale_date - vest_event.vest_date).days
                     sale.is_long_term = holding >= 365
 
+        from app.utils.ledger import sync_vest_lot_remaining
+        sync_vest_lot_remaining(vest_event, commit=False)
         db.session.commit()
 
         return jsonify({

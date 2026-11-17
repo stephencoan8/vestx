@@ -249,6 +249,235 @@ def record_exercise(
     return stock
 
 
+def sync_vest_lot_remaining(vest, *, commit: bool = False) -> dict:
+    """
+    Make inventory match shares received minus market sales.
+
+    Shares received is vested minus shares sold for taxes. Market sales are
+    StockSale rows on this vest. RSU and ESPP stock lots are set to that
+    quantity (created when missing). ISO option lots are adjusted only when
+    shares were actually withheld. ISO stock lots stay on the exercise/sale
+    ledger so a sell-to-cover repair cannot inflate exercised shares.
+
+    Idempotent: a second call with the same vest and sales changes nothing.
+    """
+    from app.models.grant import ShareType
+    from app.models.stock_sale import StockSale, ISOExercise
+    from app.utils.backfill_ledger import _kind_for_grant
+
+    out = {'changed': False, 'remaining': None, 'previous': None, 'created': False}
+    if vest is None:
+        return out
+    grant = getattr(vest, 'grant', None)
+    if grant is None or not getattr(grant, 'user_id', None):
+        return out
+    if grant.share_type == ShareType.CASH.value:
+        return out
+
+    user_id = int(grant.user_id)
+    kind = _kind_for_grant(grant)
+    received = float(whole_shares(getattr(vest, 'shares_received', None) or 0))
+    withheld = float(whole_shares(getattr(vest, 'shares_sold', None) or 0))
+    vested_qty = float(whole_shares(getattr(vest, 'shares_vested', None) or 0))
+    acquired = vest.vest_date
+
+    if kind == 'iso_option':
+        if withheld <= 0:
+            return out
+        exercised = 0.0
+        for ex in ISOExercise.query.filter_by(user_id=user_id, vest_event_id=vest.id).all():
+            exercised += float(whole_shares(ex.shares_exercised or 0))
+        target = max(0.0, received - exercised)
+        opt = (
+            TaxLot.query.filter_by(user_id=user_id, vest_event_id=vest.id, kind='iso_option')
+            .order_by(TaxLot.id.desc())
+            .first()
+        )
+        if opt is None:
+            return out
+        return _set_lot_remaining(
+            [opt], target, user_id=user_id, entry_date=acquired, commit=commit,
+        )
+
+    if kind not in ('rsu', 'espp'):
+        return out
+
+    sold = 0.0
+    sales = StockSale.query.filter_by(user_id=user_id, vest_event_id=vest.id).all()
+    for sale in sales:
+        sold += float(whole_shares(sale.shares_sold or 0))
+    target = max(0.0, received - sold)
+
+    stock_lots = (
+        TaxLot.query.filter_by(user_id=user_id, vest_event_id=vest.id)
+        .filter(TaxLot.kind.in_(('rsu', 'espp')))
+        .order_by(TaxLot.id.desc())
+        .all()
+    )
+    if not stock_lots:
+        try:
+            fmv = float(getattr(vest, 'fmv_at_vest', None) or 0)
+        except (TypeError, ValueError):
+            fmv = 0.0
+        lot = TaxLot(
+            user_id=user_id,
+            grant_id=grant.id,
+            vest_event_id=vest.id,
+            kind=kind,
+            acquired_date=acquired,
+            original_qty=vested_qty,
+            remaining_qty=target,
+            cost_basis_per_share=fmv,
+            fmv_at_open=fmv or None,
+            status='open' if target > 0 else 'closed',
+        )
+        lot.close_if_empty()
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(LedgerEntry(
+            user_id=user_id,
+            lot_id=lot.id,
+            kind='vest',
+            entry_date=acquired,
+            qty=vested_qty,
+            price=fmv or None,
+            notes='lot opened',
+        ))
+        if withheld > 0:
+            db.session.add(LedgerEntry(
+                user_id=user_id,
+                lot_id=lot.id,
+                kind='withhold',
+                entry_date=acquired,
+                qty=-withheld,
+                price=fmv or None,
+                notes='sell-to-cover',
+            ))
+        if sold > 0:
+            # Sales already exist; remaining is net of them. Journal the outflow
+            # so a brand-new lot's entries sum to remaining.
+            for sale in sales:
+                sq = float(whole_shares(sale.shares_sold or 0))
+                if sq <= 0:
+                    continue
+                db.session.add(LedgerEntry(
+                    user_id=user_id,
+                    lot_id=lot.id,
+                    kind='sale',
+                    entry_date=sale.sale_date or acquired,
+                    qty=-sq,
+                    price=float(sale.sale_price or 0),
+                    fees=float(sale.commission_fees or 0),
+                    sale_id=sale.id,
+                ))
+        out = {'changed': True, 'remaining': target, 'previous': None, 'created': True}
+        if commit:
+            db.session.commit()
+        return out
+
+    return _set_lot_remaining(
+        stock_lots, target, user_id=user_id, entry_date=acquired, commit=commit,
+    )
+
+
+def _set_lot_remaining(lots, target: float, *, user_id: int, entry_date, commit: bool) -> dict:
+    """Set the sum of remaining_qty on these lots to ``target`` whole shares."""
+    target = float(whole_shares(target))
+    ordered = list(lots or [])
+    if not ordered:
+        return {'changed': False, 'remaining': None, 'previous': None, 'created': False}
+    previous = sum(float(whole_shares(lot.remaining_qty)) for lot in ordered)
+    delta = target - previous
+    if abs(delta) < 0.5:
+        for lot in ordered:
+            if float(lot.remaining_qty or 0) > 0:
+                lot.status = 'open'
+            else:
+                lot.close_if_empty()
+        return {
+            'changed': False,
+            'remaining': previous,
+            'previous': previous,
+            'created': False,
+        }
+
+    if delta > 0:
+        primary = ordered[0]
+        primary.remaining_qty = float(whole_shares(primary.remaining_qty)) + delta
+        primary.status = 'open'
+    else:
+        need = -delta
+        for lot in sorted(ordered, key=lambda row: float(row.remaining_qty or 0), reverse=True):
+            if need <= 0:
+                break
+            have = float(whole_shares(lot.remaining_qty))
+            take = min(have, need)
+            lot.remaining_qty = have - take
+            lot.close_if_empty()
+            need -= take
+    db.session.add(LedgerEntry(
+        user_id=user_id,
+        lot_id=ordered[0].id,
+        kind='withhold',
+        entry_date=entry_date or date.today(),
+        qty=delta,
+        notes='sync remaining to shares received minus market sales',
+    ))
+    if commit:
+        db.session.commit()
+    return {
+        'changed': True,
+        'remaining': target,
+        'previous': previous,
+        'created': False,
+    }
+
+
+def repair_sell_to_cover_lots() -> dict:
+    """
+    Recompute TaxLot.remaining_qty from vest withholding and market sales.
+
+    Safe to re-run. Lots that already match are not rewritten. ISO stock lots
+    are not modified. Cash grants are skipped.
+    """
+    from app.models.vest_event import VestEvent
+
+    checked = 0
+    changed = 0
+    errors = 0
+    try:
+        vests = VestEvent.query.order_by(VestEvent.id.asc()).all()
+    except Exception:
+        logger = __import__('logging').getLogger(__name__)
+        logger.exception('sell-to-cover lot repair could not list vests')
+        return {'checked': 0, 'changed': 0, 'errors': 1}
+
+    logger = __import__('logging').getLogger(__name__)
+    for vest in vests:
+        checked += 1
+        try:
+            result = sync_vest_lot_remaining(vest, commit=False)
+            if result.get('changed'):
+                db.session.commit()
+                changed += 1
+        except Exception:
+            errors += 1
+            logger.exception('sell-to-cover lot repair failed for vest %s', getattr(vest, 'id', None))
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    logger.info(
+        'sell-to-cover lot repair checked=%s changed=%s errors=%s',
+        checked, changed, errors,
+    )
+    return {'checked': checked, 'changed': changed, 'errors': errors}
+
+
 def ensure_lots_for_user(user_id: int) -> None:
     """Backfill lots if this user has grants but no tax lots yet."""
     from app.models.grant import Grant

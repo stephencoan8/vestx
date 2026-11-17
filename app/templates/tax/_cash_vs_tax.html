@@ -41,7 +41,7 @@
     <div class="tax-sit-card">
       <div class="tax-sit-label">Locked in</div>
       <div class="tax-sit-value">${{ "{:,.0f}".format(c.locked_in.withholding) }}</div>
-      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }}{% if c.locked_in.sale_gain %} · sales ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}{% endif %}</div>
+      <div class="tax-sit-sub">vests ${{ "{:,.0f}".format(c.locked_in.vest_gross) }}{% if c.locked_in.sale_gain %} · sales ${{ "{:,.0f}".format(c.locked_in.sale_gain) }}{% endif %}{% if c.withholding.post_stub_vests %} · sell-to-cover after {{ c.withholding.stub_date }}{% endif %}</div>
     </div>
     <div class="tax-sit-card">
       <div class="tax-sit-label">Still coming</div>

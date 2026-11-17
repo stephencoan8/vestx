@@ -154,7 +154,36 @@
  ⏰ This vest hasn't occurred yet - these are projected taxes.
  </p>
  {% endif %}
- 
+
+ {% if tax_breakdown.withholding %}
+ {% set wh = tax_breakdown.withholding %}
+ <div class="tax-summary" style="margin-bottom: 1.25rem;">
+ <h4 style="margin-top: 0;">Withholding estimate</h4>
+ <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.85rem;">
+ Employer supplemental withholding, not the marginal tax.
+ Federal uses the Tax profile rate
+ ({{ "%.2f"|format((wh.federal_rate or 0) * 100) }}%).
+ </p>
+ <div class="tax-summary-row tax-item">
+ <span>Federal withholding ({{ "%.2f"|format((wh.federal_rate or 0) * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(wh.federal or 0) }}</span>
+ </div>
+ <div class="tax-summary-row tax-item">
+ <span>State withholding ({{ "%.2f"|format((wh.state_rate or 0) * 100) }}%):</span>
+ <span class="amount">-${{ "{:,.2f}".format(wh.state or 0) }}</span>
+ </div>
+ <div class="tax-summary-row tax-item">
+ <span>Social Security, Medicare, and state disability:</span>
+ <span class="amount">-${{ "{:,.2f}".format((wh.fica or 0) + (wh.sdi or 0)) }}</span>
+ </div>
+ <div class="tax-summary-row total-row">
+ <span><strong>Estimated withholding:</strong></span>
+ <span class="amount"><strong>-${{ "{:,.2f}".format(wh.total or 0) }}</strong></span>
+ </div>
+ </div>
+ {% endif %}
+
+ <h4>Income tax owed</h4>
  <div class="tax-summary">
  <div class="tax-summary-row">
  <span>Gross Value:</span>
